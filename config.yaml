@@ -1,0 +1,44 @@
+niche:
+  name: "Tuổi thơ & kỷ niệm gia đình"
+  description: >
+    Kênh kể những câu chuyện về tuổi thơ, kỷ niệm gia đình, những hồi ức đẹp,
+    và năng lượng tích cực — giúp con cái nhớ về cha mẹ, vợ chồng nhớ lại những
+    điều quý giá thay vì bị cuốn theo bộn bề cuộc sống hàng ngày.
+  audience: "Người Việt 22–45 tuổi, đã đi làm xa nhà hoặc đã lập gia đình"
+  tone: "Ấm áp, chậm rãi, chân thành, gợi nhớ; không sến, không giáo điều; kết bằng một thông điệp nhẹ nhàng"
+
+# Kênh đối thủ / kênh tham khảo (username TikTok, không có @)
+competitors:
+  - "username_doi_thu_1"
+  - "username_doi_thu_2"
+
+scraper:
+  videos_per_profile: 30      # số video mới nhất lấy mỗi kênh
+  lookback_days: 30           # chỉ phân tích video trong N ngày gần đây
+  top_n_for_analysis: 25      # số video hiệu quả nhất gửi cho Claude phân tích
+
+content:
+  target_duration_sec: 45     # độ dài video mong muốn
+  videos_per_day: 1
+
+voice:
+  name: "vi-VN-HoaiMyNeural"  # hoặc vi-VN-NamMinhNeural (giọng nam)
+  rate: "-8%"                 # chậm hơn một chút cho cảm xúc
+
+video:
+  font: "DejaVu Sans"         # font phải hỗ trợ tiếng Việt
+  background_music: ""        # đường dẫn file nhạc không bản quyền (mp3), để trống nếu không dùng
+  music_volume: 0.12
+  fallback_query: "family warm sunset"
+
+schedule:
+  daily_time: "07:00"         # giờ chạy pipeline mỗi ngày (giờ Việt Nam)
+  timezone: "Asia/Ho_Chi_Minh"
+
+tiktok:
+  # inbox  = đẩy vào hộp nháp TikTok, bạn bấm đăng trong app (dùng được ngay)
+  # direct = đăng thẳng (cần app TikTok qua audit, nếu chưa thì chỉ đăng được SELF_ONLY)
+  post_mode: "inbox"
+  privacy_level: "PUBLIC_TO_EVERYONE"
+
+data_dir: "data"
