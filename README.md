@@ -11,7 +11,7 @@ Agent tự động mỗi ngày: **quét kênh đối thủ → Claude phân tíc
 ```
 [07:00 mỗi ngày]  Apify scrape  →  SQLite  →  Claude phân tích (pattern, hook, hashtag, 3 ý tưởng)
                                           →  Claude viết kịch bản (cảnh + lời đọc + từ khoá hình ảnh)
-                                          →  edge-tts (giọng Việt) + Pexels clips + FFmpeg → MP4 1080x1920
+                                          →  edge-tts (giọng Việt) + Pixabay clips + FFmpeg → MP4 1080x1920
                                           →  Telegram: [✅ Duyệt & đăng] [✏️ Sửa] [🔄 Làm lại] [❌ Bỏ]
                                           →  (chỉ khi duyệt) TikTok Content Posting API
 ```
@@ -28,7 +28,8 @@ cp .env.example .env    # điền các key
 |---|---|
 | `ANTHROPIC_API_KEY` | console.anthropic.com |
 | `APIFY_TOKEN` | console.apify.com → Integrations (dùng actor `clockworks/tiktok-scraper`) |
-| `PEXELS_API_KEY` | pexels.com/api (miễn phí) |
+| `GEMINI_API_KEY` | aistudio.google.com/apikey (video AI Gemini Omni Flash, cần bật thanh toán) |
+| `PIXABAY_API_KEY` | pixabay.com/api/docs (đăng nhập, key hiện trong mục *Parameters*, miễn phí) |
 | `TELEGRAM_BOT_TOKEN` | Tạo bot với @BotFather |
 | `TELEGRAM_CHAT_ID` | Chạy bot rồi gửi `/chatid` |
 | `TIKTOK_CLIENT_KEY/SECRET/REDIRECT_URI` | developers.tiktok.com → tạo app, bật Login Kit + Content Posting API |
@@ -45,6 +46,16 @@ Sửa `config.yaml`: danh sách `competitors` (username không có @), giọng �
 ```
 
 Trong Telegram: `/run` tạo ngay, `/status` xem trạng thái. Nút **✏️ Sửa** → gõ góp ý → agent viết lại và render lại.
+
+## Video AI (Gemini Omni Flash)
+
+Cấu hình trong mục `ai_video` của `config.yaml`:
+- `scenes`: cảnh nào dùng AI (`"first"`, `"all"`, `"none"` hoặc danh sách như `[1, 3]`); các cảnh còn lại dùng Pixabay.
+- Mỗi cảnh AI được tách thành các shot tối đa `max_shot_sec` giây. Mọi shot dùng chung mô tả nhân vật/bối cảnh/phong cách (`visual_bible` do Claude viết) để giữ nhất quán.
+- `daily_limit_sec`: giới hạn giây video AI mỗi ngày. Hết hạn mức, bị chặn hoặc lỗi thì cảnh đó tự chuyển sang Pixabay.
+- Chi phí ước tính mỗi lần chạy được ghi vào `data/logs/ai_cost.jsonl` (mỗi dòng một lần chạy, có chi tiết từng shot).
+
+> Veo trên Gemini API đã bị Google tắt từ 22/10/2026, nên agent dùng Gemini Omni Flash (model thay thế, cùng API key).
 
 ## Đăng TikTok: 2 chế độ (`tiktok.post_mode`)
 

@@ -11,6 +11,7 @@ import html
 import logging
 from zoneinfo import ZoneInfo
 
+from telegram.error import TimedOut
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import (Application, CallbackQueryHandler, CommandHandler, ContextTypes,
                           MessageHandler, filters)
@@ -34,7 +35,9 @@ class ReviewBot:
         self.p = pipeline
         self.s = pipeline.s
         self.chat_id = self.s.telegram_chat_id
-        self.app = Application.builder().token(self.s.telegram_bot_token).build()
+        self.app = (Application.builder().token(self.s.telegram_bot_token)
+                    .connect_timeout(30).read_timeout(120).write_timeout(120)
+                    .media_write_timeout(300).pool_timeout(60).build())
         self._busy = asyncio.Lock()
 
         # Without TELEGRAM_CHAT_ID the bot answers only /chatid — nobody else can trigger it.
@@ -58,9 +61,18 @@ class ReviewBot:
                 f"<b>Hook:</b> {html.escape(sc['hook'])}\n\n"
                 f"<b>Kịch bản:</b>\n{html.escape(narration)}\n\n"
                 f"<b>Caption:</b>\n{html.escape(item['caption'])}")
-        with open(item["video_path"], "rb") as fh:
-            msg = await self.app.bot.send_video(self.chat_id, fh, caption=f"#{cid} – {sc['title']}"[:1000],
-                                                supports_streaming=True, read_timeout=120, write_timeout=120)
+        msg = None
+        for attempt in range(1, 4):  # uploads from some networks occasionally time out
+            try:
+                with open(item["video_path"], "rb") as fh:
+                    msg = await self.app.bot.send_video(self.chat_id, fh, caption=f"#{cid} – {sc['title']}"[:1000],
+                                                        supports_streaming=True)
+                break
+            except TimedOut:
+                if attempt == 3:
+                    raise
+                log.warning("send_video timed out (attempt %d), retrying…", attempt)
+                await asyncio.sleep(5 * attempt)
         await self.app.bot.send_message(self.chat_id, text[:4096], parse_mode="HTML",
                                         reply_markup=_keyboard(cid))
         self.p.db.update_content(cid, telegram_message_id=msg.message_id)

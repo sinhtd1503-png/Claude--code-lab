@@ -31,14 +31,24 @@ class TrendReport(BaseModel):
     ideas: list[ContentIdea] = Field(description="3 ý tưởng MỚI, không trùng với đối thủ hay video cũ")
 
 
+class VisualBible(BaseModel):
+    characters: str = Field(description="TIẾNG ANH. Mô tả cố định ngoại hình nhân vật chính (tuổi, dáng, tóc, trang phục), "
+                                        "người Việt Nam, để mọi shot AI giữ nhất quán")
+    setting: str = Field(description="TIẾNG ANH. Bối cảnh cố định (vd: 1990s rural Vietnamese house, tiled roof, wooden table)")
+    style: str = Field(description="TIẾNG ANH. Phong cách hình ảnh cố định (ánh sáng, màu, chất phim)")
+
+
 class Scene(BaseModel):
     narration: str = Field(description="Lời đọc tiếng Việt cho cảnh này (1–3 câu)")
-    visual_query: str = Field(description="Từ khoá TIẾNG ANH để tìm video stock trên Pexels, 2–4 từ, cụ thể, có cảm xúc")
+    shots: list[str] = Field(description="2 mô tả shot TIẾNG ANH cho video AI, mỗi shot là một hành động/khung hình cụ thể "
+                                         "của nhân vật trong bối cảnh (không lặp lại mô tả nhân vật, không chữ trên hình)")
+    visual_query: str = Field(description="Từ khoá TIẾNG ANH để tìm video stock trên Pixabay, 2–4 từ, cụ thể, có cảm xúc")
 
 
 class Script(BaseModel):
     title: str
     hook: str
+    visual_bible: VisualBible
     scenes: list[Scene] = Field(description="5–9 cảnh, cảnh đầu tiên chứa hook")
     caption: str = Field(description="Caption TikTok tiếng Việt, có câu kêu gọi bình luận/chia sẻ")
     hashtags: list[str] = Field(description="5–8 hashtag, không có dấu #")
@@ -132,8 +142,10 @@ def write_script(niche: dict, idea: dict, report: dict | None, target_sec: int,
         )
     parts.append(
         "Yêu cầu: câu đầu là hook mạnh; lời văn tự nhiên như đang kể chuyện với người thân, "
-        "câu ngắn dễ đọc to; mỗi cảnh có từ khoá Pexels tiếng Anh mô tả hình ảnh cụ thể "
-        "(ví dụ 'old grandmother hands', 'kids playing rain', 'family dinner table')."
+        "câu ngắn dễ đọc to; mỗi cảnh có từ khoá Pixabay tiếng Anh (ngắn, phổ biến, dễ có kết quả) mô tả hình ảnh cụ thể "
+        "(ví dụ 'old grandmother hands', 'kids playing rain', 'family dinner table'). "
+        "visual_bible mô tả nhân vật và bối cảnh Việt Nam cố định dùng chung cho mọi shot video AI; "
+        "các shot trong scenes phải khớp với lời đọc của cảnh đó."
     )
     log.info("Writing script for idea: %s", idea.get("title"))
     return _parse(_system(niche), "\n\n".join(parts), Script)

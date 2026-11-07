@@ -8,9 +8,16 @@ niche:
   tone: "Ấm áp, chậm rãi, chân thành, gợi nhớ; không sến, không giáo điều; kết bằng một thông điệp nhẹ nhàng"
 
 # Kênh đối thủ / kênh tham khảo (username TikTok, không có @)
+# Tìm qua Apify ngày 07/11/2026, số follow tại thời điểm đó.
 competitors:
-  - "username_doi_thu_1"
-  - "username_doi_thu_2"
+  # --- Kênh làm video hoài niệm bằng AI ---
+  - "happybabyworld2026"       # Happy Baby World — 124K follow, hoạt hình 3D chuyện ông bà/cháu, tuổi thơ làng quê
+  - "aique64"                  # Mekong Delta Vietnam — 113K follow, video AI tuổi thơ miền Tây thập niên 90 (#AI)
+  - "cachsudungvo3ai"          # Làm video AI theo yêu cầu — 40K follow, video AI hoài niệm (#aihoainiem #klingai)
+  - "inconmainhaxua1"          # Ỉn Con Và Mái Nhà Xưa — 28K follow, hoạt hình tuổi thơ 8x 9x (có thể dùng AI, chưa xác nhận)
+  # --- Kênh hoài niệm 8x 9x lớn (không thấy dấu hiệu AI) — để học chủ đề & hook ---
+  - "thehien.kyuc8x9x"         # KÝ ỨC 8X9X — 530K follow, 13M tim
+  - "nammotnganchintramhoido"  # 1900 hồi đó — 355K follow, 4.2M tim
 
 scraper:
   videos_per_profile: 30      # số video mới nhất lấy mỗi kênh
@@ -30,6 +37,23 @@ video:
   background_music: ""        # đường dẫn file nhạc không bản quyền (mp3), để trống nếu không dùng
   music_volume: 0.12
   fallback_query: "family warm sunset"
+
+ai_video:
+  # Video AI: Gemini Omni Flash qua Gemini API (key: GEMINI_API_KEY trong .env).
+  # Veo trên Gemini API đã bị Google tắt ngày 22/10/2026; Omni Flash là model thay thế.
+  enabled: true
+  model: "gemini-omni-1.2-flash"
+  resolution: "360p"          # 360p (rẻ nhất, ~$0.023/s) | 720p (~$0.07/s) | 1080p | 4k
+  # Cảnh nào dùng AI, còn lại dùng Pixabay:
+  #   "first" = chỉ cảnh mở đầu (hook) | "all" = tất cả | "none" = không dùng | [1, 3] = cảnh số 1 và 3
+  scenes: "first"
+  max_shot_sec: 8             # mỗi shot AI tối đa 8 giây (cảnh dài hơn sẽ tách nhiều shot)
+  daily_limit_sec: 60         # tối đa số giây video AI mỗi ngày; vượt thì cảnh đó tự chuyển sang Pixabay
+  timeout_sec: 900            # chờ tối đa mỗi shot
+  poll_interval_sec: 10
+  # Giá Gemini Omni 1.2 Flash (USD / 1 triệu token), dùng để ước tính chi phí ghi vào data/logs/ai_cost.jsonl
+  price_per_1m_output_tokens: 12.0
+  price_per_1m_input_tokens: 1.5
 
 schedule:
   daily_time: "07:00"         # giờ chạy pipeline mỗi ngày (giờ Việt Nam)

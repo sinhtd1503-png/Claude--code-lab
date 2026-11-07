@@ -5,7 +5,10 @@ import logging
 import time
 from pathlib import Path
 
+import os
+
 from . import content, scraper, video
+from .ai_video import AIVideoSource
 from .config import Settings
 from .db import DB
 from .publisher import TikTokPublisher
@@ -24,6 +27,13 @@ class Pipeline:
                             settings.tiktok_redirect_uri, self.db)
             if settings.tiktok_client_key else None
         )
+        ai_cfg = settings.raw.get("ai_video") or {}
+        self.ai = None
+        if ai_cfg.get("enabled"):
+            if os.getenv("GEMINI_API_KEY"):
+                self.ai = AIVideoSource(ai_cfg, self.db, settings.data_dir, settings["schedule"]["timezone"])
+            else:
+                log.warning("ai_video.enabled nhưng thiếu GEMINI_API_KEY → chỉ dùng Pixabay")
 
     # ---- step 1+2: research ----
     def research(self) -> dict:
@@ -56,7 +66,13 @@ class Pipeline:
             ).model_dump()
             self.db.update_content(cid, script=script)
             workdir = self.s.data_dir / "videos" / f"{cid}_{int(time.time())}"
-            path = video.render(script, workdir, self.s.raw, self.s.pexels_api_key or "")
+            if self.ai:
+                self.ai.start_run(cid)
+            try:
+                path = video.render(script, workdir, self.s.raw, self.s.pixabay_api_key or "", ai=self.ai)
+            finally:
+                if self.ai:
+                    self.ai.finish_run()
             caption = script["caption"] + "\n\n" + " ".join(f"#{h.lstrip('#')}" for h in script["hashtags"])
             self.db.update_content(cid, video_path=str(path), caption=caption,
                                    status="pending_review", feedback=feedback)
