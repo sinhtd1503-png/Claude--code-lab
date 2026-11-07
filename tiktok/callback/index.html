@@ -1,0 +1,26 @@
+<!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex"><meta name="referrer" content="no-referrer">
+<title>TikTok kết nối</title><link rel="stylesheet" href="/Claude--code-lab/style.css"></head><body><main>
+<h1 id="h">Đang đọc kết quả…</h1>
+<div id="box"></div>
+<script>
+(function(){
+  var q=new URLSearchParams(location.search), box=document.getElementById('box'), h=document.getElementById('h');
+  if(q.get('error')){
+    h.textContent='Kết nối TikTok thất bại'; h.className='err';
+    box.innerHTML='<div class="card"><pre></pre></div><p>Thử chạy lại lệnh <code>tiktok-auth</code>.</p>';
+    box.querySelector('pre').textContent=(q.get('error')+' '+(q.get('error_description')||'')).trim();
+    return;
+  }
+  if(!q.get('code')){ h.textContent='Trang nhận mã kết nối TikTok'; box.innerHTML='<p>Trang này dùng làm Redirect URI. Hãy mở link từ lệnh <code>tiktok-auth</code>.</p>'; return; }
+  h.textContent='✅ TikTok đã cho phép';
+  box.innerHTML='<p>Copy toàn bộ dòng dưới đây và dán vào terminal đang chạy <code>tiktok-auth</code>. Mã chỉ dùng được một lần và hết hạn sau vài phút.</p>'+
+    '<div class="card"><pre id="u"></pre></div><button id="c">Copy</button>';
+  document.getElementById('u').textContent=location.href;
+  document.getElementById('c').onclick=function(){
+    try{ navigator.clipboard.writeText(location.href).then(function(){document.getElementById('c').textContent='Đã copy ✓';}); }
+    catch(e){ var r=document.createRange(); r.selectNode(document.getElementById('u')); getSelection().removeAllRanges(); getSelection().addRange(r); }
+  };
+})();
+</script>
+</main></body></html>
