@@ -1,71 +1,79 @@
 # Tiến độ dự án — TikTok Content Agent
 
-_Cập nhật: 07/11/2026_
+_Cập nhật: 08/11/2026_
 
 ## 🎯 Mục tiêu dự án
 
-Xây agent tự động cho kênh TikTok ngách **tuổi thơ, kỷ niệm gia đình, hồi ức và năng lượng tích cực** (giúp con cái, vợ chồng nhớ lại những điều quý giá thay vì bị cuốn theo cuộc sống hằng ngày). Mỗi ngày agent:
+Xây agent tự động cho kênh TikTok ngách **tuổi thơ, kỷ niệm gia đình, hồi ức thế hệ 8x 9x và năng lượng tích cực** (giúp con cái, vợ chồng nhớ lại những điều quý giá thay vì bị cuốn theo cuộc sống hằng ngày). Mỗi ngày agent:
 
 1. Quét các kênh đối thủ có lượng like, theo dõi lớn
 2. Phân tích vì sao nội dung của họ hiệu quả
-3. Tự viết kịch bản mới và tạo video (giọng đọc AI + video stock Pixabay + video AI)
+3. Viết kịch bản mới và tạo video khoảng 30 giây (giọng đọc AI + clip AI 8 giây + phụ đề)
 4. Gửi video qua Telegram để chủ kênh duyệt
 5. Chỉ đăng lên TikTok sau khi được duyệt
 
 ## ✅ Đã làm xong
 
 ### 06/11/2026
-- Code agent hoàn chỉnh trong `tiktok_agent/` (Python): scraper Apify, Claude phân tích và viết kịch bản, dựng video bằng FFmpeg, bot Telegram duyệt bài, đăng TikTok qua Content Posting API, SQLite, CLI
-- Merge vào `main` qua PR #1. Bot Telegram kết nối thành công, đã điền `TELEGRAM_CHAT_ID`
+- Code agent hoàn chỉnh trong `tiktok_agent/`: scraper Apify, Claude phân tích và viết kịch bản, dựng video FFmpeg, bot Telegram duyệt bài, đăng TikTok qua Content Posting API, SQLite, CLI
+- Merge vào `main` qua PR #1; bot Telegram kết nối được, đã có `TELEGRAM_CHAT_ID`
 
-### Hôm nay (07/11/2026)
-- **Chạy thật lần đầu:** Claude phân tích ngách và viết kịch bản thành công. Video #1 "Chiếc quạt nan và những đêm mất điện" (49 giây) đã gửi lên Telegram để duyệt
-- **Sửa lỗi Telegram:** gửi video bị timeout → tăng thời gian chờ và tự thử lại 3 lần
-- **Đổi Pexels → Pixabay** (Pexels khoá API): đổi code, `.env`, tài liệu. Chạy thật thành công, 6/6 cảnh có clip. Sửa luôn lỗi log in URL có chứa key Pixabay
-- **Thêm nguồn video AI** (`tiktok_agent/ai_video.py`), dùng Gemini Omni 1.2 Flash qua Gemini API:
-  - Tách mỗi cảnh thành các shot tối đa 8 giây, viết prompt cho từng shot. Mọi prompt dùng chung mô tả nhân vật, bối cảnh, phong cách (`visual_bible` do Claude viết) để giữ nhất quán
-  - Gọi API, chờ kết quả, tải về, ghép bằng FFmpeg cùng giọng đọc và phụ đề
-  - Cấu hình cảnh nào dùng AI, cảnh nào dùng Pixabay (`ai_video.scenes`)
-  - Giới hạn số giây video AI mỗi ngày (`daily_limit_sec`). Hết hạn mức hoặc lỗi thì cảnh đó tự chuyển sang Pixabay
-  - Ghi chi phí ước tính từng lần chạy vào `data/logs/ai_cost.jsonl`
-  - Đã chạy thử bằng API giả lập: tách shot, chuyển sang Pixabay khi lỗi, hạn mức, log đều đúng
-- **Tìm kênh đối thủ** qua Apify (175 video) và đưa 6 kênh vào `config.yaml`: 4 kênh hoài niệm làm bằng AI (`happybabyworld2026`, `aique64`, `cachsudungvo3ai`, `inconmainhaxua1`) và 2 kênh hoài niệm 8x 9x lớn (`thehien.kyuc8x9x` 530K follow, `nammotnganchintramhoido` 355K follow)
+### 07/11/2026
+- Claude chạy thật thành công; sửa lỗi gửi video Telegram bị timeout
+- Đổi Pexels → Pixabay (Pexels khoá API), chạy thật thành công
+- Thêm nguồn video AI qua Gemini API (`ai_video.py`); phát hiện Veo trên Gemini API đã bị tắt (22/10/2026) nên dùng Gemini Omni Flash
+- Tìm 6 kênh đối thủ qua Apify và đưa vào `config.yaml`
+- Tạo trang Terms of Service, Privacy Policy và Redirect URI cho app TikTok bằng GitHub Pages (nhánh `gh-pages`): https://sinhtd1503-png.github.io/Claude--code-lab/
+- Chạy thật cả luồng: Apify quét 180 video từ 6 kênh → Claude rút 5 pattern và 3 ý tưởng → video #2 "Túi đồ mẹ gói mỗi lần con đi"
+- Thử Gemini API thật: key **chưa có quyền model video** (1.1 và 1.2 báo 404, bản preview lỗi/treo) → cơ chế dự phòng Pixabay hoạt động đúng, không tốn phí
+
+### Hôm nay (08/11/2026)
+- **Phương án video ~30 giây từ clip AI miễn phí** (`manual_clips.py`):
+  - Claude viết đúng 4 cảnh, mỗi cảnh 15–19 từ cho vừa 1 clip 8 giây
+  - Bot gửi 4 prompt qua Telegram; chủ kênh tạo clip trên Google Flow (50 credit miễn phí/ngày ≈ 4 clip) và gửi lại cả loạt
+  - Bot tự ghép: lời đọc dài hơn clip thì làm chậm clip tối đa 1,25 lần; thiếu clip thì dùng Pixabay
+- Chạy thật: video #3 "8x 9x ai từng ngồi ghế gỗ trước xe đạp của bố?" (4 cảnh, ~32 giây), 4 prompt đã gửi lên Telegram. Ghép thử bằng 4 clip giả: video 32,2 giây, dùng đủ 4 clip
+- Tăng thời gian chờ thử lại cho edge-tts; sửa prompt dư dấu chấm
+- Merge vào `main` qua PR #2
+
+**Trạng thái video:** #1 chờ duyệt · #2 đã bỏ · #3 chờ 4 clip từ Google Flow
 
 ## 🧭 Các quyết định quan trọng
 
 | Vấn đề | Quyết định | Lý do |
 |---|---|---|
-| Kiểu video | Faceless: giọng AI + video stock + video AI + phụ đề | Rẻ, tự động, hợp với nội dung kể chuyện |
-| Video stock | **Pixabay** (đổi từ Pexels) | Pexels khoá API |
-| Video AI | **Gemini Omni 1.2 Flash**, 360p, chỉ cảnh mở đầu, tối đa 60 giây/ngày | Veo trên Gemini API đã bị Google tắt từ 22/10/2026, Omni Flash là model thay thế dùng cùng `GEMINI_API_KEY`. Bắt đầu ở mức rẻ nhất (~$0.023/giây) để thử nghiệm |
-| Lấy dữ liệu đối thủ | Apify (actor `clockworks/tiktok-scraper`) | Ổn định hơn thư viện miễn phí |
-| Chọn đối thủ | Kết hợp kênh AI (25K–125K follow) và kênh hoài niệm lớn không dùng AI | Kênh hoài niệm làm bằng AI chưa có kênh nào thật lớn; kênh lớn giúp học chủ đề và hook |
-| Cách đăng | Hai chế độ: `inbox` (mặc định) và `direct` | TikTok chỉ cho đăng công khai qua API sau khi app qua audit |
-| Nội dung | Học pattern từ đối thủ, viết nội dung **mới** | Tránh bản quyền và bị giảm phân phối |
+| Định dạng video | ~30 giây = 4 cảnh × 1 clip AI 8 giây + giọng đọc + phụ đề | Vừa đúng lượng clip miễn phí mỗi ngày của Google Flow |
+| Nguồn clip AI | **Google Flow (miễn phí), tạo tay** (`provider: manual_flow`) | Gemini API không có gói miễn phí cho video. Flow không có API; tự động hoá web Flow vi phạm điều khoản Google, dễ bị khoá tài khoản |
+| Clip AI tự động (dự phòng) | Gemini Omni Flash qua API (`provider: gemini_api`), 360p | Veo trên Gemini API đã bị tắt; cần bật thanh toán, ~$0.19/cảnh 8 giây |
+| Video stock | Pixabay | Pexels khoá API; dùng khi thiếu clip AI |
+| Đối thủ | 4 kênh hoài niệm làm bằng AI + 2 kênh hoài niệm 8x 9x lớn | Kênh AI chưa có kênh nào thật lớn; kênh lớn giúp học chủ đề và hook |
+| Cách đăng | `inbox` (mặc định) và `direct` | TikTok chỉ cho đăng công khai qua API sau khi app qua audit |
+| Trang pháp lý TikTok | GitHub Pages, liên hệ bằng email chủ kênh | Miễn phí, https, không ảnh hưởng code |
+| Nội dung | Học pattern từ đối thủ, viết nội dung mới | Tránh bản quyền và bị giảm phân phối |
 | Mô hình viết | Claude Opus 5.5, bật fallback phía server | Viết tiếng Việt tốt |
 | Giọng đọc | edge-tts (`vi-VN-HoaiMyNeural`) | Miễn phí, giọng Việt tự nhiên |
-| Bảo mật | Key chỉ nằm trong `.env` (nằm trong `.gitignore`), không in ra log; bot chỉ nhận lệnh từ `TELEGRAM_CHAT_ID` | Không lộ key |
+| Bảo mật | Key chỉ trong `.env` (nằm trong `.gitignore`), không in ra log; bot chỉ nhận lệnh từ `TELEGRAM_CHAT_ID` | Không lộ key |
 
 ## 🐞 Lỗi / vấn đề còn tồn tại
 
 1. **Chưa chạy thật:**
-   - Video AI Gemini Omni (đã có `GEMINI_API_KEY` nhưng chưa chạy lần nào; cách gọi API viết theo SDK `google-genai` 3.0, có thể phải chỉnh)
-   - Quét Apify 6 kênh đối thủ hằng ngày
-   - Đăng TikTok (còn thiếu `TIKTOK_CLIENT_KEY/SECRET`, nên bấm Duyệt sẽ báo lỗi)
-2. **Bot không chạy liên tục:** bot dừng mỗi khi phiên Codespaces kết thúc, hiện **không chạy**, nên lịch 07:00 hằng ngày chưa hoạt động.
-3. **Clip Pixabay chưa khớp nội dung:** một số cảnh lệch chủ đề (ví dụ câu về quạt nan ra cảnh chùa Nhật), phần lớn là người và bối cảnh phương Tây.
-4. **edge-tts hay lỗi ở lần gọi đầu** ("No audio was received"). Tạm xử lý bằng cách thử lại tối đa 5 lần.
+   - Ghép clip thật từ Google Flow (mới thử bằng clip giả)
+   - Đăng TikTok: đã có `TIKTOK_CLIENT_KEY/SECRET` và trang pháp lý nhưng **chưa chạy `tiktok-auth`**
+   - Gemini API tự động: key chưa có quyền model video (cần bật thanh toán trên Google AI Studio)
+2. **Vẫn còn một bước làm tay mỗi ngày:** tạo 4 clip trên Google Flow (khoảng 5 phút). Muốn tự động hoàn toàn phải dùng Gemini API trả phí.
+3. **Bot không chạy liên tục:** bot dừng khi phiên Codespaces kết thúc, nên lịch 07:00 hằng ngày không chắc chạy.
+4. **edge-tts lỗi theo đợt** ("No audio was received"); đã có thử lại với thời gian chờ tăng dần (tổng ~1,5 phút).
 5. **Hạn chế đã biết:**
-   - Video AI 360p sẽ mờ khi phóng lên 1080x1920
-   - Giữ nhân vật nhất quán mới chỉ dựa vào mô tả chữ, chưa dùng ảnh tham chiếu
-   - Chưa hỗ trợ upload lên TikTok video lớn hơn 64MB
-   - Thời điểm hiện phụ đề được ước lượng theo độ dài chữ
+   - Clip Pixabay (khi thiếu clip AI) thường không khớp nội dung và mang bối cảnh phương Tây
+   - Giữ nhân vật nhất quán giữa các clip chỉ dựa vào mô tả chữ trong prompt
+   - Số credit Flow miễn phí (50/ngày) lấy từ nguồn bên ngoài, Google không công bố chính thức
+   - Chưa hỗ trợ upload lên TikTok video lớn hơn 64MB; phụ đề căn thời gian theo ước lượng
    - Chế độ `direct` chỉ đăng được riêng tư (SELF_ONLY) cho tới khi app TikTok qua audit
 
 ## 📋 3 việc cần làm tiếp theo
 
-1. **Chạy thử thật toàn bộ:** chạy `research` với 6 kênh đối thủ, rồi `run-once` để tạo một video có cảnh AI. Kiểm tra `data/logs/ai_cost.jsonl` và sửa lỗi gọi Gemini nếu có.
-2. **Cải thiện độ khớp clip Pixabay:** cho Claude đọc thẻ mô tả của các clip tìm được để chọn clip khớp nhất với lời đọc, và ưu tiên từ khoá bối cảnh châu Á, Việt Nam.
-3. **Tạo app trên TikTok for Developers** (Login Kit + Content Posting API, bật Sandbox), chạy `tiktok-auth`, rồi thử bấm Duyệt để đẩy video vào inbox TikTok.
+1. **Tạo 4 clip trên Google Flow cho video #3 và gửi cho bot**: kiểm tra video ghép từ clip thật (độ nhất quán nhân vật, độ khớp lời đọc, chất lượng hình).
+2. **Kết nối TikTok**: chạy `.venv/bin/python -m tiktok_agent.main tiktok-auth`, rồi bấm ✅ Duyệt một video để thử đẩy vào hộp nháp TikTok.
+3. **Đưa bot lên VPS chạy 24/7**: để lịch 07:00 hằng ngày hoạt động ổn định, không phụ thuộc Codespaces.
 
-_Sau đó:_ đưa bot lên VPS chạy 24/7, cân nhắc nâng video AI lên 720p, và gửi app TikTok đi audit để đăng thẳng công khai.
+_Sau đó:_ gửi app TikTok đi audit để đăng thẳng; cân nhắc bật thanh toán Gemini nếu muốn bỏ bước tạo clip bằng tay.
