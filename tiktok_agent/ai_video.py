@@ -129,7 +129,7 @@ class AIVideoSource:
 
     @staticmethod
     def build_prompt(bible: dict | None, description: str) -> str:
-        bible = bible or {}
+        bible = {k: (v or "").strip().rstrip(".") for k, v in (bible or {}).items()}
         parts = [
             "Vertical 9:16 cinematic shot for a short nostalgic family story.",
             f"Visual style (keep identical in every shot): {bible.get('style', 'warm, soft natural light, gentle film grain')}.",

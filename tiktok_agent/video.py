@@ -63,16 +63,20 @@ async def _tts(text: str, voice: str, rate: str, out: Path) -> None:
     await edge_tts.Communicate(text, voice, rate=rate).save(str(out))
 
 
-def synthesize(text: str, voice: str, rate: str, out: Path, retries: int = 5) -> float:
-    for attempt in range(1, retries + 1):
+# edge-tts fails in bursts ("No audio was received") that can last ~20s; back off long enough to outlast them.
+TTS_BACKOFF_SEC = (2, 4, 8, 15, 25, 40)
+
+
+def synthesize(text: str, voice: str, rate: str, out: Path) -> float:
+    for attempt in range(len(TTS_BACKOFF_SEC) + 1):
         try:
             asyncio.run(_tts(text, voice, rate, out))
             return _duration(out)
-        except edge_tts.exceptions.EdgeTTSException as e:  # service is occasionally flaky
-            if attempt == retries:
+        except edge_tts.exceptions.EdgeTTSException as e:
+            if attempt == len(TTS_BACKOFF_SEC):
                 raise
-            log.warning("TTS attempt %d failed (%s), retrying…", attempt, e)
-            time.sleep(2 * attempt)
+            log.warning("TTS attempt %d failed (%s), retrying in %ss…", attempt + 1, e, TTS_BACKOFF_SEC[attempt])
+            time.sleep(TTS_BACKOFF_SEC[attempt])
     raise AssertionError("unreachable")
 
 

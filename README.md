@@ -47,15 +47,24 @@ Sửa `config.yaml`: danh sách `competitors` (username không có @), giọng �
 
 Trong Telegram: `/run` tạo ngay, `/status` xem trạng thái. Nút **✏️ Sửa** → gõ góp ý → agent viết lại và render lại.
 
-## Video AI (Gemini Omni Flash)
+## Video AI
 
-Cấu hình trong mục `ai_video` của `config.yaml`:
+Cấu hình trong mục `ai_video` của `config.yaml`. Có 2 nguồn (`provider`):
+
+**`manual_flow` (mặc định, miễn phí):** Google không có API video miễn phí, nhưng web **Google Flow** (labs.google/flow) cho khoảng 50 credit/ngày (~4 clip 8 giây).
+1. Agent viết kịch bản, tách cảnh AI thành các shot ≤ 8 giây và gửi **từng prompt** qua Telegram.
+2. Bạn mở Flow, chọn khung 9:16, 8 giây, dán prompt, tạo và tải video về.
+3. **Reply đúng tin nhắn prompt** bằng file video (không reply thì bot gán vào shot còn thiếu đầu tiên).
+4. Đủ clip, bot tự cắt đúng độ dài, ghép với giọng đọc + phụ đề và gửi video để duyệt. Bấm **⏩ Dựng luôn** nếu muốn bỏ qua các clip còn thiếu (chỗ đó dùng Pixabay).
+
+Agent không tự điều khiển web Flow: Flow không có API và tự động hoá giao diện web vi phạm điều khoản của Google, dễ bị khoá tài khoản.
+
+**`gemini_api` (tự động, trả phí):** gọi Gemini Omni Flash qua Gemini API (`GEMINI_API_KEY`), giới hạn `daily_limit_sec` giây/ngày. Veo trên Gemini API đã bị Google tắt từ 22/10/2026.
+
+Chung cho cả hai:
 - `scenes`: cảnh nào dùng AI (`"first"`, `"all"`, `"none"` hoặc danh sách như `[1, 3]`); các cảnh còn lại dùng Pixabay.
-- Mỗi cảnh AI được tách thành các shot tối đa `max_shot_sec` giây. Mọi shot dùng chung mô tả nhân vật/bối cảnh/phong cách (`visual_bible` do Claude viết) để giữ nhất quán.
-- `daily_limit_sec`: giới hạn giây video AI mỗi ngày. Hết hạn mức, bị chặn hoặc lỗi thì cảnh đó tự chuyển sang Pixabay.
-- Chi phí ước tính mỗi lần chạy được ghi vào `data/logs/ai_cost.jsonl` (mỗi dòng một lần chạy, có chi tiết từng shot).
-
-> Veo trên Gemini API đã bị Google tắt từ 22/10/2026, nên agent dùng Gemini Omni Flash (model thay thế, cùng API key).
+- Mọi prompt dùng chung mô tả nhân vật/bối cảnh/phong cách (`visual_bible` do Claude viết) để giữ nhất quán.
+- Mỗi lần dựng ghi một dòng vào `data/logs/ai_cost.jsonl` (chi phí ước tính, hoặc số credit Flow ước tính).
 
 ## Đăng TikTok: 2 chế độ (`tiktok.post_mode`)
 

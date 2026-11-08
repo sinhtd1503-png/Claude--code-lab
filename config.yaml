@@ -25,7 +25,8 @@ scraper:
   top_n_for_analysis: 25      # số video hiệu quả nhất gửi cho Claude phân tích
 
 content:
-  target_duration_sec: 45     # độ dài video mong muốn
+  target_duration_sec: 30     # độ dài video mong muốn
+  scenes: 4                   # số cảnh cố định: 4 cảnh × 1 clip AI 8 giây ≈ 30 giây
   videos_per_day: 1
 
 voice:
@@ -39,15 +40,28 @@ video:
   fallback_query: "family warm sunset"
 
 ai_video:
-  # Video AI: Gemini Omni Flash qua Gemini API (key: GEMINI_API_KEY trong .env).
-  # Veo trên Gemini API đã bị Google tắt ngày 22/10/2026; Omni Flash là model thay thế.
   enabled: true
-  model: "gemini-omni-1.2-flash"
-  resolution: "360p"          # 360p (rẻ nhất, ~$0.023/s) | 720p (~$0.07/s) | 1080p | 4k
+  # Nguồn video AI:
+  #   "manual_flow" = MIỄN PHÍ: bot gửi prompt qua Telegram, bạn tạo clip trên Google Flow
+  #                   (labs.google/flow, ~50 credit miễn phí/ngày) rồi reply lại bằng file video
+  #   "gemini_api"  = tự động hoàn toàn qua Gemini API (trả phí, cần GEMINI_API_KEY)
+  provider: "manual_flow"
   # Cảnh nào dùng AI, còn lại dùng Pixabay:
   #   "first" = chỉ cảnh mở đầu (hook) | "all" = tất cả | "none" = không dùng | [1, 3] = cảnh số 1 và 3
-  scenes: "first"
+  scenes: "all"
   max_shot_sec: 8             # mỗi shot AI tối đa 8 giây (cảnh dài hơn sẽ tách nhiều shot)
+
+  manual:                     # dùng khi provider = manual_flow
+    max_shots_per_day: 4      # 50 credit/ngày ÷ ~12 credit/clip 8s (Omni Flash 720p) ≈ 4 clip
+    one_shot_per_scene: true  # mỗi cảnh đúng 1 clip 8s
+    max_stretch: 1.25         # lời đọc dài hơn clip thì làm chậm clip tối đa 1.25 lần (không lặp clip)
+    credits_per_shot: 12      # chỉ để ghi log ước tính
+    daily_credits: 50
+
+  # ---- dùng khi provider = gemini_api ----
+  # Veo trên Gemini API đã bị Google tắt ngày 22/10/2026; Omni Flash là model thay thế.
+  model: "gemini-omni-1.2-flash"
+  resolution: "360p"          # 360p (rẻ nhất, ~$0.023/s) | 720p (~$0.07/s) | 1080p | 4k
   daily_limit_sec: 60         # tối đa số giây video AI mỗi ngày; vượt thì cảnh đó tự chuyển sang Pixabay
   timeout_sec: 900            # chờ tối đa mỗi shot
   poll_interval_sec: 10

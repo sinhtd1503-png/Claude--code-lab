@@ -40,7 +40,7 @@ class VisualBible(BaseModel):
 
 class Scene(BaseModel):
     narration: str = Field(description="Lời đọc tiếng Việt cho cảnh này (1–3 câu)")
-    shots: list[str] = Field(description="2 mô tả shot TIẾNG ANH cho video AI, mỗi shot là một hành động/khung hình cụ thể "
+    shots: list[str] = Field(description="1–2 mô tả shot TIẾNG ANH cho video AI, mỗi shot là một hành động/khung hình cụ thể "
                                          "của nhân vật trong bối cảnh (không lặp lại mô tả nhân vật, không chữ trên hình)")
     visual_query: str = Field(description="Từ khoá TIẾNG ANH để tìm video stock trên Pixabay, 2–4 từ, cụ thể, có cảm xúc")
 
@@ -49,7 +49,7 @@ class Script(BaseModel):
     title: str
     hook: str
     visual_bible: VisualBible
-    scenes: list[Scene] = Field(description="5–9 cảnh, cảnh đầu tiên chứa hook")
+    scenes: list[Scene] = Field(description="Các cảnh theo đúng số lượng yêu cầu, cảnh đầu tiên chứa hook")
     caption: str = Field(description="Caption TikTok tiếng Việt, có câu kêu gọi bình luận/chia sẻ")
     hashtags: list[str] = Field(description="5–8 hashtag, không có dấu #")
 
@@ -119,12 +119,20 @@ def analyze_trends(niche: dict, videos: list[dict], recent_titles: list[str]) ->
 
 
 def write_script(niche: dict, idea: dict, report: dict | None, target_sec: int,
-                 feedback: str | None = None, previous: dict | None = None) -> Script:
+                 feedback: str | None = None, previous: dict | None = None,
+                 scene_count: int | None = None, clip_sec: int = 8) -> Script:
     parts = [
         f"Viết kịch bản video TikTok dài khoảng {target_sec} giây "
         f"(~{int(target_sec * 2.6)} từ lời đọc tổng cộng) cho ý tưởng sau:",
         f"<idea>\n{json.dumps(idea, ensure_ascii=False)}\n</idea>",
     ]
+    if scene_count:
+        parts.append(
+            f"Kịch bản gồm ĐÚNG {scene_count} cảnh. Mỗi cảnh sẽ là MỘT clip video AI dài {clip_sec} giây, nên "
+            f"lời đọc mỗi cảnh chỉ 15–19 từ (đọc khoảng {clip_sec - 2}–{clip_sec - 1} giây), tuyệt đối không quá 21 từ. "
+            f"Trường shots của mỗi cảnh chỉ có 1 mô tả: một hành động liền mạch, rõ ràng diễn ra trong {clip_sec} giây, "
+            "khớp với lời đọc của cảnh. Bốn cảnh nối nhau thành một câu chuyện trọn vẹn: hook → ký ức → nhận ra → thông điệp."
+        )
     if report:
         parts.append(
             "Insight từ đối thủ:\n"
