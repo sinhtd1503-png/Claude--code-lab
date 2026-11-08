@@ -32,7 +32,13 @@ def main() -> None:
     elif args.command == "run-once":
         for cid in p.daily():
             item = p.db.get_content(cid)
-            print(f"#{cid} {item['script']['title']}\n  video: {item['video_path']}\n  caption: {item['caption']}\n")
+            print(f"#{cid} {item['script']['title']} [{item['status']}]")
+            if item["status"] == "awaiting_clips":
+                for i, s in enumerate(p.manual.load(cid)["shots"]):
+                    print(f"\n--- Prompt shot {i + 1} (cảnh {s['scene']}, {s['seconds']}s) ---\n{s['prompt']}")
+                print("\nTạo các clip trên Google Flow rồi gửi qua bot Telegram (lệnh `bot`).")
+            else:
+                print(f"  video: {item['video_path']}\n  caption: {item['caption']}\n")
     elif args.command == "research":
         print(json.dumps(p.research(), ensure_ascii=False, indent=2))
     elif args.command == "tiktok-auth":

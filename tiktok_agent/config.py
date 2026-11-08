@@ -16,7 +16,7 @@ class Settings:
     raw: dict
     anthropic_api_key: str | None
     apify_token: str | None
-    pexels_api_key: str | None
+    pixabay_api_key: str | None
     telegram_bot_token: str | None
     telegram_chat_id: int | None
     tiktok_client_key: str | None
@@ -39,7 +39,7 @@ def load_settings(config_path: str | Path | None = None) -> Settings:
         raw=raw,
         anthropic_api_key=os.getenv("ANTHROPIC_API_KEY"),
         apify_token=os.getenv("APIFY_TOKEN"),
-        pexels_api_key=os.getenv("PEXELS_API_KEY"),
+        pixabay_api_key=os.getenv("PIXABAY_API_KEY"),
         telegram_bot_token=os.getenv("TELEGRAM_BOT_TOKEN"),
         telegram_chat_id=int(chat_id) if chat_id else None,
         tiktok_client_key=os.getenv("TIKTOK_CLIENT_KEY"),

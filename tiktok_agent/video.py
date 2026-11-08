@@ -1,4 +1,4 @@
-"""Render a faceless 9:16 video: AI voice (edge-tts) + Pexels stock clips + burned subtitles."""
+"""Render a faceless 9:16 video: AI voice (edge-tts) + Pixabay stock clips + burned subtitles."""
 from __future__ import annotations
 
 import asyncio
@@ -63,53 +63,71 @@ async def _tts(text: str, voice: str, rate: str, out: Path) -> None:
     await edge_tts.Communicate(text, voice, rate=rate).save(str(out))
 
 
-def synthesize(text: str, voice: str, rate: str, out: Path, retries: int = 5) -> float:
-    for attempt in range(1, retries + 1):
+# edge-tts fails in bursts ("No audio was received") that can last ~20s; back off long enough to outlast them.
+TTS_BACKOFF_SEC = (2, 4, 8, 15, 25, 40)
+
+
+def synthesize(text: str, voice: str, rate: str, out: Path) -> float:
+    for attempt in range(len(TTS_BACKOFF_SEC) + 1):
         try:
             asyncio.run(_tts(text, voice, rate, out))
             return _duration(out)
-        except edge_tts.exceptions.EdgeTTSException as e:  # service is occasionally flaky
-            if attempt == retries:
+        except edge_tts.exceptions.EdgeTTSException as e:
+            if attempt == len(TTS_BACKOFF_SEC):
                 raise
-            log.warning("TTS attempt %d failed (%s), retrying…", attempt, e)
-            time.sleep(2 * attempt)
+            log.warning("TTS attempt %d failed (%s), retrying in %ss…", attempt + 1, e, TTS_BACKOFF_SEC[attempt])
+            time.sleep(TTS_BACKOFF_SEC[attempt])
     raise AssertionError("unreachable")
 
 
-# ---------- Pexels ----------
+# ---------- Pixabay ----------
+
+PIXABAY_URL = "https://pixabay.com/api/videos/"
+
+
+def _pick_rendition(hit: dict) -> dict | None:
+    """Pick the smallest rendition that is still >=1080px tall, else the tallest available."""
+    files = [f for f in (hit.get("videos") or {}).values() if f.get("url") and f.get("height")]
+    if not files:
+        return None
+    hd = [f for f in files if f["height"] >= 1080]
+    return min(hd, key=lambda f: f["height"]) if hd else max(files, key=lambda f: f["height"])
+
 
 def fetch_clip(api_key: str, query: str, fallback_query: str, out: Path, used: set[str]) -> Path | None:
-    headers = {"Authorization": api_key}
+    """Download a stock clip from Pixabay. Portrait clips are preferred; landscape ones get center-cropped."""
     for q in (query, fallback_query):
         r = httpx.get(
-            "https://api.pexels.com/videos/search",
-            params={"query": q, "orientation": "portrait", "per_page": 15, "size": "medium"},
-            headers=headers, timeout=30,
+            PIXABAY_URL,
+            params={"key": api_key, "q": q[:100], "video_type": "film",
+                    "safesearch": "true", "per_page": 30},
+            timeout=30,
         )
         r.raise_for_status()
-        candidates = [v for v in r.json().get("videos", []) if str(v["id"]) not in used]
-        random.shuffle(candidates)
-        for v in candidates:
-            files = [f for f in v["video_files"]
-                     if f.get("file_type") == "video/mp4" and f.get("height") and f["height"] >= 1080]
-            files = files or [f for f in v["video_files"] if f.get("file_type") == "video/mp4"]
-            if not files:
+        hits = [h for h in r.json().get("hits", []) if str(h["id"]) not in used]
+        random.shuffle(hits)
+        # portrait first (height > width), keep random order within each group
+        hits.sort(key=lambda h: not any(f.get("height", 0) > f.get("width", 0)
+                                         for f in (h.get("videos") or {}).values()))
+        for h in hits:
+            best = _pick_rendition(h)
+            if not best:
                 continue
-            best = min(files, key=lambda f: abs((f.get("height") or 0) - 1920))
-            with httpx.stream("GET", best["link"], timeout=120, follow_redirects=True) as s:
-                s.raise_for_status()
+            with httpx.stream("GET", best["url"], timeout=120, follow_redirects=True) as resp:
+                resp.raise_for_status()
                 with out.open("wb") as fh:
-                    for chunk in s.iter_bytes():
+                    for chunk in resp.iter_bytes():
                         fh.write(chunk)
-            used.add(str(v["id"]))
-            log.info("Clip for %r → pexels #%s", q, v["id"])
+            used.add(str(h["id"]))
+            log.info("Clip for %r → pixabay #%s (%sx%s)", q, h["id"], best["width"], best["height"])
             return out
     return None
 
 
 # ---------- render ----------
 
-def render(script: dict, workdir: Path, cfg: dict, pexels_key: str) -> Path:
+def render(script: dict, workdir: Path, cfg: dict, stock_key: str, ai=None) -> Path:
+    """`ai` is an optional AIVideoSource; scenes selected in config use AI video, others Pixabay."""
     workdir.mkdir(parents=True, exist_ok=True)
     voice, vid = cfg["voice"], cfg["video"]
     used: set[str] = set()
@@ -122,14 +140,22 @@ def render(script: dict, workdir: Path, cfg: dict, pexels_key: str) -> Path:
         dur = synthesize(scene["narration"], voice["name"], voice["rate"], audio) + PAD_SEC
 
         clip = None
-        if pexels_key:
+        if ai is not None and ai.wants_ai(i, len(script["scenes"])):
             try:
-                clip = fetch_clip(pexels_key, scene["visual_query"], vid["fallback_query"],
+                clip = ai.scene_clip(i, scene, script.get("visual_bible"), dur, workdir)
+            except Exception as e:  # budget exceeded, safety block, timeout… → fall back to stock
+                log.warning("AI video scene %d → dùng Pixabay thay thế: %s", i + 1, e)
+                ai.note_fallback(i, str(e)[:300])
+        if clip is None and stock_key:
+            try:
+                clip = fetch_clip(stock_key, scene["visual_query"], vid["fallback_query"],
                                   workdir / f"c{i}.mp4", used)
+            except httpx.HTTPStatusError as e:  # don't log the URL: it contains the API key
+                log.warning("Pixabay failed for %r: HTTP %s", scene["visual_query"], e.response.status_code)
             except httpx.HTTPError as e:
-                log.warning("Pexels failed for %r: %s", scene["visual_query"], e)
+                log.warning("Pixabay failed for %r: %s", scene["visual_query"], type(e).__name__)
         seg = workdir / f"seg{i}.mp4"
-        vf = (f"scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},setsar=1,fps={FPS},"
+        vf = (f"scale={W}:{H}:force_original_aspect_ratio=increase:flags=lanczos,crop={W}:{H},setsar=1,fps={FPS},"
               f"eq=saturation=0.9:brightness=0.02,"  # soft, warm nostalgic look
               f"fade=t=in:st=0:d=0.3")
         if clip:
