@@ -1,0 +1,22 @@
+[Unit]
+Description=TikTok Content Agent (Telegram bot + daily pipeline)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=agent
+WorkingDirectory=/opt/tiktok-agent
+ExecStart=/opt/tiktok-agent/.venv/bin/python -m tiktok_agent.main bot
+Restart=always
+RestartSec=15
+Environment=PYTHONUNBUFFERED=1
+# Hardening: the agent only needs to write inside its own folder
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/tiktok-agent
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
