@@ -1,0 +1,562 @@
+{
+  "id": "TikTokAgent0001",
+  "name": "TikTok Agent – Telegram duyệt bài",
+  "active": false,
+  "nodes": [
+    {
+      "id": "14ec4033-8e2e-5841-aca9-a3608aee1a0f",
+      "name": "Telegram gửi tới",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "telegram",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "webhookId": "613735f8-7484-547b-aada-97e32b8ca0fd"
+    },
+    {
+      "id": "676cf67f-df65-516a-9bb4-a9c07dfeb1f8",
+      "name": "Phân loại tin nhắn",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// Đổi tin nhắn Telegram thành 1 yêu cầu cho worker: lệnh (/...), bấm nút, góp ý (chữ), clip video, ảnh.\nconst u = $json.body || {};\nconst secret = ($json.headers || {})['x-telegram-bot-api-secret-token'] || '';\nlet route = null;\nconst body = { secret };\nif (u.callback_query) {\n  const c = u.callback_query;\n  route = 'tg/button';\n  Object.assign(body, { chat_id: c.message?.chat?.id, data: c.data, message_id: c.message?.message_id, callback_id: c.id });\n} else if (u.message) {\n  const m = u.message;\n  Object.assign(body, {\n    chat_id: m.chat.id, message_id: m.message_id,\n    reply_to_text: m.reply_to_message?.text || m.reply_to_message?.caption || '',\n  });\n  const doc = m.document && (m.document.mime_type || '').startsWith('video/') ? m.document : null;\n  const vid = m.video || m.animation || doc;\n  if (vid) {\n    route = 'tg/clip';\n    Object.assign(body, { file_id: vid.file_id, file_size: vid.file_size || 0, caption: m.caption || '', media_group_id: m.media_group_id || '' });\n  } else if (m.photo) {\n    route = 'tg/photo';\n    Object.assign(body, { file_id: m.photo[m.photo.length - 1].file_id, caption: m.caption || '' });\n  } else if ((m.text || '').startsWith('/')) {\n    route = 'tg/command'; body.text = m.text;\n  } else if (m.text) {\n    route = 'tg/text'; body.text = m.text;\n  }\n}\nif (!route) return [];\nreturn [{ json: { route, body } }];"
+      }
+    },
+    {
+      "id": "1d08b453-1795-54f2-9065-e99eb4dfadf8",
+      "name": "Báo đã nhận nút bấm",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        -200
+      ],
+      "parameters": {
+        "jsCode": "// Tắt vòng xoay trên nút vừa bấm (Telegram yêu cầu trả lời trong vài giây).\nconst id = $json.body.callback_id;\nif (!id) return [];\nreturn [{ json: { method: 'answerCallbackQuery', payload: { callback_query_id: id, text: '⏳ Đã nhận' } } }];"
+      }
+    },
+    {
+      "id": "eee0c273-aa73-58c0-929b-9ff7574fa329",
+      "name": "06:30 – kiểm tra kế hoạch 30 ngày",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        220
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "30 6 * * *"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "f59529dc-e25f-5554-b3b3-adbd9558c003",
+      "name": "07:00 – gửi kịch bản hằng ngày",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        420
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 7 * * *"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "001364bf-277c-5d7d-9539-0a49174b4eb8",
+      "name": "Yêu cầu: kế hoạch",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        220
+      ],
+      "parameters": {
+        "jsCode": "return [{ json: { route: 'scheduled/plan', body: {} } }];"
+      }
+    },
+    {
+      "id": "8980ed69-3fa7-5f62-8cfb-d496e156d93e",
+      "name": "Yêu cầu: kịch bản",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        420
+      ],
+      "parameters": {
+        "jsCode": "return [{ json: { route: 'scheduled/daily', body: {} } }];"
+      }
+    },
+    {
+      "id": "31f6d0a5-8565-54ca-aac6-6f38c14935bb",
+      "name": "Gọi worker",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        660,
+        220
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.WORKER_URL }}/{{ $json.route }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Worker-Token",
+              "value": "={{ $env.WORKER_TOKEN }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body || {}) }}",
+        "options": {
+          "timeout": 1800000,
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "cdf4ff87-98ab-521b-9452-27b3a1022183",
+      "name": "Đọc kết quả",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        220
+      ],
+      "parameters": {
+        "jsCode": "// Worker luôn trả {messages: [...], next: {...}}. Nếu worker lỗi/không chạy → báo lỗi lên Telegram.\nconst out = [];\nfor (const it of $input.all()) {\n  const j = it.json || {};\n  if (Array.isArray(j.messages)) { out.push({ json: { messages: j.messages, next: j.next || null } }); continue; }\n  const err = j.error?.message || j.detail || JSON.stringify(j).slice(0, 300);\n  out.push({ json: { next: null, messages: [{ method: 'sendMessage', payload: {\n    chat_id: $env.TELEGRAM_CHAT_ID, text: '⚠️ n8n không gọi được worker: ' + err } }] } });\n}\nreturn out;"
+      }
+    },
+    {
+      "id": "0194899a-b514-5eea-8bfc-961863f99881",
+      "name": "Tách tin nhắn",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        100
+      ],
+      "parameters": {
+        "jsCode": "const out = [];\nfor (const it of $input.all()) for (const m of it.json.messages || []) out.push({ json: m });\nreturn out;"
+      }
+    },
+    {
+      "id": "87896d40-6f07-5262-bfea-a5ae1343a342",
+      "name": "Có file đính kèm?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1320,
+        100
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "ef07041b-cf47-5523-b97f-05a043c25f54",
+              "leftValue": "={{ $json.file || '' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "283136ed-8421-5c0c-b9c1-e155981a9c37",
+      "name": "Tải file từ worker",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1540,
+        0
+      ],
+      "parameters": {
+        "url": "={{ $env.WORKER_URL }}/files?path={{ encodeURIComponent($json.file) }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Worker-Token",
+              "value": "={{ $env.WORKER_TOKEN }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 120000,
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "outputPropertyName": "data"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "8bee703d-b4c0-5304-b654-4cf0d6cd33b2",
+      "name": "Telegram gửi ảnh/video",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1760,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.TELEGRAM_API }}/bot{{ $env.TELEGRAM_BOT_TOKEN }}/{{ $('Tách tin nhắn').item.json.method }}",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "chat_id",
+              "value": "={{ $('Tách tin nhắn').item.json.payload.chat_id }}"
+            },
+            {
+              "name": "caption",
+              "value": "={{ $('Tách tin nhắn').item.json.payload.caption }}"
+            },
+            {
+              "name": "parse_mode",
+              "value": "HTML"
+            },
+            {
+              "name": "reply_markup",
+              "value": "={{ $('Tách tin nhắn').item.json.payload.reply_markup }}"
+            },
+            {
+              "name": "supports_streaming",
+              "value": "={{ $('Tách tin nhắn').item.json.payload.supports_streaming || 'false' }}"
+            },
+            {
+              "parameterType": "formBinaryData",
+              "name": "={{ $('Tách tin nhắn').item.json.field }}",
+              "inputDataFieldName": "data"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 600000,
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          },
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 500
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "8773203f-5020-509f-9717-a17a8a820256",
+      "name": "Telegram API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1540,
+        200
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.TELEGRAM_API }}/bot{{ $env.TELEGRAM_BOT_TOKEN }}/{{ $json.method }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.payload) }}",
+        "options": {
+          "timeout": 60000,
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          },
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 300
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "008a4d3c-fecb-58eb-ac75-53b183da1915",
+      "name": "Còn bước tiếp?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1100,
+        420
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "2e675835-21e4-568c-b37c-f2ab3fa2c80b",
+              "leftValue": "={{ !!($json.next && $json.next.action) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "1d297108-9c30-5028-b1e2-72106f1ed6f5",
+      "name": "Chuẩn bị bước tiếp",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1320,
+        420
+      ],
+      "parameters": {
+        "jsCode": "// Bước dài (lập kế hoạch, viết kịch bản, ghép video…) chạy sau khi tin \"⏳ Đang xử lý\" đã được gửi.\nreturn $input.all().map(it => ({ json: { route: 'continue', body: it.json.next } }));"
+      }
+    }
+  ],
+  "connections": {
+    "Telegram gửi tới": {
+      "main": [
+        [
+          {
+            "node": "Phân loại tin nhắn",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Phân loại tin nhắn": {
+      "main": [
+        [
+          {
+            "node": "Báo đã nhận nút bấm",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Gọi worker",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Báo đã nhận nút bấm": {
+      "main": [
+        [
+          {
+            "node": "Telegram API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "06:30 – kiểm tra kế hoạch 30 ngày": {
+      "main": [
+        [
+          {
+            "node": "Yêu cầu: kế hoạch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "07:00 – gửi kịch bản hằng ngày": {
+      "main": [
+        [
+          {
+            "node": "Yêu cầu: kịch bản",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Yêu cầu: kế hoạch": {
+      "main": [
+        [
+          {
+            "node": "Gọi worker",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Yêu cầu: kịch bản": {
+      "main": [
+        [
+          {
+            "node": "Gọi worker",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gọi worker": {
+      "main": [
+        [
+          {
+            "node": "Đọc kết quả",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Đọc kết quả": {
+      "main": [
+        [
+          {
+            "node": "Tách tin nhắn",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Còn bước tiếp?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tách tin nhắn": {
+      "main": [
+        [
+          {
+            "node": "Có file đính kèm?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tải file từ worker": {
+      "main": [
+        [
+          {
+            "node": "Telegram gửi ảnh/video",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chuẩn bị bước tiếp": {
+      "main": [
+        [
+          {
+            "node": "Gọi worker",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Có file đính kèm?": {
+      "main": [
+        [
+          {
+            "node": "Tải file từ worker",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Telegram API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Còn bước tiếp?": {
+      "main": [
+        [
+          {
+            "node": "Chuẩn bị bước tiếp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Ho_Chi_Minh",
+    "saveManualExecutions": true
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "tags": []
+}
