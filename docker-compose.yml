@@ -1,0 +1,55 @@
+# Toàn bộ hệ thống trên 1 VPS: Caddy (HTTPS) → n8n (giao diện + lịch + Telegram) → worker (Python).
+# Khởi động: docker compose up -d --build   (deploy/install.sh làm việc này cho bạn)
+services:
+  caddy:
+    image: caddy:2.8.4
+    restart: unless-stopped
+    ports: ["80:80", "443:443"]
+    environment:
+      DOMAIN: ${DOMAIN}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on: [n8n, worker]
+
+  n8n:
+    image: n8nio/n8n:2.44.6
+    restart: unless-stopped
+    environment:
+      N8N_HOST: ${DOMAIN}
+      N8N_PROTOCOL: https
+      N8N_PORT: "5678"
+      WEBHOOK_URL: https://${DOMAIN}/
+      N8N_PROXY_HOPS: "1"
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY}
+      GENERIC_TIMEZONE: Asia/Ho_Chi_Minh
+      TZ: Asia/Ho_Chi_Minh
+      N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"   # workflow đọc WORKER_URL/WORKER_TOKEN/TELEGRAM_BOT_TOKEN từ biến môi trường
+      N8N_DIAGNOSTICS_ENABLED: "false"
+      EXECUTIONS_DATA_PRUNE: "true"
+      EXECUTIONS_DATA_MAX_AGE: "168"           # giữ lịch sử chạy 7 ngày
+      WORKER_URL: http://worker:8000
+      WORKER_TOKEN: ${WORKER_TOKEN}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID}
+      TELEGRAM_API: ${TELEGRAM_API:-https://api.telegram.org}
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./n8n/workflows:/workflows:ro
+    depends_on: [worker]
+
+  worker:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      TIKTOK_REDIRECT_URI: https://${DOMAIN}/tiktok/callback
+    volumes:
+      - ./data:/app/data
+      - ./config.yaml:/app/config.yaml:ro
+
+volumes:
+  caddy_data:
+  caddy_config:
+  n8n_data:

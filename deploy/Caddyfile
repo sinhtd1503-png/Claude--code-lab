@@ -1,0 +1,12 @@
+# Caddy tự xin chứng chỉ HTTPS miễn phí (Let's Encrypt) cho {$DOMAIN}.
+{$DOMAIN} {
+	encode gzip
+	# TikTok chuyển về đây sau khi bạn bấm "Cho phép" — worker lưu token
+	handle /tiktok/callback* {
+		reverse_proxy worker:8000
+	}
+	# Mọi thứ khác: n8n (giao diện + webhook Telegram)
+	handle {
+		reverse_proxy n8n:5678
+	}
+}

@@ -14,6 +14,9 @@ MODEL = "claude-opus-5-5"
 # recommended fallback model inside the same call.
 FALLBACK_BETA = "server-side-fallback-2026-07-01"
 
+# Optional callback(usage) called after every Claude request — the worker uses it to track spend.
+USAGE_HOOK = None
+
 
 # ---------- Structured output schemas ----------
 
@@ -60,17 +63,22 @@ def _client() -> anthropic.Anthropic:
     return anthropic.Anthropic()
 
 
-def _parse(system: str, user: str, schema: type[BaseModel], effort: str = "high") -> BaseModel:
-    resp = _client().beta.messages.parse(
+def _parse(system: str, user: str, schema: type[BaseModel], effort: str = "high",
+           max_tokens: int = 16000) -> BaseModel:
+    # Streaming avoids HTTP timeouts on long outputs (the 30-day plan); get_final_message() returns the parsed result.
+    with _client().beta.messages.stream(
         model=MODEL,
-        max_tokens=16000,
+        max_tokens=max_tokens,
         betas=[FALLBACK_BETA],
         fallbacks="default",
         output_config={"effort": effort},
         system=system,
         messages=[{"role": "user", "content": user}],
         output_format=schema,
-    )
+    ) as stream:
+        resp = stream.get_final_message()
+    if USAGE_HOOK is not None and getattr(resp, "usage", None) is not None:
+        USAGE_HOOK(resp.usage)
     if resp.stop_reason == "refusal":
         raise RuntimeError(f"Claude declined the request: {resp.stop_details}")
     if resp.stop_reason == "max_tokens":

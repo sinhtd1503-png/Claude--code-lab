@@ -30,20 +30,26 @@ class TikTokError(RuntimeError):
 
 
 class TikTokPublisher:
-    def __init__(self, client_key: str, client_secret: str, redirect_uri: str, db: DB):
+    def __init__(self, client_key: str, client_secret: str, redirect_uri: str, db: DB, account: str = "default"):
         self.client_key = client_key
         self.client_secret = client_secret
         self.redirect_uri = redirect_uri
         self.db = db
+        self.account = account
+        # one token per TikTok account; "default" keeps the key used before multi-account support
+        self.token_key = TOKEN_KEY if account == "default" else f"{TOKEN_KEY}:{account}"
+
+    def connected(self) -> bool:
+        return self.db.kv_get(self.token_key) is not None
 
     # ---------- OAuth ----------
-    def authorize_url(self) -> str:
+    def authorize_url(self, state: str | None = None) -> str:
         params = {
             "client_key": self.client_key,
             "scope": SCOPES,
             "response_type": "code",
             "redirect_uri": self.redirect_uri,
-            "state": secrets.token_urlsafe(16),
+            "state": state or secrets.token_urlsafe(16),
         }
         return f"{AUTH_URL}?{urllib.parse.urlencode(params)}"
 
@@ -58,7 +64,7 @@ class TikTokPublisher:
         if r.status_code != 200 or "access_token" not in body:
             raise TikTokError(f"Token error: {body}")
         body["expires_at"] = int(time.time()) + int(body.get("expires_in", 0)) - 60
-        self.db.kv_set(TOKEN_KEY, body)
+        self.db.kv_set(self.token_key, body)
         return body
 
     def exchange_code(self, code: str) -> dict:
@@ -69,7 +75,7 @@ class TikTokPublisher:
         })
 
     def _access_token(self) -> str:
-        tok = self.db.kv_get(TOKEN_KEY)
+        tok = self.db.kv_get(self.token_key)
         if not tok:
             raise TikTokError("Chưa kết nối TikTok. Chạy: python -m tiktok_agent.main tiktok-auth")
         if tok["expires_at"] <= time.time():

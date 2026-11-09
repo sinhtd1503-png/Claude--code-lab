@@ -26,8 +26,9 @@ scraper:
 
 content:
   target_duration_sec: 30     # độ dài video mong muốn
-  scenes: 4                   # số cảnh cố định: 4 cảnh × 1 clip AI 8 giây ≈ 30 giây
+  scenes: 4                   # số cảnh cố định: 4 cảnh × 1 clip AI 8 giây ≈ 28–32 giây (đặt 3 nếu muốn ~24 giây)
   videos_per_day: 1
+  plan_days: 30               # số ngày mỗi kế hoạch (n8n + worker)
 
 voice:
   name: "vi-VN-HoaiMyNeural"  # hoặc vi-VN-NamMinhNeural (giọng nam)
@@ -70,7 +71,9 @@ ai_video:
   price_per_1m_input_tokens: 1.5
 
 schedule:
-  daily_time: "07:00"         # giờ chạy pipeline mỗi ngày (giờ Việt Nam)
+  # Giờ chạy thật nằm trong workflow n8n (node "06:30 – kiểm tra kế hoạch" và "07:00 – gửi kịch bản").
+  # Dòng dưới chỉ dùng cho bot Python cũ (python -m tiktok_agent.main bot).
+  daily_time: "07:00"
   timezone: "Asia/Ho_Chi_Minh"
 
 tiktok:
@@ -78,5 +81,30 @@ tiktok:
   # direct = đăng thẳng (cần app TikTok qua audit, nếu chưa thì chỉ đăng được SELF_ONLY)
   post_mode: "inbox"
   privacy_level: "PUBLIC_TO_EVERYONE"
+  # Các kênh TikTok của bạn (tên tự đặt, không dấu, không khoảng trắng). Mỗi kênh kết nối 1 lần bằng lệnh /tiktok.
+  # Video được duyệt sẽ được gửi lên TẤT CẢ các kênh đã kết nối.
+  accounts:
+    - "default"
+    # - "kenh2"
+
+# Ngân sách: mọi dịch vụ trả phí phải được bạn duyệt trên Telegram trước khi tiêu tiền.
+# Hạn mức tháng = free_monthly_usd + số tiền bạn đã bấm "Duyệt". Vượt hạn mức → bot hỏi trước, không tự tiêu.
+budget:
+  services:
+    claude:                   # Claude API — bắt buộc (viết kế hoạch + kịch bản), ~2–5 USD/tháng
+      free_monthly_usd: 0
+      suggest_monthly_usd: 5
+      est_plan_usd: 0.8       # ước tính 1 lần lập kế hoạch 30 ngày
+      est_script_usd: 0.15    # ước tính 1 kịch bản
+      price_in_per_m: 4       # Claude Opus 5.5: $4 / 1 triệu token vào
+      price_out_per_m: 20     #                  $20 / 1 triệu token ra
+    apify:                    # quét đối thủ — gói Free của Apify tặng ~5 USD/tháng nên thường $0
+      free_monthly_usd: 5
+      suggest_monthly_usd: 2
+      est_scrape_usd: 0.5
+    gemini_video:             # tuỳ chọn: tạo clip tự động bằng Gemini API thay vì tạo tay trên Google Flow
+      free_monthly_usd: 0
+      suggest_monthly_usd: 25
+      usd_per_clip: 0.19
 
 data_dir: "data"
