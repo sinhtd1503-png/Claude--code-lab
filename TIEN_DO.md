@@ -1,6 +1,6 @@
 # Tiến độ dự án — TikTok Content Agent
 
-_Cập nhật: 09/11/2026_
+_Cập nhật: 11/11/2026_
 
 ## 🎯 Mục tiêu dự án
 
@@ -52,6 +52,14 @@ Xây agent tự động cho kênh TikTok ngách **tuổi thơ, kỷ niệm gia �
 - Sửa lỗi: Claude gọi bằng streaming (kế hoạch 30 ngày vượt giới hạn non-streaming 10 phút)
 - **Đã kiểm thử end-to-end trong Docker** với Telegram và Claude giả lập: n8n import/publish workflow qua CLI, lệnh → duyệt ngân sách → kế hoạch → kịch bản → góp ý → duyệt → 4 prompt → nhận clip (reply + album) → gửi ảnh khung cuối → ghép video 27,7 giây có phụ đề tiếng Việt → gửi video qua n8n; chặn chat lạ, sai secret, truy cập file trái phép
 
+### 10–11/11/2026 — Chọn VPS và chuẩn bị cài thật
+- **PR #6 (bản n8n) đã merge vào `main`**: lệnh cài 1 dòng đã lấy đúng bản mới
+- Chủ kênh đã chuẩn bị 3 khoá trong app Ghi chú: token bot Telegram, Claude API key (đã nạp $5), Apify token
+- **Thử VPS:** Oracle Cloud Free bị tắc; VPS Contabo đi mượn (178.238.224.220) có sẵn web `chaoem.xyz` (nginx) chiếm cổng 80/443 nên hệ thống chưa cài được ở đó, bỏ hướng này
+- **Quyết định: chủ kênh tự thuê VPS Contabo** (Cloud VPS 10, Ubuntu 24.04, EU, kỳ 1 tháng, khoảng 5–7 €). **Đã thuê xong 11/11/2026**
+- Thêm **`CAI_DAT_CONTABO.md`** (PR #7, đã merge): sổ tay 8 bước, mỗi lệnh một khung để bấm sao chép trên iPad; kèm trang hướng dẫn có nút sao chép trên claude.ai
+- Đang ở **Bước 2–3**: kết nối Termius (user `root`) và chạy `deploy/install.sh`
+
 ## 🧭 Các quyết định quan trọng
 
 | Vấn đề | Quyết định | Lý do |
@@ -63,7 +71,7 @@ Xây agent tự động cho kênh TikTok ngách **tuổi thơ, kỷ niệm gia �
 | Đối thủ | 4 kênh hoài niệm làm bằng AI + 2 kênh hoài niệm 8x 9x lớn | Kênh AI chưa có kênh nào thật lớn; kênh lớn giúp học chủ đề và hook |
 | Cách đăng | `inbox` (mặc định) và `direct` | TikTok chỉ cho đăng công khai qua API sau khi app qua audit |
 | Điều phối | **n8n** (theo yêu cầu chủ kênh) + worker Python | n8n dễ xem/chỉnh trên iPad; logic phức tạp (Claude, FFmpeg, TikTok) nằm trong Python để kiểm thử được |
-| Chạy 24/7 | VPS Ubuntu + Docker Compose (Caddy, n8n, worker), cài bằng `deploy/install.sh` | Một lệnh, chạy lại để cập nhật; HTTPS miễn phí bằng sslip.io |
+| Chạy 24/7 | VPS **Contabo** (trả phí khoảng 5–7 €/tháng, chủ kênh tự thuê) + Docker Compose (Caddy, n8n, worker), cài bằng `deploy/install.sh` | Một lệnh, chạy lại để cập nhật; HTTPS miễn phí bằng sslip.io |
 | Kế hoạch | 30 ngày, một gia đình nhân vật cố định | Người xem nhận ra "gia đình" của kênh; clip AI nhất quán hơn |
 | Chi phí | Mọi dịch vụ trả phí qua cổng duyệt ngân sách | Theo yêu cầu: báo cáo và duyệt trước khi tiêu |
 | Trang pháp lý TikTok | GitHub Pages, liên hệ bằng email chủ kênh | Miễn phí, https, không ảnh hưởng code |
@@ -74,7 +82,7 @@ Xây agent tự động cho kênh TikTok ngách **tuổi thơ, kỷ niệm gia �
 
 ## 🐞 Lỗi / vấn đề còn tồn tại
 
-1. **Chưa chạy trên VPS thật và Telegram/Claude thật với bản n8n** (mới kiểm thử bằng dịch vụ giả lập trong Docker).
+1. **Chưa chạy trên VPS thật và Telegram/Claude thật với bản n8n**: VPS Contabo đã thuê, chưa chạy lệnh cài.
 2. **Vẫn còn bước làm tay mỗi ngày:** tạo 3–4 clip trên Google Flow (~5 phút). Tự động hoàn toàn chỉ có qua Gemini API trả phí (key hiện chưa có quyền model video).
 3. **Đăng TikTok chưa chạy thật:** cần tạo app, thêm tài khoản vào Sandbox, kết nối bằng `/tiktok`. `direct` chỉ đăng riêng tư tới khi app qua audit.
 4. **edge-tts lỗi theo đợt** ("No audio was received") — đã có thử lại + nút 🔁 Thử lại trên Telegram.
@@ -82,6 +90,6 @@ Xây agent tự động cho kênh TikTok ngách **tuổi thơ, kỷ niệm gia �
 
 ## 📋 3 việc cần làm tiếp theo
 
-1. **Merge PR, thuê VPS và chạy `deploy/install.sh`** theo `HUONG_DAN.md` (Bước 4–7), kiểm tra `/start` trên Telegram.
-2. **Chạy thật 1 vòng:** `/kehoach` → duyệt ngân sách + kế hoạch → `/nhanvat` → `/kichban` → tạo 4 clip trên Flow → duyệt video.
-3. **Kết nối TikTok** (Bước 8) và đăng thử vào hộp nháp; sau đó gửi app đi audit để đăng thẳng.
+1. **Cài trên VPS Contabo mới** theo `CAI_DAT_CONTABO.md` Bước 2–5: Termius (`root`) → chạy `deploy/install.sh` → `/start` lấy Chat ID → điền `.env` → chạy lại lệnh cài → tạo tài khoản n8n. Gửi IP để kiểm tra từ bên ngoài.
+2. **Chạy thật 1 vòng** (Bước 6): `/kehoach` → duyệt → `/kichban` → 4 clip Flow → duyệt video.
+3. **Kết nối TikTok** (Bước 7), đăng thử vào hộp nháp; nhớ huỷ hoặc gia hạn Contabo trước ngày hết kỳ 1 tháng.
