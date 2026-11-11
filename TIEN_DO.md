@@ -60,6 +60,22 @@ Xây agent tự động cho kênh TikTok ngách **tuổi thơ, kỷ niệm gia �
 - Thêm **`CAI_DAT_CONTABO.md`** (PR #7, đã merge): sổ tay 8 bước, mỗi lệnh một khung để bấm sao chép trên iPad; kèm trang hướng dẫn có nút sao chép trên claude.ai
 - Đang ở **Bước 2–3**: kết nối Termius (user `root`) và chạy `deploy/install.sh`
 
+**Tóm tắt hôm nay (11/11/2026):**
+- ✅ Thuê xong VPS Contabo
+- ✅ Sổ tay cài đặt `CAI_DAT_CONTABO.md` (PR #7) và cập nhật tiến độ (PR #8) đã merge vào `main`
+- ✅ Đã có hướng dẫn chi tiết cấu hình **TikTok Login Kit + Content Posting API** (xem mục dưới)
+- ⏳ Chưa làm: kết nối Termius và chạy lệnh cài trên VPS mới
+
+### 🔧 Ghi chú cấu hình TikTok (Bước 7)
+- **App:** developers.tiktok.com → Manage apps → Connect an app (Individual). Icon 1024×1024, Category Entertainment, Platform **Web**
+- **Terms:** `https://sinhtd1503-png.github.io/Claude--code-lab/terms.html` · **Privacy:** `https://sinhtd1503-png.github.io/Claude--code-lab/privacy.html` · **Web URL:** `https://sinhtd1503-png.github.io/Claude--code-lab/`
+- **Login Kit → Redirect URI (Web):** `https://<ip-gạch-ngang>.sslip.io/tiktok/callback`, khớp tuyệt đối, không có `/` cuối
+- **Content Posting API:** bật **Direct Post**; bỏ qua Verify domain (hệ thống upload file trực tiếp)
+- **Scopes:** `user.info.basic`, `video.upload`, `video.publish` (đủ cả 3, bấm Save)
+- **Sandbox:** tạo Sandbox, cấu hình lại như trên, thêm tài khoản kênh vào **Target users**; dùng **Client key/secret của Sandbox** (khác Production)
+- Điền `TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET` vào `/opt/tiktok-agent/.env` → chạy lại lệnh cài → Telegram `/tiktok` → cho phép → `/trangthai`
+- Đăng công khai thẳng: Production → Submit for review; sau khi duyệt dùng khoá Production và đổi `post_mode: direct`
+
 ## 🧭 Các quyết định quan trọng
 
 | Vấn đề | Quyết định | Lý do |
@@ -88,8 +104,12 @@ Xây agent tự động cho kênh TikTok ngách **tuổi thơ, kỷ niệm gia �
 4. **edge-tts lỗi theo đợt** ("No audio was received") — đã có thử lại + nút 🔁 Thử lại trên Telegram.
 5. **Hạn chế đã biết:** độ nhất quán nhân vật phụ thuộc Flow (prompt cố định + ảnh nhân vật + khung cuối); Telegram chỉ cho bot tải file ≤ 20 MB; chưa hỗ trợ upload TikTok > 64 MB; phụ đề căn thời gian theo ước lượng; số lượt Flow miễn phí do Google quyết định và có thể thay đổi.
 
-## 📋 3 việc cần làm tiếp theo
+## 📋 Các bước cần cấu hình tiếp
 
-1. **Cài trên VPS Contabo mới** theo `CAI_DAT_CONTABO.md` Bước 2–5: Termius (`root`) → chạy `deploy/install.sh` → `/start` lấy Chat ID → điền `.env` → chạy lại lệnh cài → tạo tài khoản n8n. Gửi IP để kiểm tra từ bên ngoài.
-2. **Chạy thật 1 vòng** (Bước 6): `/kehoach` → duyệt → `/kichban` → 4 clip Flow → duyệt video.
-3. **Kết nối TikTok** (Bước 7), đăng thử vào hộp nháp; nhớ huỷ hoặc gia hạn Contabo trước ngày hết kỳ 1 tháng.
+1. **Kết nối VPS Contabo** (Bước 2): Termius → New Host (IP trong email, user `root`, mật khẩu root).
+2. **Cài hệ thống** (Bước 3): chạy `deploy/install.sh`, dán khoá Telegram, Claude, Apify; chờ `✅ XONG!` + `Telegram: OK`. Gửi IP để kiểm tra từ bên ngoài.
+3. **Kích hoạt bot** (Bước 4): `/start` lấy Chat ID → điền `TELEGRAM_CHAT_ID` trong `.env` → chạy lại lệnh cài.
+4. **Tạo tài khoản quản trị n8n** (Bước 5) tại `https://<ip-gạch-ngang>.sslip.io`.
+5. **Chạy thử 1 vòng** (Bước 6): `/kehoach` → duyệt → `/kichban` → 4 clip Google Flow → duyệt video.
+6. **Kết nối TikTok** (Bước 7) theo ghi chú cấu hình ở trên; đăng thử vào hộp nháp.
+7. Nhớ **huỷ hoặc gia hạn Contabo** trước ngày hết kỳ 1 tháng.
