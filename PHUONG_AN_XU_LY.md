@@ -39,6 +39,14 @@ luôn tích cực và giáo dục. Yêu cầu:
  Google Flow (tay, miễn phí) ── tạo clip 8 giây ──► gửi vào Telegram ──► worker nhận clip
 ```
 
+### Hình kiến trúc hệ thống
+
+![Sơ đồ kiến trúc TikTok Agent](docs/kien-truc.svg)
+
+- File hình: [`docs/kien-truc.svg`](docs/kien-truc.svg) (bấm vào để xem cỡ lớn, phóng to được trên iPad)
+- Trang sơ đồ đầy đủ (kèm luồng một ngày và bảng kết nối, chỉ chủ tài khoản Claude mở được):
+  https://claude.ai/artifact/2NMpGtRaTb2jqhNrkzbAtk
+
 ### Sơ đồ kiến trúc chi tiết
 
 ```mermaid

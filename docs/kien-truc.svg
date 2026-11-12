@@ -1,0 +1,151 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="620" font-family="Be Vietnam Pro, Segoe UI, Helvetica, Arial, sans-serif" viewBox="0 0 1200 620" role="img" aria-label="Sơ đồ kiến trúc: iPad và Telegram gửi tin qua Telegram Bot API tới Caddy trên VPS, Caddy chuyển cho n8n, n8n gọi worker; worker gọi Claude, Gemini, edge-tts, TikTok, Apify và lưu dữ liệu vào SQLite.">
+      <rect width="1200" height="620" fill="#f4f6f8"/>
+      <defs>
+        <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path fill="#18212c" d="M0 0 L10 5 L0 10 z"/></marker>
+        <marker id="ahp" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path fill="#b26b00" d="M0 0 L10 5 L0 10 z"/></marker>
+      </defs>
+
+      <!-- Column headers -->
+      <text fill="#5b6676" font-size="11" font-weight="600" letter-spacing="0.9" x="110" y="40" text-anchor="middle">BẠN · IPAD</text>
+      <text fill="#5b6676" font-size="11" font-weight="600" letter-spacing="0.9" x="325" y="40" text-anchor="middle">INTERNET</text>
+      <text fill="#5b6676" font-size="11" font-weight="600" letter-spacing="0.9" x="1105" y="40" text-anchor="middle">DỊCH VỤ NGOÀI</text>
+
+      <!-- VPS zone -->
+      <rect fill="#e8f0f7" stroke="#8fb0cf" stroke-width="1.2" stroke-dasharray="6 4" x="460" y="50" width="520" height="555" rx="14"/>
+      <text fill="#5b6676" font-size="11" font-weight="600" letter-spacing="0.9" x="476" y="68">VPS CONTABO · UBUNTU 24.04 · DOCKER COMPOSE</text>
+
+      <!-- Column 1: iPad -->
+      <rect fill="#ffffff" stroke="#c9d1dc" stroke-width="1.2" x="40" y="70" width="140" height="56" rx="8"/>
+      <text fill="#18212c" font-size="13" font-weight="600" x="110" y="94" text-anchor="middle">Telegram</text>
+      <text fill="#5b6676" font-size="11" x="110" y="112" text-anchor="middle">duyệt · gửi clip</text>
+
+      <rect fill="#ffffff" stroke="#c9d1dc" stroke-width="1.2" x="40" y="180" width="140" height="56" rx="8"/>
+      <text fill="#18212c" font-size="13" font-weight="600" x="110" y="204" text-anchor="middle">Safari</text>
+      <text fill="#5b6676" font-size="11" x="110" y="222" text-anchor="middle">n8n · đăng nhập TikTok</text>
+
+      <rect fill="#ffffff" stroke="#c9d1dc" stroke-width="1.2" x="40" y="310" width="140" height="56" rx="8"/>
+      <text fill="#18212c" font-size="13" font-weight="600" x="110" y="334" text-anchor="middle">Termius</text>
+      <text fill="#5b6676" font-size="11" x="110" y="352" text-anchor="middle">cài đặt, sửa .env</text>
+
+      <rect fill="#ffffff" stroke="#c9d1dc" stroke-width="1.2" x="40" y="430" width="140" height="56" rx="8"/>
+      <text fill="#18212c" font-size="13" font-weight="600" x="110" y="454" text-anchor="middle">Google Flow</text>
+      <text fill="#5b6676" font-size="11" x="110" y="472" text-anchor="middle">tạo clip 8 giây</text>
+
+      <!-- Flow clip back to Telegram -->
+      <path stroke="#18212c" stroke-width="1.4" fill="none" d="M40 458 H20 V98 H38" marker-end="url(#ah)"/>
+      <text fill="#18212c" font-size="11" transform="translate(32 278) rotate(-90)" text-anchor="middle">tải clip, gửi vào chat</text>
+
+      <!-- Column 2: Internet -->
+      <rect fill="#ffffff" stroke="#c9d1dc" stroke-width="1.2" x="250" y="70" width="150" height="56" rx="8"/>
+      <text fill="#18212c" font-size="13" font-weight="600" x="325" y="94" text-anchor="middle">Telegram Bot API</text>
+      <text fill="#5b6676" font-size="11" x="325" y="112" text-anchor="middle">bot của bạn</text>
+
+      <rect fill="#ffffff" stroke="#c9d1dc" stroke-width="1.2" x="250" y="250" width="150" height="56" rx="8"/>
+      <text fill="#18212c" font-size="13" font-weight="600" x="325" y="274" text-anchor="middle">TikTok đăng nhập</text>
+      <text fill="#5b6676" font-size="11" x="325" y="292" text-anchor="middle">OAuth, cho phép app</text>
+
+      <rect fill="#ffffff" stroke="#c9d1dc" stroke-width="1.2" x="250" y="430" width="150" height="56" rx="8"/>
+      <text fill="#18212c" font-size="13" font-weight="600" x="325" y="454" text-anchor="middle">GitHub</text>
+      <text fill="#5b6676" font-size="11" x="325" y="472" text-anchor="middle">mã nguồn, install.sh</text>
+
+      <!-- iPad <-> Internet -->
+      <path stroke="#18212c" stroke-width="1.4" fill="none" d="M182 98 H248" marker-start="url(#ah)" marker-end="url(#ah)"/>
+      <text fill="#18212c" font-size="11" x="215" y="90" text-anchor="middle">chat</text>
+
+      <path stroke="#18212c" stroke-width="1.4" fill="none" d="M180 205 H473" marker-end="url(#ah)"/>
+      <text fill="#18212c" font-size="11" x="325" y="197" text-anchor="middle">mở giao diện n8n</text>
+
+      <path stroke="#18212c" stroke-width="1.4" fill="none" d="M180 226 L248 262" marker-end="url(#ah)"/>
+
+      <path stroke="#18212c" stroke-width="1.4" fill="none" d="M180 338 H458" marker-end="url(#ah)"/>
+      <text fill="#18212c" font-size="11" x="325" y="330" text-anchor="middle">SSH :22 · lệnh cài</text>
+
+      <path stroke="#18212c" stroke-width="1.4" fill="none" d="M400 458 H458" marker-end="url(#ah)"/>
+      <text fill="#18212c" font-size="11" x="429" y="450" text-anchor="middle">git clone</text>
+
+      <!-- Internet -> VPS -->
+      <path stroke="#18212c" stroke-width="1.4" fill="none" d="M402 110 H473" marker-end="url(#ah)"/>
+      <text fill="#18212c" font-size="11" x="437" y="128" text-anchor="middle">webhook</text>
+
+      <path stroke="#18212c" stroke-width="1.4" fill="none" d="M400 278 H473" marker-end="url(#ah)"/>
+      <text fill="#18212c" font-size="11" x="437" y="270" text-anchor="middle">redirect</text>
+
+      <!-- n8n -> Telegram Bot API (outbound) -->
+      <path stroke="#18212c" stroke-width="1.4" fill="none" d="M640 75 V22 H420 V90 H402" marker-end="url(#ah)"/>
+      <text fill="#18212c" font-size="11" x="530" y="16" text-anchor="middle">gửi tin · ảnh · video</text>
+
+      <!-- Caddy gateway -->
+      <rect fill="#1d6fb8" x="475" y="80" width="44" height="510" rx="8"/>
+      <text fill="#ffffff" font-size="12" font-weight="600" transform="translate(502 335) rotate(-90)" text-anchor="middle">Caddy · HTTPS :443 · &lt;ip&gt;.sslip.io</text>
+
+      <!-- n8n -->
+      <rect fill="#ffffff" stroke="#c9d1dc" stroke-width="1.2" x="555" y="80" width="170" height="340" rx="10"/>
+      <text fill="#18212c" font-size="13" font-weight="600" x="640" y="104" text-anchor="middle">n8n · điều phối</text>
+      <text fill="#18212c" font-size="12" x="571" y="136">Nhận webhook Telegram</text>
+      <text fill="#18212c" font-size="12" x="571" y="174">Phân loại tin nhắn</text>
+      <text fill="#18212c" font-size="12" x="571" y="212">Lịch 06:30 · 07:00</text>
+      <text fill="#18212c" font-size="12" x="571" y="250">Gọi worker</text>
+      <text fill="#18212c" font-size="12" x="571" y="288">Lặp bước dài /continue</text>
+      <text fill="#18212c" font-size="12" x="571" y="326">Tải file từ worker</text>
+      <text fill="#18212c" font-size="12" x="571" y="364">Gửi tin · ảnh · video</text>
+      <text fill="#5b6676" font-size="11" font-family="Menlo, Consolas, monospace" x="571" y="400">workflow TikTokAgent0001</text>
+
+      <path stroke="#18212c" stroke-width="1.4" fill="none" d="M519 120 H553" marker-end="url(#ah)"/>
+
+      <!-- n8n <-> worker -->
+      <path stroke="#18212c" stroke-width="1.4" fill="none" d="M725 160 H793" marker-end="url(#ah)"/>
+      <text fill="#18212c" font-size="11" x="760" y="152" text-anchor="middle">gọi API</text>
+      <path stroke="#18212c" stroke-width="1.4" fill="none" d="M795 200 H727" marker-end="url(#ah)"/>
+      <text fill="#18212c" font-size="11" x="760" y="218" text-anchor="middle">kết quả</text>
+
+      <!-- Caddy -> worker (TikTok callback) -->
+      <path stroke="#18212c" stroke-width="1.4" fill="none" d="M519 452 H793" marker-end="url(#ah)"/>
+      <text fill="#18212c" font-size="11" x="656" y="444" text-anchor="middle">/tiktok/callback</text>
+
+      <!-- Data -->
+      <rect fill="#ffffff" stroke="#c9d1dc" stroke-width="1.2" x="555" y="480" width="170" height="110" rx="10"/>
+      <text fill="#18212c" font-size="13" font-weight="600" x="640" y="503" text-anchor="middle">Ổ dữ liệu</text>
+      <text fill="#18212c" font-size="12" x="571" y="527">tiktok.db · SQLite</text>
+      <text fill="#18212c" font-size="12" x="571" y="549">videos/ · clips/</text>
+      <text fill="#18212c" font-size="12" x="571" y="571">.env · khoá bí mật</text>
+
+      <path stroke="#18212c" stroke-width="1.4" fill="none" d="M795 535 H727" marker-start="url(#ah)" marker-end="url(#ah)"/>
+      <text fill="#18212c" font-size="11" x="760" y="527" text-anchor="middle">đọc/ghi</text>
+
+      <!-- worker -->
+      <rect fill="#ffffff" stroke="#c9d1dc" stroke-width="1.2" x="795" y="80" width="165" height="510" rx="10"/>
+      <text fill="#18212c" font-size="13" font-weight="600" x="877" y="104" text-anchor="middle">worker · Python</text>
+      <rect fill="#f4f6f8" stroke="#c9d1dc" x="807" y="116" width="141" height="40" rx="6"/><text fill="#18212c" font-size="12" x="817" y="133">worker.py</text><text fill="#5b6676" font-size="11" x="817" y="148">API cho n8n</text>
+      <rect fill="#f4f6f8" stroke="#c9d1dc" x="807" y="164" width="141" height="40" rx="6"/><text fill="#18212c" font-size="12" x="817" y="181">series.py</text><text fill="#5b6676" font-size="11" x="817" y="196">kế hoạch, kịch bản</text>
+      <rect fill="#f4f6f8" stroke="#c9d1dc" x="807" y="212" width="141" height="40" rx="6"/><text fill="#18212c" font-size="12" x="817" y="229">content.py</text><text fill="#5b6676" font-size="11" x="817" y="244">gọi Claude</text>
+      <rect fill="#f4f6f8" stroke="#c9d1dc" x="807" y="260" width="141" height="40" rx="6"/><text fill="#18212c" font-size="12" x="817" y="277">budget.py</text><text fill="#5b6676" font-size="11" x="817" y="292">duyệt ngân sách</text>
+      <rect fill="#f4f6f8" stroke="#c9d1dc" x="807" y="308" width="141" height="40" rx="6"/><text fill="#18212c" font-size="12" x="817" y="325">manual_clips.py</text><text fill="#5b6676" font-size="11" x="817" y="340">nhận clip Flow</text>
+      <rect fill="#f4f6f8" stroke="#c9d1dc" x="807" y="356" width="141" height="40" rx="6"/><text fill="#18212c" font-size="12" x="817" y="373">ai_video.py</text><text fill="#5b6676" font-size="11" x="817" y="388">clip AI tự động</text>
+      <rect fill="#f4f6f8" stroke="#c9d1dc" x="807" y="404" width="141" height="40" rx="6"/><text fill="#18212c" font-size="12" x="817" y="421">video.py</text><text fill="#5b6676" font-size="11" x="817" y="436">FFmpeg, phụ đề</text>
+      <rect fill="#f4f6f8" stroke="#c9d1dc" x="807" y="452" width="141" height="40" rx="6"/><text fill="#18212c" font-size="12" x="817" y="469">publisher.py</text><text fill="#5b6676" font-size="11" x="817" y="484">đăng TikTok</text>
+      <rect fill="#f4f6f8" stroke="#c9d1dc" x="807" y="500" width="141" height="40" rx="6"/><text fill="#18212c" font-size="12" x="817" y="517">scraper.py</text><text fill="#5b6676" font-size="11" x="817" y="532">quét đối thủ</text>
+
+      <!-- External services -->
+      <rect fill="#ffffff" stroke="#c9d1dc" stroke-width="1.2" x="1030" y="212" width="150" height="40" rx="8"/><text fill="#18212c" font-size="13" font-weight="600" x="1105" y="237" text-anchor="middle">Claude API</text>
+      <path stroke="#b26b00" stroke-width="1.4" fill="none" stroke-dasharray="5 4" d="M960 232 H1028" marker-end="url(#ahp)"/><text fill="#b26b00" font-size="11" x="995" y="224" text-anchor="middle">viết</text>
+
+      <rect fill="#ffffff" stroke="#b26b00" stroke-width="1.2" stroke-dasharray="5 4" x="1030" y="356" width="150" height="40" rx="8"/><text fill="#18212c" font-size="13" font-weight="600" x="1105" y="374" text-anchor="middle">Gemini API</text><text fill="#b26b00" font-size="11" x="1105" y="389" text-anchor="middle">tuỳ chọn</text>
+      <path stroke="#b26b00" stroke-width="1.4" fill="none" stroke-dasharray="5 4" d="M960 376 H1028" marker-end="url(#ahp)"/><text fill="#b26b00" font-size="11" x="995" y="368" text-anchor="middle">clip AI</text>
+
+      <rect fill="#ffffff" stroke="#c9d1dc" stroke-width="1.2" x="1030" y="404" width="150" height="40" rx="8"/><text fill="#18212c" font-size="13" font-weight="600" x="1105" y="429" text-anchor="middle">edge-tts</text>
+      <path stroke="#18212c" stroke-width="1.4" fill="none" d="M960 424 H1028" marker-end="url(#ah)"/><text fill="#18212c" font-size="11" x="995" y="416" text-anchor="middle">giọng</text>
+
+      <rect fill="#ffffff" stroke="#c9d1dc" stroke-width="1.2" x="1030" y="452" width="150" height="40" rx="8"/><text fill="#18212c" font-size="13" font-weight="600" x="1105" y="477" text-anchor="middle">TikTok API</text>
+      <path stroke="#18212c" stroke-width="1.4" fill="none" d="M960 472 H1028" marker-end="url(#ah)"/><text fill="#18212c" font-size="11" x="995" y="464" text-anchor="middle">đăng</text>
+
+      <rect fill="#ffffff" stroke="#c9d1dc" stroke-width="1.2" x="1030" y="500" width="150" height="40" rx="8"/><text fill="#18212c" font-size="13" font-weight="600" x="1105" y="525" text-anchor="middle">Apify</text>
+      <path stroke="#b26b00" stroke-width="1.4" fill="none" stroke-dasharray="5 4" d="M960 520 H1028" marker-end="url(#ahp)"/><text fill="#b26b00" font-size="11" x="995" y="512" text-anchor="middle">quét</text>
+
+      <!-- Legend -->
+      <text fill="#5b6676" font-size="11" font-weight="600" letter-spacing="0.9" x="1030" y="88">CHÚ THÍCH</text>
+      <path stroke="#18212c" stroke-width="1.4" fill="none" d="M1030 110 H1070" marker-end="url(#ah)"/><text fill="#5b6676" font-size="11" x="1078" y="114">miễn phí</text>
+      <path stroke="#b26b00" stroke-width="1.4" fill="none" stroke-dasharray="5 4" d="M1030 136 H1070" marker-end="url(#ahp)"/><text fill="#b26b00" font-size="11" x="1078" y="140">có phí: qua</text>
+      <text fill="#b26b00" font-size="11" x="1078" y="155">budget.py, cần duyệt</text>
+      <rect fill="#1d6fb8" x="1030" y="170" width="14" height="14" rx="3"/><text fill="#5b6676" font-size="11" x="1052" y="181">cổng vào HTTPS</text>
+    </svg>
