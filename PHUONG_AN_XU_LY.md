@@ -39,6 +39,128 @@ luôn tích cực và giáo dục. Yêu cầu:
  Google Flow (tay, miễn phí) ── tạo clip 8 giây ──► gửi vào Telegram ──► worker nhận clip
 ```
 
+### Sơ đồ kiến trúc chi tiết
+
+```mermaid
+flowchart LR
+    subgraph IPAD["Bạn · iPad"]
+        TG["Telegram<br/>duyệt · gửi clip"]
+        SAF["Safari<br/>n8n · đăng nhập TikTok"]
+        TER["Termius<br/>cài đặt, sửa .env"]
+        FLOW["Google Flow<br/>tạo clip 8 giây"]
+    end
+
+    subgraph NET["Internet"]
+        BOT["Telegram Bot API"]
+        TTL["TikTok đăng nhập<br/>OAuth"]
+        GH["GitHub<br/>mã nguồn, install.sh"]
+    end
+
+    subgraph VPS["VPS Contabo · Ubuntu 24.04 · Docker Compose"]
+        CADDY["Caddy<br/>HTTPS :443<br/>&lt;ip&gt;.sslip.io"]
+        N8N["n8n · điều phối<br/>webhook Telegram · phân loại tin<br/>lịch 06:30 / 07:00 · lặp /continue<br/>gửi tin · ảnh · video"]
+        subgraph WORKER["worker · Python FastAPI"]
+            W_API["worker.py<br/>API cho n8n"]
+            W_SER["series.py<br/>kế hoạch, kịch bản"]
+            W_CON["content.py<br/>gọi Claude"]
+            W_BUD["budget.py<br/>duyệt ngân sách"]
+            W_MAN["manual_clips.py<br/>nhận clip Flow"]
+            W_AIV["ai_video.py<br/>clip AI tự động"]
+            W_VID["video.py<br/>FFmpeg, phụ đề"]
+            W_PUB["publisher.py<br/>đăng TikTok"]
+            W_SCR["scraper.py<br/>quét đối thủ"]
+        end
+        DATA[("Ổ dữ liệu<br/>tiktok.db SQLite<br/>videos/ · clips/<br/>.env khoá bí mật")]
+    end
+
+    subgraph EXT["Dịch vụ ngoài"]
+        CLAUDE["Claude API"]
+        GEM["Gemini API<br/>tuỳ chọn"]
+        TTS["edge-tts"]
+        TTAPI["TikTok API"]
+        APIFY["Apify"]
+    end
+
+    FLOW -- "tải clip, gửi vào chat" --> TG
+    TG <-- "chat" --> BOT
+    SAF -- "mở giao diện n8n" --> CADDY
+    SAF -- "đăng nhập" --> TTL
+    TER -- "SSH :22 · lệnh cài" --> VPS
+    GH -- "git clone" --> VPS
+
+    BOT -- "webhook + secret" --> CADDY
+    TTL -- "redirect ?code" --> CADDY
+    CADDY -- "/webhook, giao diện" --> N8N
+    CADDY -- "/tiktok/callback" --> W_API
+    N8N -- "gửi tin · ảnh · video" --> BOT
+
+    N8N -- "gọi API + X-Worker-Token" --> W_API
+    W_API -- "kết quả: messages + next" --> N8N
+    W_API <-- "đọc/ghi" --> DATA
+
+    W_CON -. "viết (có phí)" .-> CLAUDE
+    W_AIV -. "clip AI (có phí)" .-> GEM
+    W_SCR -. "quét (có phí)" .-> APIFY
+    W_VID -- "giọng đọc" --> TTS
+    W_PUB -- "đăng" --> TTAPI
+
+    classDef paid stroke:#b26b00,stroke-dasharray:5 4
+    classDef gate fill:#1d6fb8,color:#fff,stroke:#1d6fb8
+    class CLAUDE,GEM,APIFY paid
+    class CADDY gate
+```
+
+**Cách đọc sơ đồ:**
+- Mọi thứ từ Internet vào VPS đều đi qua **Caddy** (HTTPS).
+- **n8n** là nơi duy nhất nói chuyện với Telegram; **worker** là nơi duy nhất gọi Claude, Apify, TikTok, Gemini.
+- Đường **nét đứt** là dịch vụ có phí: worker hỏi `budget.py` trước, vượt hạn mức thì bot xin bạn duyệt trên Telegram.
+- worker chỉ nằm trong mạng nội bộ Docker (`http://worker:8000`), không mở ra Internet.
+
+### Luồng một ngày
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant B as Bạn (Telegram)
+    participant N as n8n
+    participant W as worker
+    participant C as Claude
+    participant F as Google Flow
+    participant T as TikTok
+    N->>W: 07:00 /scheduled/daily
+    W->>C: viết kịch bản ngày tiếp theo
+    W-->>N: tin kịch bản + nút
+    N-->>B: Kịch bản ngày N
+    B->>N: Duyệt
+    N->>W: /tg/button
+    W-->>B: prompt từng cảnh (qua n8n)
+    B->>F: tạo clip 8 giây
+    B->>N: trả lời "Cảnh N" kèm clip
+    N->>W: /tg/clip
+    W-->>B: khung cuối cho cảnh sau (qua n8n)
+    W->>W: đủ clip → ghép video (edge-tts + FFmpeg)
+    W-->>B: video để duyệt (qua n8n)
+    B->>N: Duyệt video
+    N->>W: /tg/button
+    W->>T: đẩy video vào hộp nháp
+    B->>T: mở app TikTok, bấm Đăng
+```
+
+### Các kết nối và cách bảo vệ
+
+| Từ | Đến | Đường đi | Bảo vệ |
+|---|---|---|---|
+| Telegram Bot API | n8n | `https://<ip>.sslip.io/webhook/telegram` qua Caddy | Secret token trong header; chỉ nhận lệnh từ Chat ID của bạn |
+| n8n | Telegram Bot API | HTTPS ra ngoài | Token bot trong `.env` |
+| n8n | worker | Mạng nội bộ Docker `http://worker:8000` | Header `X-Worker-Token` |
+| TikTok đăng nhập | worker | `/tiktok/callback` qua Caddy | Mã `state` dùng một lần |
+| worker | Claude, Apify, Gemini | HTTPS ra ngoài | Khoá trong `.env`; cổng duyệt ngân sách |
+| worker | TikTok API | HTTPS, upload file video | Token riêng từng kênh trong SQLite |
+| Bạn (Safari) | n8n | `https://<ip>.sslip.io` | Tài khoản quản trị n8n |
+| Bạn (Termius) | VPS | SSH cổng 22 | Mật khẩu root Contabo |
+
+### Vai trò từng thành phần
+
 | Thành phần | Vai trò | Vì sao chọn |
 |---|---|---|
 | **n8n** 2.44.6 | Lịch chạy 06:30 / 07:00, nhận webhook Telegram, gửi tin/ảnh/video, gọi worker | Theo yêu cầu; xem và chỉnh luồng trực quan trên iPad |
