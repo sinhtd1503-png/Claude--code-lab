@@ -1,6 +1,6 @@
 # Tiến độ dự án — TikTok Content Agent
 
-_Cập nhật: 11/11/2026_
+_Cập nhật: 13/11/2026_
 
 ## 🎯 Mục tiêu dự án
 
@@ -76,6 +76,16 @@ Xây agent tự động cho kênh TikTok ngách **tuổi thơ, kỷ niệm gia �
 - Điền `TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET` vào `/opt/tiktok-agent/.env` → chạy lại lệnh cài → Telegram `/tiktok` → cho phép → `/trangthai`
 - Đăng công khai thẳng: Production → Submit for review; sau khi duyệt dùng khoá Production và đổi `post_mode: direct`
 
+### 12–13/11/2026 — Đã test full luồng; đổi hướng theo kênh mẫu @kyuc.tuoitho.8x9x
+- Chủ kênh đã **cài xong trên VPS Contabo và test full luồng** (kế hoạch → kịch bản → clip → video → TikTok Sandbox). Nội dung và kênh quét chưa đúng ý → đổi hướng theo kênh mẫu **@kyuc.tuoitho.8x9x**
+- Kênh mẫu (theo mô tả của chủ kênh; TikTok chặn công cụ đọc tự động nên chưa xem trực tiếp được): clip AI chuyển động, **giọng đọc + nhạc nền**, phụ đề theo lời đọc, **15–30 giây**
+- **Nội dung:** ngách đổi thành "Ký ức tuổi thơ 8x 9x": mỗi video là MỘT ký ức cụ thể (trò chơi, quà vặt, đồ vật, trường lớp, Tết, làng quê, gia đình), kể bằng chi tiết giác quan, kết bằng cảm xúc ấm áp; vẫn tích cực
+- **Kênh mẫu được ưu tiên:** `reference_channels` trong `config.yaml`; khi lập kế hoạch, video của kênh mẫu được phân tích riêng và ưu tiên. Bỏ 2 kênh hoạt hình khỏi danh sách tham khảo
+- **Mô tả phong cách** (`niche.style_reference`) đưa vào mọi prompt; sửa ngay trên Telegram bằng `/phongcach`
+- **Độ dài:** 3 cảnh × 8 giây ≈ 22–26 giây
+- **Nhạc nền:** gửi file mp3/m4a vào chat → lưu thư viện `data/music`; mỗi video xoay vòng 1 bài, nhạc tự nhỏ lại khi có giọng đọc, fade đầu/cuối; `/nhac` xem và xoá
+- Đã kiểm thử trong Docker: lọc kênh mẫu, prompt, ghép video có nhạc (có/không ducking), nhận/xoá nhạc, `/phongcach`, n8n chuyển file nhạc tới worker
+
 ## 🧭 Các quyết định quan trọng
 
 | Vấn đề | Quyết định | Lý do |
@@ -98,7 +108,7 @@ Xây agent tự động cho kênh TikTok ngách **tuổi thơ, kỷ niệm gia �
 
 ## 🐞 Lỗi / vấn đề còn tồn tại
 
-1. **Chưa chạy trên VPS thật và Telegram/Claude thật với bản n8n**: VPS Contabo đã thuê, chưa chạy lệnh cài.
+1. **Phong cách kênh mẫu mới dựa trên mô tả**, chưa đối chiếu trực tiếp với video mẫu; cần chủ kênh xem kết quả và chỉnh bằng `/phongcach`.
 2. **Vẫn còn bước làm tay mỗi ngày:** tạo 3–4 clip trên Google Flow (~5 phút). Tự động hoàn toàn chỉ có qua Gemini API trả phí (key hiện chưa có quyền model video).
 3. **Đăng TikTok chưa chạy thật:** cần tạo app, thêm tài khoản vào Sandbox, kết nối bằng `/tiktok`. `direct` chỉ đăng riêng tư tới khi app qua audit.
 4. **edge-tts lỗi theo đợt** ("No audio was received") — đã có thử lại + nút 🔁 Thử lại trên Telegram.
@@ -106,10 +116,7 @@ Xây agent tự động cho kênh TikTok ngách **tuổi thơ, kỷ niệm gia �
 
 ## 📋 Các bước cần cấu hình tiếp
 
-1. **Kết nối VPS Contabo** (Bước 2): Termius → New Host (IP trong email, user `root`, mật khẩu root).
-2. **Cài hệ thống** (Bước 3): chạy `deploy/install.sh`, dán khoá Telegram, Claude, Apify; chờ `✅ XONG!` + `Telegram: OK`. Gửi IP để kiểm tra từ bên ngoài.
-3. **Kích hoạt bot** (Bước 4): `/start` lấy Chat ID → điền `TELEGRAM_CHAT_ID` trong `.env` → chạy lại lệnh cài.
-4. **Tạo tài khoản quản trị n8n** (Bước 5) tại `https://<ip-gạch-ngang>.sslip.io`.
-5. **Chạy thử 1 vòng** (Bước 6): `/kehoach` → duyệt → `/kichban` → 4 clip Google Flow → duyệt video.
-6. **Kết nối TikTok** (Bước 7) theo ghi chú cấu hình ở trên; đăng thử vào hộp nháp.
-7. Nhớ **huỷ hoặc gia hạn Contabo** trước ngày hết kỳ 1 tháng.
+1. **Cập nhật VPS** (nạp lại workflow n8n để nhận file nhạc): `curl -fsSL https://raw.githubusercontent.com/sinhtd1503-png/Claude--code-lab/main/deploy/install.sh | UPDATE_WORKFLOW=1 bash`
+2. **Thêm 3–5 bài nhạc không bản quyền** (YouTube Audio Library, Pixabay Music) bằng cách gửi file vào chat bot; kiểm tra `/nhac`.
+3. **Kiểm tra `/phongcach`**, chỉnh mô tả cho sát kênh mẫu → `/kehoach` để lập kế hoạch mới → duyệt → `/kichban` → làm 1 video để so với kênh mẫu.
+4. Huỷ hoặc gia hạn Contabo trước ngày hết kỳ 1 tháng.

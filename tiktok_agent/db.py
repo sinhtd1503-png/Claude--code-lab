@@ -59,13 +59,21 @@ class DB:
         self.conn.commit()
         return len(videos)
 
-    def top_videos(self, since_ts: int, limit: int) -> list[dict]:
+    def top_videos(self, since_ts: int, limit: int, authors: list[str] | None = None,
+                   exclude: list[str] | None = None) -> list[dict]:
         # Engagement score: weight actions that signal strong emotional resonance.
+        where, args = ["created_at >= ?"], [since_ts]
+        if authors is not None:
+            where.append(f"lower(author) IN ({','.join('?' * len(authors)) or 'NULL'})")
+            args += [a.lower() for a in authors]
+        if exclude:
+            where.append(f"lower(author) NOT IN ({','.join('?' * len(exclude))})")
+            args += [a.lower() for a in exclude]
         rows = self.conn.execute(
-            """SELECT *, (likes + 3*comments + 4*shares + 4*saves) AS score
-               FROM competitor_videos WHERE created_at >= ?
+            f"""SELECT *, (likes + 3*comments + 4*shares + 4*saves) AS score
+               FROM competitor_videos WHERE {' AND '.join(where)}
                ORDER BY score DESC LIMIT ?""",
-            (since_ts, limit),
+            (*args, limit),
         ).fetchall()
         out = []
         for r in rows:

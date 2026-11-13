@@ -36,17 +36,18 @@ class SeriesBible(BaseModel):
 class DayIdea(BaseModel):
     day: int = Field(description="Số thứ tự ngày, từ 1")
     title: str = Field(description="Tiêu đề ngắn, tiếng Việt")
-    theme: str = Field(description="Một trong: 'Tuổi thơ 8x 9x' | 'Nề nếp gia đình' | 'Chân – thiện – mỹ' | "
-                                   "'Tình thân' | 'Trân quý hiện tại'")
-    hook: str = Field(description="Câu mở đầu 1–2 giây, gợi nhớ mạnh")
-    story: str = Field(description="Tóm tắt câu chuyện 1–2 câu, xảy ra với các nhân vật trong series")
-    lesson: str = Field(description="Thông điệp tích cực, nhẹ nhàng, không giáo điều")
+    theme: str = Field(description="Đúng một trụ cột nội dung trong danh sách được cho")
+    hook: str = Field(description="Câu mở đầu 1–2 giây, gợi nhớ mạnh (kiểu 'Ai còn nhớ…', 'Ngày ấy…')")
+    story: str = Field(description="MỘT ký ức cụ thể (đồ vật/trò chơi/món ăn/khoảnh khắc) và cách các nhân vật "
+                                   "trong series sống lại ký ức đó, 1–2 câu")
+    lesson: str = Field(description="Cảm xúc / thông điệp đọng lại ở cuối, tích cực, nhẹ nhàng, không giáo điều")
     characters: list[str] = Field(description="Tên các nhân vật xuất hiện (lấy đúng tên trong bible)")
     why_it_works: str = Field(description="Dựa trên pattern nào của đối thủ")
 
 
 class MonthPlan(BaseModel):
-    patterns: list[str] = Field(description="5–8 pattern nội dung/hook/nhịp đang hiệu quả ở đối thủ")
+    patterns: list[str] = Field(description="5–8 pattern về hook, nhịp, cách kể, hình ảnh, âm thanh, caption "
+                                            "đang hiệu quả — ưu tiên rút ra từ kênh mẫu")
     top_hashtags: list[str] = Field(description="Hashtag nên dùng, không có dấu #")
     bible: SeriesBible
     days: list[DayIdea] = Field(description="Đúng số ngày yêu cầu, chủ đề xen kẽ, không trùng lặp")
@@ -74,42 +75,59 @@ class SeriesScript(BaseModel):
 # ---------- prompts ----------
 
 def system_prompt(niche: dict) -> str:
+    pillars = niche.get("pillars") or ["Tuổi thơ 8x 9x", "Gia đình", "Làng quê", "Trường lớp", "Tết"]
+    style = (niche.get("style_reference") or "").strip()
     return f"""Bạn là biên kịch và chiến lược gia nội dung cho một kênh TikTok tiếng Việt.
 
 Ngách: {niche['name']}
 Mô tả: {niche['description']}
 Khán giả: {niche['audience']}
 Giọng điệu: {niche['tone']}
+Trụ cột nội dung: {' | '.join(pillars)}
+
+Phong cách trình bày phải theo sát kênh mẫu (hình ảnh, nhịp, cách kể, âm thanh, chữ trên màn hình):
+<style_reference>
+{style or 'Video hoài niệm ngắn, clip AI chuyển động, giọng đọc kể chuyện + nhạc nền nhẹ, phụ đề theo lời đọc.'}
+</style_reference>
 
 Giá trị cốt lõi của kênh:
-- Trân trọng tuổi thơ thế hệ 8x 9x, nề nếp gia đình, sự hiếu thảo, chân – thiện – mỹ đang dần bị lãng quên.
-- Mỗi video gieo một điều tốt đẹp: biết ơn cha mẹ, thương anh chị em, lễ phép, tiết kiệm, chia sẻ, trung thực.
-- Kết thúc bằng một thông điệp tích cực, nhẹ nhàng, giúp người xem trân quý hiện tại; không giáo điều, không so sánh
-  chê bai thế hệ trẻ hay cuộc sống hiện đại.
+- Mỗi video đánh thức MỘT ký ức tuổi thơ 8x 9x thật cụ thể, bằng chi tiết giác quan (âm thanh, mùi vị, cảm giác
+  trên tay, ánh nắng, tiếng gọi) để người xem thốt lên "đúng rồi, ngày xưa mình cũng vậy".
+- Luôn tích cực và tử tế: tình thân, sự hồn nhiên, lễ phép, biết ơn, sẻ chia; kết bằng một cảm xúc ấm áp giúp người
+  xem trân quý gia đình và hiện tại. Không giáo điều, không chê bai thế hệ trẻ hay cuộc sống hiện đại.
 
 Nguyên tắc:
-- Học từ dữ liệu đối thủ để hiểu VÌ SAO nội dung hiệu quả, nhưng luôn viết câu chuyện và lời văn hoàn toàn mới;
-  không chép caption, kịch bản hay nhân vật của họ.
+- Học kênh mẫu và đối thủ để hiểu VÌ SAO họ hiệu quả và bắt chước CÁCH TRÌNH BÀY; luôn viết câu chuyện, lời văn,
+  nhân vật hoàn toàn mới; không chép caption, kịch bản, câu chữ hay nhân vật của họ.
 - Không bịa số liệu, không giả danh người thật, không clickbait sai sự thật, không chính trị, không cảnh nguy hiểm
-  hay bạo lực với trẻ em, không quảng cáo sản phẩm.
-- Video là phim ngắn dựng bằng AI: 3–4 clip 8 giây + giọng đọc + phụ đề, các nhân vật và bối cảnh cố định trong suốt
-  series để người xem nhận ra "gia đình" của kênh."""
+  hay bạo lực với trẻ em, không quảng cáo sản phẩm, không nhắc tên thương hiệu thật.
+- Video là phim ngắn dựng bằng AI: vài clip 8 giây + giọng đọc + nhạc nền + phụ đề; nhân vật và bối cảnh cố định
+  trong suốt series để người xem nhận ra "gia đình" của kênh."""
+
+
+def _compact(videos: list[dict]) -> list[dict]:
+    return [{"author": v["author"], "caption": v["caption"][:300], "hashtags": v["hashtags"][:8],
+             "music": (v.get("music") or "")[:80], "plays": v["plays"], "likes": v["likes"],
+             "comments": v["comments"], "shares": v["shares"], "saves": v["saves"], "duration": v["duration"]}
+            for v in videos]
 
 
 def make_plan(niche: dict, videos: list[dict], recent_titles: list[str], days: int,
-              feedback: str | None = None, previous: dict | None = None) -> MonthPlan:
-    compact = [
-        {"author": v["author"], "caption": v["caption"][:300], "hashtags": v["hashtags"][:8],
-         "plays": v["plays"], "likes": v["likes"], "comments": v["comments"],
-         "shares": v["shares"], "saves": v["saves"], "duration": v["duration"]}
-        for v in videos
-    ]
+              feedback: str | None = None, previous: dict | None = None,
+              reference: list[dict] | None = None) -> MonthPlan:
+    compact = _compact(videos)
+    ref = _compact(reference or [])
     parts = []
+    if ref:
+        parts.append("KÊNH MẪU — video hiệu quả nhất gần đây (JSON). Đây là phong cách cần theo sát nhất: "
+                     "phân tích kỹ hook, độ dài, cách đặt caption, hashtag, loại nhạc, chủ đề ký ức nào được "
+                     f"tương tác cao:\n<reference_videos>\n{json.dumps(ref, ensure_ascii=False)}\n</reference_videos>")
     if compact:
-        parts.append("Video hiệu quả nhất gần đây của các kênh đối thủ (JSON):\n"
+        parts.append("Video hiệu quả nhất gần đây của các kênh tham khảo khác (JSON):\n"
                      f"<videos>\n{json.dumps(compact, ensure_ascii=False)}\n</videos>")
-    else:
-        parts.append("Chưa có dữ liệu đối thủ lần này; hãy dựa trên hiểu biết của bạn về các kênh hoài niệm 8x 9x.")
+    if not compact and not ref:
+        parts.append("Chưa có dữ liệu đối thủ lần này; hãy dựa trên phong cách kênh mẫu mô tả ở trên và hiểu biết "
+                     "của bạn về các kênh hoài niệm 8x 9x.")
     parts.append("Các tiêu đề kênh đã làm (tránh trùng):\n"
                  f"<recent>\n{json.dumps(recent_titles, ensure_ascii=False)}\n</recent>")
     if previous:
@@ -119,10 +137,11 @@ def make_plan(niche: dict, videos: list[dict], recent_titles: list[str], days: i
         parts.append(f"Góp ý của chủ kênh, bắt buộc làm theo:\n<feedback>\n{feedback}\n</feedback>")
     parts.append(
         f"Hãy: (1) rút ra pattern hiệu quả; (2) tạo series bible cho một gia đình Việt Nam cố định dùng suốt {days} ngày; "
-        f"(3) lên kế hoạch ĐÚNG {days} ngày, mỗi ngày một câu chuyện riêng với chính các nhân vật này, "
-        "xen kẽ các chủ đề, mỗi ngày một bài học tốt đẹp khác nhau. Viết ngắn gọn."
+        f"(3) lên kế hoạch ĐÚNG {days} ngày, mỗi ngày MỘT ký ức tuổi thơ cụ thể khác nhau, sống lại qua chính các "
+        "nhân vật này; xoay vòng đều các trụ cột nội dung; mỗi ngày kết bằng một cảm xúc ấm áp khác nhau. "
+        "style_en của bible phải mô tả đúng phong cách hình ảnh của kênh mẫu. Viết ngắn gọn."
     )
-    log.info("Claude: lập kế hoạch %d ngày (%d video đối thủ)…", days, len(compact))
+    log.info("Claude: lập kế hoạch %d ngày (%d video kênh mẫu, %d video tham khảo)…", days, len(ref), len(compact))
     return _parse(system_prompt(niche), "\n\n".join(parts), MonthPlan, effort="medium", max_tokens=32000)
 
 
@@ -134,7 +153,8 @@ def write_script(niche: dict, bible: dict, idea: dict, patterns: list[str], scen
         f"Series bible (nhân vật và bối cảnh cố định — dùng đúng tên):\n<bible>\n{json.dumps(bible, ensure_ascii=False)}\n</bible>",
         f"Kịch bản gồm ĐÚNG {scenes} cảnh. Mỗi cảnh là MỘT clip video AI {clip_sec} giây nên lời đọc mỗi cảnh chỉ "
         f"15–19 từ. Các cảnh nối tiếp nhau liền mạch về thời gian và không gian (cùng buổi, cùng nơi, trang phục "
-        "không đổi): cảnh 1 = hook gợi nhớ, giữa = ký ức/diễn biến, cảnh cuối = nhận ra và thông điệp. "
+        "không đổi): cảnh 1 = hook gợi nhớ (kiểu 'Ai còn nhớ…'), giữa = sống lại ký ức bằng chi tiết giác quan, "
+        "cảnh cuối = cảm xúc đọng lại + câu chạm lòng. "
         "Hành động cuối của cảnh trước nối được với đầu cảnh sau.",
     ]
     if patterns:
@@ -148,7 +168,9 @@ def write_script(niche: dict, bible: dict, idea: dict, patterns: list[str], scen
     elif previous:
         parts.append("Chủ kênh muốn một phiên bản KHÁC hẳn (hook và cách kể khác), vẫn cùng ý tưởng:\n"
                      f"<previous>\n{json.dumps(previous, ensure_ascii=False)}\n</previous>")
-    parts.append("Lời văn tự nhiên như kể chuyện với người thân, câu ngắn, dễ đọc to.")
+    parts.append("Lời văn theo đúng giọng kể của kênh mẫu: tự nhiên như kể chuyện với bạn cùng thế hệ, câu ngắn, "
+                 "gợi hình, dễ đọc to. Caption ngắn, gợi nhớ, kết bằng câu hỏi gợi bình luận "
+                 "(vd 'Bạn còn nhớ không?').")
     log.info("Claude: viết kịch bản '%s'", idea.get("title"))
     return _parse(system_prompt(niche), "\n\n".join(parts), SeriesScript, effort="high")
 
@@ -163,7 +185,8 @@ def character_block(bible: dict, names: list[str]) -> str:
 
 def clip_prompt(bible: dict, scene: dict, index: int, total: int) -> str:
     parts = [
-        "Vertical 9:16 cinematic live-action shot, 8 seconds, part of a short nostalgic Vietnamese family film.",
+        "Vertical 9:16 cinematic live-action shot, 8 seconds, part of a short nostalgic film about a Vietnamese "
+        "1990s childhood memory.",
         f"Era and place: {bible.get('era', '')}.",
         f"Visual style (identical in every shot): {bible.get('style_en', '').rstrip('.')}.",
         f"Setting (same place in every shot): {bible.get('setting_en', '').rstrip('.')}.",

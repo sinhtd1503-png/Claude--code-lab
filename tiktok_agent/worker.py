@@ -22,6 +22,7 @@ import secrets
 import subprocess
 import threading
 import time
+import unicodedata
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -158,6 +159,8 @@ HELP = ("🤖 <b>Trợ lý kênh TikTok</b>\n\n"
         "/trangthai – xem tình trạng hệ thống\n"
         "/ngansach – chi phí tháng này\n"
         "/nhanvat – nhân vật cố định & prompt ảnh nhân vật\n"
+        "/nhac – thư viện nhạc nền (gửi file mp3 để thêm)\n"
+        "/phongcach – xem/sửa mô tả phong cách kênh mẫu\n"
         "/tiktok – kết nối tài khoản TikTok\n\n"
         "Mỗi sáng bot gửi 1 kịch bản. Duyệt → bot gửi prompt để tạo clip miễn phí → bạn gửi lại clip → "
         "bot ghép video và gửi để duyệt → duyệt xong bot đăng TikTok.")
@@ -225,7 +228,8 @@ def create_plan(feedback: str | None = None, previous: dict | None = None) -> di
                       resume={"action": "plan"})
     BUSY.add("plan")
     try:
-        competitors = [c for c in S["competitors"] if c]
+        refs = [c.lstrip("@") for c in (S.raw.get("reference_channels") or []) if c]
+        competitors = list(dict.fromkeys(refs + [c.lstrip("@") for c in (S["competitors"] or []) if c]))
         notes = []
         if S.apify_token and competitors:
             est = float(svc.get("apify", {}).get("est_scrape_usd", 0.5))
@@ -236,7 +240,8 @@ def create_plan(feedback: str | None = None, previous: dict | None = None) -> di
                 with LOCK:
                     DB_.upsert_videos(vids)
                     BUDGET.record("apify", est, f"{len(vids)} video")
-                notes.append(f"Đã quét {len(vids)} video của {len(competitors)} kênh đối thủ.")
+                notes.append(f"Đã quét {len(vids)} video của {len(competitors)} kênh (kênh mẫu: "
+                             f"{', '.join('@' + r for r in refs) or 'chưa đặt'}).")
             except httpx.HTTPError as e:
                 log.warning("Apify lỗi: %s", type(e).__name__)
                 notes.append("⚠️ Quét đối thủ lỗi lần này, dùng dữ liệu đã lưu.")
@@ -244,9 +249,14 @@ def create_plan(feedback: str | None = None, previous: dict | None = None) -> di
             notes.append("ℹ️ Chưa có APIFY_TOKEN → lập kế hoạch không có dữ liệu đối thủ mới.")
         with LOCK:
             since = now_ts() - S["scraper"]["lookback_days"] * 86400
-            top = DB_.top_videos(since, S["scraper"]["top_n_for_analysis"])
+            n = S["scraper"]["top_n_for_analysis"]
+            ref_top = DB_.top_videos(since, n, authors=refs) if refs else []
+            top = DB_.top_videos(since, max(5, n - len(ref_top)), exclude=refs)
             recent = DB_.recent_titles(60)
-        plan = series.make_plan(S["niche"], top, recent, PLAN_DAYS, feedback=feedback, previous=previous)
+        if refs and not ref_top:
+            notes.append("ℹ️ Chưa có dữ liệu video của kênh mẫu — dùng mô tả phong cách trong config.yaml.")
+        plan = series.make_plan(niche(), top, recent, PLAN_DAYS, feedback=feedback, previous=previous,
+                                reference=ref_top)
         data = plan.model_dump()
         with LOCK:
             cur = DB_.conn.execute("INSERT INTO plans (ts, status, data, feedback) VALUES (?, 'review', ?, ?)",
@@ -269,7 +279,7 @@ def plan_messages(pid: int) -> list[dict]:
     lines = [f"🗓 <b>Kế hoạch {len(d['days'])} ngày #KH{pid}</b>", "",
              f"🏡 <b>Gia đình xuyên suốt</b> ({esc(b['era'])}):"]
     lines += [f"• <b>{esc(c['name'])}</b> – {esc(c['role'])}" for c in b["characters"]]
-    lines += ["", "📈 <b>Điều đang hiệu quả ở đối thủ:</b>"] + [f"• {esc(x)}" for x in d["patterns"][:6]]
+    lines += ["", "📈 <b>Học từ kênh mẫu:</b>"] + [f"• {esc(x)}" for x in d["patterns"][:6]]
     lines += ["", "📅 <b>Lịch nội dung:</b>"]
     for day in d["days"]:
         lines.append(f"<b>{day['day']}.</b> {esc(day['title'])} <i>({esc(day['theme'])})</i> – {esc(day['lesson'])}")
@@ -308,7 +318,7 @@ def script_messages(cid: int) -> list[dict]:
 
 
 def _write(idea: dict, bible: dict, patterns: list[str], feedback=None, previous=None) -> tuple[dict, str]:
-    script = series.write_script(S["niche"], bible, idea, patterns, SCENES, CLIP_SEC, owner_notes(),
+    script = series.write_script(niche(), bible, idea, patterns, SCENES, CLIP_SEC, owner_notes(),
                                  feedback=feedback, previous=previous).model_dump()
     script["scenes"] = script["scenes"][:SCENES]
     caption = script["caption"] + "\n\n" + " ".join(f"#{h.lstrip('#')}" for h in script["hashtags"])
@@ -429,6 +439,108 @@ def _tg_download(file_id: str, dst: Path) -> None:
                 fh.write(chunk)
 
 
+# ---------------------------------------------------------------- channel style (editable from Telegram)
+
+def niche() -> dict:
+    """Niche from config.yaml, with the style description overridden by /phongcach if the owner set one."""
+    n = dict(S["niche"])
+    with LOCK:
+        custom = DB_.kv_get("style_reference")
+    if custom and custom.get("text"):
+        n["style_reference"] = custom["text"]
+    return n
+
+
+def style_cmd(text: str) -> dict:
+    new = text.partition(" ")[2].strip()
+    if new:
+        if len(new) < 20:
+            return reply(msg("Mô tả phong cách quá ngắn. Hãy viết cụ thể hình ảnh, giọng đọc, nhạc, chữ, độ dài…"))
+        with LOCK:
+            DB_.kv_set("style_reference", {"text": new[:3000], "ts": now_ts()})
+        return reply(msg("✅ Đã lưu phong cách mới. Áp dụng cho kịch bản tiếp theo; gõ /kehoach để lập lại "
+                         "kế hoạch theo phong cách này."))
+    cur = niche().get("style_reference") or "(chưa có)"
+    return reply(msg(f"🎨 <b>Phong cách kênh đang dùng:</b>\n\n{esc(cur)}\n\n"
+                     "Muốn sửa: gõ <code>/phongcach</code> + mô tả mới trong cùng một tin nhắn, ví dụ:\n"
+                     "<code>/phongcach Clip AI người thật, nắng chiều vàng, giọng nữ trầm ấm, nhạc piano nhẹ, "
+                     "câu mở đầu 'Ai còn nhớ…', 20 giây</code>"))
+
+
+# ---------------------------------------------------------------- background music library
+
+MUSIC_EXT = (".mp3", ".m4a", ".aac", ".ogg", ".wav")
+
+
+def music_dir() -> Path:
+    d = DATA / str(S.raw.get("video", {}).get("music_dir") or "music")
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def music_tracks() -> list[Path]:
+    return sorted(p for p in music_dir().iterdir() if p.is_file() and p.suffix.lower() in MUSIC_EXT)
+
+
+def pick_music(cid: int) -> str:
+    """Fixed track from config if set, else rotate through the library (one track per video)."""
+    fixed = str(S.raw.get("video", {}).get("background_music") or "")
+    if fixed and Path(fixed).exists():
+        return fixed
+    tracks = music_tracks()
+    return str(tracks[cid % len(tracks)]) if tracks else ""
+
+
+def _safe_name(name: str, ext: str) -> str:
+    stem = Path(name).stem.replace("đ", "d").replace("Đ", "D")
+    stem = unicodedata.normalize("NFKD", stem).encode("ascii", "ignore").decode()
+    stem = re.sub(r"[^A-Za-z0-9_-]+", "_", stem).strip("_")[:40] or f"nhac_{now_ts()}"
+    return stem + ext
+
+
+def receive_audio(body: dict) -> dict:
+    size = int(body.get("file_size") or 0)
+    if size > 20 * 1024 * 1024:
+        return reply(msg("⚠️ File nhạc lớn hơn 20 MB, bot không tải được. Hãy gửi bản mp3 nhẹ hơn."))
+    name = str(body.get("file_name") or "")
+    ext = Path(name).suffix.lower()
+    if ext not in MUSIC_EXT:
+        ext = {"audio/mp4": ".m4a", "audio/x-m4a": ".m4a", "audio/aac": ".aac", "audio/ogg": ".ogg",
+               "audio/wav": ".wav", "audio/x-wav": ".wav"}.get(str(body.get("mime_type") or ""), ".mp3")
+    dst = music_dir() / _safe_name(name or str(body.get("title") or ""), ext)
+    _tg_download(str(body["file_id"]), dst)
+    try:
+        ok = video._duration(dst) > 0
+    except Exception:
+        ok = False
+    if not ok:
+        dst.unlink(missing_ok=True)
+        return reply(msg("⚠️ Không đọc được file nhạc này. Hãy gửi file mp3 hoặc m4a."))
+    return reply(msg(f"🎵 Đã thêm nhạc nền <b>{esc(dst.name)}</b>."), music_list())
+
+
+def music_list() -> dict:
+    tracks = music_tracks()
+    if not tracks:
+        return msg("🎵 <b>Thư viện nhạc nền đang trống.</b>\n\nGửi file nhạc (mp3/m4a, dưới 20 MB) vào đây để thêm. "
+                   "Chỉ dùng nhạc <b>không bản quyền</b> (YouTube Audio Library, Pixabay Music…). "
+                   "Mỗi video sẽ tự xoay vòng một bài, nhạc tự nhỏ lại khi có giọng đọc.")
+    lines = ["🎵 <b>Thư viện nhạc nền</b> (mỗi video xoay vòng 1 bài):"]
+    lines += [f"{i + 1}. {esc(t.name)}" for i, t in enumerate(tracks)]
+    lines += ["", "Gửi thêm file nhạc để bổ sung. Bấm nút để xoá bài không dùng."]
+    rows = [[(f"🗑 Xoá {i + 1}. {t.stem[:24]}", f"mx:{i}")] for i, t in enumerate(tracks[:20])]
+    return msg("\n".join(lines), kb(*rows))
+
+
+def delete_music(i: int, mid: int | None) -> dict:
+    tracks = music_tracks()
+    if not 0 <= i < len(tracks):
+        return reply(clear_buttons(mid), music_list())
+    name = tracks[i].name
+    tracks[i].unlink(missing_ok=True)
+    return reply(clear_buttons(mid), msg(f"🗑 Đã xoá {esc(name)}."), music_list())
+
+
 def last_frame(src: Path, dst: Path) -> Path | None:
     p = subprocess.run(["ffmpeg", "-y", "-v", "error", "-sseof", "-0.15", "-i", str(src), "-frames:v", "1",
                         "-q:v", "3", str(dst)], capture_output=True)
@@ -527,7 +639,8 @@ def do_render(cid: int, paid: bool = False) -> dict:
             script = _render_script(item)
         src.start_run(cid)
         try:
-            path = video.render(script, workdir, S.raw, S.pixabay_api_key or "", ai=src)
+            cfg = {**S.raw, "video": {**S.raw.get("video", {}), "background_music": pick_music(cid)}}
+            path = video.render(script, workdir, cfg, S.pixabay_api_key or "", ai=src)
         finally:
             run = src.finish_run() or {}
         with LOCK:
@@ -629,6 +742,8 @@ def status_text() -> str:
     pubs = publishers()
     lines.append("TikTok: " + (", ".join(f"{p.account} {'✅' if p.connected() else '❌'}" for p in pubs)
                                if pubs else "chưa cấu hình TIKTOK_CLIENT_KEY"))
+    n_music = len(music_tracks())
+    lines.append(f"Nhạc nền: {n_music} bài" + ("" if n_music else " — gửi file mp3 vào đây để thêm (/nhac)"))
     return "\n".join(lines)
 
 
@@ -738,7 +853,8 @@ def tg_command(body: dict = BODY, x_worker_token: str = TOKEN) -> dict:
              "/kichban": lambda: reply(msg("⏳ Đang viết kịch bản (khoảng 1 phút)…"), next_step={"action": "script"}),
              "/clip": resend_prompts,
              "/trangthai": lambda: reply(msg(status_text())), "/ngansach": lambda: reply(msg(budget_text())),
-             "/nhanvat": characters, "/tiktok": tiktok_links}
+             "/nhanvat": characters, "/tiktok": tiktok_links, "/nhac": lambda: reply(music_list()),
+             "/phongcach": lambda: style_cmd(str(body.get("text", "")))}
     return _safe(table.get(cmd, lambda: reply(msg(HELP))))
 
 
@@ -768,6 +884,7 @@ def tg_button(body: dict = BODY, x_worker_token: str = TOKEN) -> dict:
         "rr": lambda: _retry_render(n, mid),
         "ba": lambda: _budget_decision(n, True, mid),
         "bx": lambda: _budget_decision(n, False, mid),
+        "mx": lambda: delete_music(n, mid),
     }
     return _safe(handlers.get(action, reply))
 
@@ -833,6 +950,14 @@ def tg_clip(body: dict = BODY, x_worker_token: str = TOKEN) -> dict:
     if (stop := _tg_guard(body)) is not None:
         return stop
     return _safe(receive_clip, body)
+
+
+@app.post("/tg/audio")
+def tg_audio(body: dict = BODY, x_worker_token: str = TOKEN) -> dict:
+    _auth(x_worker_token)
+    if (stop := _tg_guard(body)) is not None:
+        return stop
+    return _safe(receive_audio, body)
 
 
 @app.post("/tg/photo")

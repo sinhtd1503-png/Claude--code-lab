@@ -36,7 +36,7 @@ wh = node("Telegram gửi tới", "n8n-nodes-base.webhook", 2,
           [0, 0], webhookId=str(uuid.uuid5(NS, "telegram-webhook")))
 
 classify = code("Phân loại tin nhắn", r"""
-// Đổi tin nhắn Telegram thành 1 yêu cầu cho worker: lệnh (/...), bấm nút, góp ý (chữ), clip video, ảnh.
+// Đổi tin nhắn Telegram thành 1 yêu cầu cho worker: lệnh (/...), bấm nút, góp ý (chữ), clip video, nhạc nền, ảnh.
 const u = $json.body || {};
 const secret = ($json.headers || {})['x-telegram-bot-api-secret-token'] || '';
 let route = null;
@@ -56,6 +56,11 @@ if (u.callback_query) {
   if (vid) {
     route = 'tg/clip';
     Object.assign(body, { file_id: vid.file_id, file_size: vid.file_size || 0, caption: m.caption || '', media_group_id: m.media_group_id || '' });
+  } else if (m.audio || (m.document && (m.document.mime_type || '').startsWith('audio/'))) {
+    const a = m.audio || m.document;
+    route = 'tg/audio';
+    Object.assign(body, { file_id: a.file_id, file_size: a.file_size || 0, file_name: a.file_name || '',
+                          mime_type: a.mime_type || '', title: a.title || '' });
   } else if (m.photo) {
     route = 'tg/photo';
     Object.assign(body, { file_id: m.photo[m.photo.length - 1].file_id, caption: m.caption || '' });

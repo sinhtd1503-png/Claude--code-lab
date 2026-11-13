@@ -155,6 +155,8 @@ sau khi TikTok duyệt app (audit).
 | `/trangthai` | Xem tiến độ |
 | `/ngansach` | Chi phí tháng |
 | `/nhanvat` | Bộ nhân vật |
+| `/nhac` | Thư viện nhạc nền (gửi file mp3 để thêm) |
+| `/phongcach` | Xem/sửa phong cách kênh mẫu |
 | `/clip` | Gửi lại prompt clip |
 
 ## Khi gặp lỗi
