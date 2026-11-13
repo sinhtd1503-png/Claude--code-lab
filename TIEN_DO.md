@@ -92,6 +92,14 @@ Xây agent tự động cho kênh TikTok ngách **tuổi thơ, kỷ niệm gia �
 - `/nhanvat` gửi lại các ảnh mẫu để lưu và dùng làm **Ingredients** trong Google Flow
 - Nhận cả ảnh gửi dạng file (PNG/JPG không nén). Đã kiểm thử trong Docker
 
+### 13/11/2026 — Âm thanh liền mạch, duyệt cả giọng đọc + nhạc; chọn nhân vật bằng ảnh trước khi lập kế hoạch
+- **Giọng đọc đọc một lần cho cả video** (`tiktok_agent/audio.py`) thay vì từng cảnh rời nhau → ngữ điệu liền mạch; thời điểm từng từ (edge-tts WordBoundary) dùng để **cắt cảnh theo giọng đọc** và làm **phụ đề khớp lời**, ngắt dòng ở dấu phẩy/dấu chấm
+- **Nhạc nền chạy suốt video**, tự hạ nhỏ khi có giọng đọc, fade đầu/cuối
+- **Duyệt âm thanh cùng kịch bản:** sau kịch bản bot gửi **bản nghe thử** (chính là âm thanh của video thành phẩm) với nút **✅ Duyệt kịch bản & âm thanh**, **🎵 Đổi nhạc** (xoay vòng thư viện + không nhạc), **🎙 Đổi giọng** (`voice.options`), viết lại/bỏ. Viết lại theo góp ý giữ nguyên lựa chọn nhạc và giọng. Video ghép dùng đúng file giọng đọc đã duyệt
+- Nếu edge-tts lỗi lúc tạo bản nghe thử: vẫn duyệt được kịch bản bằng chữ, giọng đọc sẽ tạo lại lúc ghép video
+- **`/kehoach` hỏi chọn nhân vật bằng ảnh trước:** chưa có ảnh nhân vật → bot hướng dẫn gửi ảnh (chú thích tên – vai) hoặc bấm "✨ Để AI tự tạo nhân vật"; đã có ảnh → lập kế hoạch với đúng các nhân vật đó
+- Đã kiểm thử trong Docker (căn thời gian, phụ đề, bản nghe thử, đổi nhạc/giọng, dùng lại giọng đã duyệt khi ghép) và thử edge-tts thật với giọng tiếng Việt
+
 ## 🧭 Các quyết định quan trọng
 
 | Vấn đề | Quyết định | Lý do |

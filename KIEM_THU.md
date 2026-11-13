@@ -86,7 +86,10 @@ Trong Telegram, gửi cho bot:
    **Kết quả đúng:** bot gửi kịch bản 3–4 cảnh.
 7. Test viết lại: **Trả lời** vào tin kịch bản, gõ góp ý (ví dụ "Lời đọc ngắn hơn") → gửi.
    **Kết quả đúng:** bot gửi kịch bản mới.
-8. Bấm **Duyệt** kịch bản. **Kết quả đúng:** bot gửi các tin **"Cảnh 1… Cảnh 4"**, mỗi tin có prompt tiếng Anh.
+8. Sau kịch bản, bot gửi **bản nghe thử 🎧** (giọng đọc liền mạch + nhạc nền, đúng âm thanh của video thành phẩm).
+   Thử **🎵 Đổi nhạc** (xoay vòng các bài trong `/nhac`, có cả "không nhạc") và **🎙 Đổi giọng** (nữ/nam).
+   **Kết quả đúng:** mỗi lần bấm, bot gửi bản nghe thử mới.
+9. Bấm **✅ Duyệt kịch bản & âm thanh**. **Kết quả đúng:** bot gửi các tin **"Cảnh 1… Cảnh 3"**, mỗi tin có prompt tiếng Anh.
 
 ## Phần 4 – Gửi clip và ghép video (5 phút)
 
