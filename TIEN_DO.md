@@ -86,6 +86,12 @@ Xây agent tự động cho kênh TikTok ngách **tuổi thơ, kỷ niệm gia �
 - **Nhạc nền:** gửi file mp3/m4a vào chat → lưu thư viện `data/music`; mỗi video xoay vòng 1 bài, nhạc tự nhỏ lại khi có giọng đọc, fade đầu/cuối; `/nhac` xem và xoá
 - Đã kiểm thử trong Docker: lọc kênh mẫu, prompt, ghép video có nhạc (có/không ducking), nhận/xoá nhạc, `/phongcach`, n8n chuyển file nhạc tới worker
 
+### 13/11/2026 — Gửi ảnh nhân vật qua Telegram
+- Gửi **ảnh minh hoạ nhân vật** vào bot, kèm chú thích tên và vai (vd `Bé Na - con gái út 8 tuổi`) → Claude đọc ảnh (vision) và viết mô tả ngoại hình cố định bằng tiếng Anh, lưu vào danh sách nhân vật mẫu (tốn khoảng $0.05/ảnh, qua cổng ngân sách)
+- Kế hoạch mới (`/kehoach`) **bắt buộc dùng đúng các nhân vật này** (giữ nguyên văn mô tả); nút **"Dùng cho kế hoạch đang chạy"** để áp dụng ngay; gửi lại ảnh cùng tên để thay; nút 🗑 để xoá
+- `/nhanvat` gửi lại các ảnh mẫu để lưu và dùng làm **Ingredients** trong Google Flow
+- Nhận cả ảnh gửi dạng file (PNG/JPG không nén). Đã kiểm thử trong Docker
+
 ## 🧭 Các quyết định quan trọng
 
 | Vấn đề | Quyết định | Lý do |

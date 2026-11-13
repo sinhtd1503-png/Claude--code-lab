@@ -33,6 +33,17 @@ class SeriesBible(BaseModel):
     style_en: str = Field(description="TIẾNG ANH. Phong cách hình ảnh CỐ ĐỊNH (chất phim, màu, ống kính, ánh sáng)")
 
 
+class CharacterFromImage(BaseModel):
+    name: str = Field(description="Tên gọi tiếng Việt trong truyện. Lấy từ chú thích của chủ kênh nếu có; "
+                                  "nếu không, đặt một tên gọi gia đình tự nhiên, vd 'Bé Na', 'Bà nội'")
+    role: str = Field(description="Vai trò và tuổi ước lượng, tiếng Việt, vd 'con gái út, khoảng 8 tuổi'")
+    look_en: str = Field(description="TIẾNG ANH, 40–70 từ. Ngoại hình CỐ ĐỊNH đúng như trong ảnh để AI tạo lại giống "
+                                     "nhất: giới tính, tuổi, dáng người, khuôn mặt, làn da, kiểu tóc và màu tóc, trang "
+                                     "phục và màu sắc, phụ kiện. Không nêu danh tính người thật")
+    style_en: str = Field(description="TIẾNG ANH, 1 câu: phong cách hình ảnh của ảnh (ảnh thật, phim cũ, 3D, minh hoạ…), "
+                                      "ánh sáng, tông màu")
+
+
 class DayIdea(BaseModel):
     day: int = Field(description="Số thứ tự ngày, từ 1")
     title: str = Field(description="Tiêu đề ngắn, tiếng Việt")
@@ -114,7 +125,7 @@ def _compact(videos: list[dict]) -> list[dict]:
 
 def make_plan(niche: dict, videos: list[dict], recent_titles: list[str], days: int,
               feedback: str | None = None, previous: dict | None = None,
-              reference: list[dict] | None = None) -> MonthPlan:
+              reference: list[dict] | None = None, cast: list[dict] | None = None) -> MonthPlan:
     compact = _compact(videos)
     ref = _compact(reference or [])
     parts = []
@@ -130,6 +141,13 @@ def make_plan(niche: dict, videos: list[dict], recent_titles: list[str], days: i
                      "của bạn về các kênh hoài niệm 8x 9x.")
     parts.append("Các tiêu đề kênh đã làm (tránh trùng):\n"
                  f"<recent>\n{json.dumps(recent_titles, ensure_ascii=False)}\n</recent>")
+    if cast:
+        people = [{"name": c["name"], "role": c["role"], "look_en": c["look_en"]} for c in cast]
+        parts.append("NHÂN VẬT DO CHỦ KÊNH CHỌN (từ ảnh minh hoạ) — series bible PHẢI dùng đúng các nhân vật này, "
+                     "giữ nguyên văn name, role và look_en; chỉ được thêm tối đa 2 nhân vật phụ nếu thật cần. "
+                     "style_en của bible phải hợp với phong cách các ảnh:\n"
+                     f"<cast>\n{json.dumps(people, ensure_ascii=False)}\n</cast>\n"
+                     f"Phong cách ảnh: {json.dumps([c.get('style_en', '') for c in cast], ensure_ascii=False)}")
     if previous:
         parts.append("Kế hoạch trước (chủ kênh muốn làm lại):\n"
                      f"<previous>\n{json.dumps(previous, ensure_ascii=False)[:20000]}\n</previous>")
@@ -173,6 +191,32 @@ def write_script(niche: dict, bible: dict, idea: dict, patterns: list[str], scen
                  "(vd 'Bạn còn nhớ không?').")
     log.info("Claude: viết kịch bản '%s'", idea.get("title"))
     return _parse(system_prompt(niche), "\n\n".join(parts), SeriesScript, effort="high")
+
+
+def describe_character(image: bytes, media_type: str, caption: str, era: str = "") -> CharacterFromImage:
+    system = ("Bạn mô tả nhân vật trong ảnh minh hoạ để công cụ tạo video AI dựng lại nhân vật đó nhất quán qua nhiều "
+              "clip. Chỉ mô tả những gì nhìn thấy (ngoại hình, trang phục, phong cách ảnh), cụ thể, có màu sắc. Không đoán "
+              "hay nêu danh tính người thật, không nhận xét ngoại hình theo hướng tiêu cực.")
+    user = (f"Chú thích của chủ kênh: {caption or '(không có)'}\n"
+            f"Bối cảnh series: {era or 'Việt Nam thập niên 1990'}\n"
+            "Nếu ảnh có nhiều người, chỉ mô tả nhân vật chính (người nổi bật nhất, hoặc người chú thích nhắc tới).")
+    return _parse(system, user, CharacterFromImage, effort="medium", max_tokens=3000, images=[(image, media_type)])
+
+
+def apply_cast(bible: dict, cast: list[dict], limit: int = 6) -> dict:
+    """Force the owner's characters (exact look) into a bible: replace same-name entries, else put them first."""
+    chars = list(bible.get("characters") or [])
+    for c in cast:
+        entry = {"name": c["name"], "role": c["role"], "look_en": c["look_en"]}
+        idx = next((i for i, x in enumerate(chars) if x["name"].strip().lower() == c["name"].strip().lower()), None)
+        if idx is None:
+            chars.insert(0, entry)
+        else:
+            chars[idx] = entry
+    keep = {c["name"].strip().lower() for c in cast}
+    extra = [x for x in chars if x["name"].strip().lower() not in keep]
+    ordered = [x for x in chars if x["name"].strip().lower() in keep]
+    return {**bible, "characters": (ordered + extra)[:max(limit, len(ordered))]}
 
 
 # ---------- clip prompts (consistency lives here) ----------

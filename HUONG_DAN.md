@@ -279,6 +279,7 @@ Cuối cùng in ra:
 | `/kichban` | Viết ngay kịch bản tiếp theo (bình thường bot tự gửi 07:00) |
 | `/clip` | Gửi lại prompt của video đang chờ clip |
 | `/nhanvat` | Xem nhân vật cố định + prompt ảnh nhân vật |
+| 📷 Gửi ảnh + chú thích | Đặt nhân vật theo ảnh mẫu, vd chú thích `Bé Na - con gái út 8 tuổi` |
 | `/nhac` | Thư viện nhạc nền; gửi file mp3/m4a vào chat để thêm |
 | `/phongcach` | Xem/sửa mô tả phong cách kênh mẫu (`/phongcach` + mô tả mới) |
 | `/trangthai` | Kế hoạch, video đang chờ, kênh TikTok đã kết nối |
