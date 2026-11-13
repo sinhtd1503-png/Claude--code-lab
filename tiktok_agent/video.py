@@ -126,19 +126,27 @@ def fetch_clip(api_key: str, query: str, fallback_query: str, out: Path, used: s
 
 # ---------- render ----------
 
-def render(script: dict, workdir: Path, cfg: dict, stock_key: str, ai=None) -> Path:
-    """`ai` is an optional AIVideoSource; scenes selected in config use AI video, others Pixabay."""
+def render(script: dict, workdir: Path, cfg: dict, stock_key: str, ai=None, narration: dict | None = None) -> Path:
+    """`ai` is an optional AIVideoSource; scenes selected in config use AI video, others Pixabay.
+
+    The voice-over is ONE continuous track (see audio.py); scene lengths follow the voice so cuts land between
+    sentences. `narration` = meta from audio.narration_track() with "path" set (the approved preview's voice);
+    if omitted it is generated here.
+    """
+    from . import audio  # local import: audio.py imports helpers from this module
+
     workdir.mkdir(parents=True, exist_ok=True)
     voice, vid = cfg["voice"], cfg["video"]
+    if narration is None:
+        narration = audio.narration_track([s["narration"] for s in script["scenes"]],
+                                          script.get("voice") or voice["name"], voice["rate"], workdir)
+        narration["path"] = str(workdir / narration["file"])
+    durs = audio.scene_durations(narration)
     used: set[str] = set()
     segments: list[Path] = []
-    srt_lines: list[str] = []
-    t0, idx = 0.0, 1
 
     for i, scene in enumerate(script["scenes"]):
-        audio = workdir / f"s{i}.mp3"
-        dur = synthesize(scene["narration"], voice["name"], voice["rate"], audio) + PAD_SEC
-
+        dur = durs[i]
         clip = None
         if ai is not None and ai.wants_ai(i, len(script["scenes"])):
             try:
@@ -162,53 +170,34 @@ def render(script: dict, workdir: Path, cfg: dict, stock_key: str, ai=None) -> P
             video_in = ["-stream_loop", "-1", "-i", str(clip)]
         else:  # no stock clip found → warm solid background
             video_in = ["-f", "lavfi", "-i", f"color=c=0x3b2f2a:s={W}x{H}:r={FPS}"]
-        _run(["ffmpeg", "-y", *video_in, "-i", str(audio),
-              "-filter_complex", f"[0:v]{vf}[v];[1:a]apad,aresample=44100[a]",
-              "-map", "[v]", "-map", "[a]", "-t", f"{dur:.3f}",
-              "-c:v", "libx264", "-preset", "veryfast", "-crf", "21", "-pix_fmt", "yuv420p",
-              "-c:a", "aac", "-b:a", "160k", "-ac", "2", str(seg)])
+        _run(["ffmpeg", "-y", *video_in, "-vf", vf, "-an", "-t", f"{dur:.3f}",
+              "-c:v", "libx264", "-preset", "veryfast", "-crf", "21", "-pix_fmt", "yuv420p", str(seg)])
         segments.append(seg)
 
-        # subtitles: spread scene duration across chunks by character length
-        chunks = _chunk_words(scene["narration"])
-        speak = dur - PAD_SEC
-        total_chars = sum(len(c) for c in chunks) or 1
-        t = t0
-        for c in chunks:
-            d = speak * len(c) / total_chars
-            srt_lines += [str(idx), f"{_srt_time(t)} --> {_srt_time(t + d)}", c, ""]
-            idx, t = idx + 1, t + d
-        t0 += dur
-
-    (workdir / "subs.srt").write_text("\n".join(srt_lines), encoding="utf-8")
+    srt = []
+    for k, c in enumerate(narration["cues"], 1):
+        srt += [str(k), f"{_srt_time(c['start'])} --> {_srt_time(max(c['end'], c['start'] + 0.4))}", c["text"], ""]
+    (workdir / "subs.srt").write_text("\n".join(srt), encoding="utf-8")
     (workdir / "list.txt").write_text("".join(f"file '{s.name}'\n" for s in segments))
     _run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", "list.txt", "-c", "copy", "joined.mp4"],
          cwd=workdir)
 
+    total = sum(durs)
     style = (f"FontName={vid['font']},FontSize=13,PrimaryColour=&H00FFFFFF,OutlineColour=&H80000000,"
              "BorderStyle=1,Outline=2,Shadow=0,Bold=1,Alignment=2,MarginV=70")
     final = workdir / "final.mp4"
     music = vid.get("background_music")
+    inputs = ["-i", "joined.mp4", "-i", str(Path(narration["path"]).resolve())]
     if music and Path(music).exists():
-        total = _duration(workdir / "joined.mp4")
-        fade = min(2.0, total / 4)
-        mus = (f"[1:a]aresample=44100,aformat=channel_layouts=stereo,volume={float(vid.get('music_volume', 0.18))},"
-               f"afade=t=in:d=0.8,afade=t=out:st={max(0.0, total - fade):.2f}:d={fade:.2f}[m0];")
-        if vid.get("music_duck", True):  # music dips under the narration, swells in the pauses
-            mix = ("[0:a]asplit=2[voice][key];"
-                   "[m0][key]sidechaincompress=threshold=0.03:ratio=5:attack=30:release=500[m];"
-                   "[voice][m]amix=inputs=2:duration=first:normalize=0[a]")
-        else:
-            mix = "[0:a][m0]amix=inputs=2:duration=first:normalize=0[a]"
-        _run(["ffmpeg", "-y", "-i", "joined.mp4", "-stream_loop", "-1", "-i", str(Path(music).resolve()),
-              "-filter_complex",
-              f"[0:v]subtitles=subs.srt:force_style='{style}'[v];{mus}{mix}",
-              "-map", "[v]", "-map", "[a]", "-c:v", "libx264", "-preset", "medium", "-crf", "20",
-              "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart",
-              "final.mp4"], cwd=workdir)
+        inputs += ["-stream_loop", "-1", "-i", str(Path(music).resolve())]
+        afilter = audio.music_filter(total, float(vid.get("music_volume", 0.18)), bool(vid.get("music_duck", True)),
+                                     voice="[1:a]", music="[2:a]")
     else:
-        _run(["ffmpeg", "-y", "-i", "joined.mp4", "-vf", f"subtitles=subs.srt:force_style='{style}'",
-              "-c:v", "libx264", "-preset", "medium", "-crf", "20", "-pix_fmt", "yuv420p",
-              "-c:a", "copy", "-movflags", "+faststart", "final.mp4"], cwd=workdir)
+        afilter = f"[1:a]aresample=44100,aformat=channel_layouts=stereo,apad,atrim=0:{total:.3f}[a]"
+    _run(["ffmpeg", "-y", *inputs, "-filter_complex",
+          f"[0:v]subtitles=subs.srt:force_style='{style}'[v];{afilter}",
+          "-map", "[v]", "-map", "[a]", "-t", f"{total:.3f}", "-c:v", "libx264", "-preset", "medium", "-crf", "20",
+          "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", "final.mp4"],
+         cwd=workdir)
     log.info("Rendered %s (%.1fs)", final, _duration(final))
     return final

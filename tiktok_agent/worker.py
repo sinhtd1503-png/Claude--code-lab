@@ -30,7 +30,9 @@ import httpx
 from fastapi import Body, FastAPI, Header, HTTPException
 from fastapi.responses import FileResponse, HTMLResponse
 
-from . import content, scraper, series, video
+import hashlib
+
+from . import audio, content, scraper, series, video
 from .ai_video import AIVideoSource
 from .budget import LABELS, Budget, BudgetNeeded
 from .config import load_settings
@@ -120,7 +122,8 @@ def media(kind: str, path: Path, caption: str, buttons: dict | None = None) -> d
                "reply_markup": json.dumps(buttons or {"inline_keyboard": []}, ensure_ascii=False)}
     if kind == "video":
         payload["supports_streaming"] = "true"
-    return {"method": "sendVideo" if kind == "video" else "sendPhoto", "field": kind,
+    method = {"video": "sendVideo", "photo": "sendPhoto", "audio": "sendAudio"}[kind]
+    return {"method": method, "field": kind,
             "file": str(Path(path).resolve().relative_to(DATA)), "payload": payload}
 
 
@@ -316,10 +319,116 @@ def script_messages(cid: int) -> list[dict]:
              f"<b>{esc(sc['title'])}</b>", "", f"🎣 <b>Hook:</b> {esc(sc['hook'])}", ""]
     for i, s in enumerate(sc["scenes"], 1):
         lines += [f"🎬 <b>Cảnh {i}</b> – {esc(s['visual_vi'])}", f"🗣 {esc(s['narration'])}", ""]
-    lines += [f"💡 <b>Thông điệp:</b> {esc(sc['lesson'])}", "", f"📣 <b>Caption:</b> {esc(item['caption'])}", "",
-              "👉 Duyệt để làm video. Muốn sửa chi tiết: <b>Trả lời (Reply)</b> tin này và gõ góp ý."]
+    lines += [f"💡 <b>Thông điệp:</b> {esc(sc['lesson'])}", "", f"📣 <b>Caption:</b> {esc(item['caption'])}", ""]
+    voice_msg = audio_message(cid)
+    if voice_msg:
+        lines.append("🎧 <b>Nghe thử giọng đọc + nhạc nền ở tin tiếp theo</b>, rồi bấm duyệt ở đó. "
+                     "Muốn sửa lời: <b>Trả lời (Reply)</b> tin này và gõ góp ý.")
+        return long_msg("\n".join(lines)) + [voice_msg]
+    err = (sc.get("audio_error") or "")[:200]
+    lines.append(("⚠️ Chưa tạo được bản nghe thử" + (f" ({esc(err)})" if err else "") + ". ") +
+                 "👉 Duyệt để làm video. Muốn sửa chi tiết: <b>Trả lời (Reply)</b> tin này và gõ góp ý.")
     return long_msg("\n".join(lines), kb([("✅ Duyệt kịch bản", f"sa:{cid}")],
                                          [("🔄 Viết bản khác", f"sr:{cid}"), ("❌ Bỏ", f"sx:{cid}")]))
+
+
+# ---------------------------------------------------------------- voice-over + music preview (approved with the script)
+
+def voice_options() -> list[str]:
+    v = S.raw.get("voice", {})
+    opts = list(v.get("options") or [])
+    if v.get("name") and v["name"] not in opts:
+        opts.insert(0, v["name"])
+    return opts or ["vi-VN-HoaiMyNeural", "vi-VN-NamMinhNeural"]
+
+
+VOICE_LABELS = {"vi-VN-HoaiMyNeural": "Hoài My (nữ)", "vi-VN-NamMinhNeural": "Nam Minh (nam)"}
+
+
+def _narr_hash(voice: str, rate: str, narrations: list[str]) -> str:
+    return hashlib.sha1(json.dumps([voice, rate, narrations], ensure_ascii=False).encode()).hexdigest()[:16]
+
+
+def prepare_audio(cid: int, voice: str | None = None, music: str | None = None) -> dict:
+    """(Re)build the narration + preview for a script. `music` is a path relative to DATA, or "" for none."""
+    with LOCK:
+        item = DB_.get_content(cid)
+    sc = item["script"]
+    cur = sc.get("audio") or {}
+    voice = voice or cur.get("voice") or voice_options()[0]
+    rate = S.raw.get("voice", {}).get("rate", "-8%")
+    if music is None:
+        if "music" in cur:
+            music = cur["music"]
+        else:  # library track → path relative to DATA; a fixed track from config may live elsewhere (absolute)
+            m = pick_music(cid)
+            music = (rel(Path(m)) if Path(m).resolve().is_relative_to(DATA) else str(Path(m).resolve())) if m else ""
+    narrations = [s["narration"] for s in sc["scenes"]]
+    h = _narr_hash(voice, rate, narrations)
+    d = DATA / "audio" / str(cid)
+    meta_file = d / "narration.json"
+    if cur.get("hash") == h and meta_file.is_file() and (d / "narration.mp3").is_file():
+        meta = json.loads(meta_file.read_text(encoding="utf-8"))
+    else:
+        meta = audio.narration_track(narrations, voice, rate, d)
+    total = sum(audio.scene_durations(meta))
+    prev = audio.preview(d / "narration.mp3", str(DATA / music) if music else None, total, S.raw,
+                         d / f"preview_{now_ts()}.mp3")
+    for old in d.glob("preview_*.mp3"):
+        if old != prev:
+            old.unlink(missing_ok=True)
+    sc["audio"] = {"voice": voice, "rate": rate, "music": music, "hash": h, "preview": rel(prev),
+                   "total": round(total, 2)}
+    sc.pop("audio_error", None)
+    with LOCK:
+        DB_.update_content(cid, script=sc)
+    return sc["audio"]
+
+
+def _try_prepare_audio(cid: int) -> None:
+    try:
+        prepare_audio(cid)
+    except Exception as e:  # edge-tts outage etc. — the script can still be approved; render retries TTS
+        log.warning("Không tạo được bản nghe thử #%s: %s", cid, e)
+        with LOCK:
+            item = DB_.get_content(cid)
+            sc = item["script"]
+            sc["audio_error"] = str(e)[:300]
+            DB_.update_content(cid, script=sc)
+
+
+def audio_message(cid: int) -> dict | None:
+    item = DB_.get_content(cid)
+    a = (item["script"] or {}).get("audio") or {}
+    if not a.get("preview") or not (DATA / a["preview"]).is_file():
+        return None
+    music = Path(a["music"]).stem if a.get("music") else "không nhạc"
+    cap = (f"🎧 <b>#{cid} – Nghe thử</b> ({a['total']:.0f}s)\n🎙 Giọng: {esc(VOICE_LABELS.get(a['voice'], a['voice']))}"
+           f"\n🎵 Nhạc: {esc(music)}\n\nĐây chính là âm thanh của video thành phẩm.")
+    buttons = kb([("✅ Duyệt kịch bản & âm thanh", f"sa:{cid}")],
+                 [("🎵 Đổi nhạc", f"am:{cid}"), ("🎙 Đổi giọng", f"av:{cid}")],
+                 [("🔄 Viết bản khác", f"sr:{cid}"), ("❌ Bỏ", f"sx:{cid}")])
+    return media("audio", DATA / a["preview"], cap, buttons)
+
+
+def change_audio(cid: int, what: str) -> dict:
+    with LOCK:
+        item = DB_.get_content(cid)
+    if not item or item["status"] != "script_review":
+        return reply(msg(f"Kịch bản #{cid} không còn ở bước duyệt."))
+    a = item["script"].get("audio") or {}
+    if what == "music":
+        opts = [rel(t) for t in music_tracks()] + [""]
+        if len(opts) == 1:
+            return reply(msg("🎵 Thư viện nhạc đang trống. Gửi file mp3/m4a vào đây để thêm nhạc, rồi bấm Đổi nhạc."))
+        cur = a.get("music", "")
+        nxt = opts[(opts.index(cur) + 1) % len(opts)] if cur in opts else opts[0]
+        prepare_audio(cid, music=nxt)
+    else:
+        opts = voice_options()
+        cur = a.get("voice") or opts[0]
+        prepare_audio(cid, voice=opts[(opts.index(cur) + 1) % len(opts)] if cur in opts else opts[0])
+    return reply(audio_message(cid) or msg("⚠️ Không tạo được bản nghe thử, thử lại sau."))
 
 
 def _write(idea: dict, bible: dict, patterns: list[str], feedback=None, previous=None) -> tuple[dict, str]:
@@ -364,6 +473,7 @@ def next_script(scheduled: bool = False) -> dict:
             DB_.update_content(cid, script=script, caption=caption, status="script_review")
             DB_.conn.execute("UPDATE plan_days SET status='scripted', content_id=? WHERE id=?", (cid, row["id"]))
             DB_.conn.commit()
+        _try_prepare_audio(cid)
         return reply(script_messages(cid))
     finally:
         BUSY.discard(key)
@@ -385,7 +495,10 @@ def rewrite_script(cid: int, feedback: str | None, message_id: int | None = None
         script, caption = _write(item["idea"], plan["data"]["bible"], plan["data"]["patterns"],
                                  feedback=feedback, previous=item["script"])
         with LOCK:
+            old_audio = (item["script"] or {}).get("audio") or {}
+            script["audio"] = {k: old_audio[k] for k in ("voice", "music") if k in old_audio}  # keep owner's picks
             DB_.update_content(cid, script=script, caption=caption, feedback=feedback or item["feedback"])
+        _try_prepare_audio(cid)
         return reply(clear_buttons(message_id), msg("✍️ Bản mới:"), script_messages(cid))
     finally:
         BUSY.discard(f"c{cid}")
@@ -705,7 +818,30 @@ def _render_script(item: dict, prompts: list[str] | None = None) -> dict:
     sc = item["script"]
     scenes = [{"narration": s["narration"], "visual_query": s["visual_query"],
                "shots": [prompts[i]] if prompts else [s["action_en"]]} for i, s in enumerate(sc["scenes"])]
-    return {"title": sc["title"], "scenes": scenes, "visual_bible": {}}
+    return {"title": sc["title"], "scenes": scenes, "visual_bible": {},
+            "voice": (sc.get("audio") or {}).get("voice")}
+
+
+def approved_narration(item: dict) -> dict | None:
+    """Narration meta of the approved preview, if it still matches the script text."""
+    a = (item["script"] or {}).get("audio") or {}
+    d = DATA / "audio" / str(item["id"])
+    f = d / "narration.json"
+    if not a.get("hash") or not f.is_file() or not (d / "narration.mp3").is_file():
+        return None
+    narrs = [s["narration"] for s in item["script"]["scenes"]]
+    if _narr_hash(a.get("voice", ""), a.get("rate", ""), narrs) != a["hash"]:
+        return None
+    meta = json.loads(f.read_text(encoding="utf-8"))
+    meta["path"] = str(d / "narration.mp3")
+    return meta
+
+
+def approved_music(item: dict) -> str:
+    a = (item["script"] or {}).get("audio") or {}
+    if "music" in a:
+        return str(DATA / a["music"]) if a["music"] and (DATA / a["music"]).is_file() else ""
+    return pick_music(item["id"])
 
 
 def do_render(cid: int, paid: bool = False) -> dict:
@@ -724,8 +860,9 @@ def do_render(cid: int, paid: bool = False) -> dict:
             script = _render_script(item)
         src.start_run(cid)
         try:
-            cfg = {**S.raw, "video": {**S.raw.get("video", {}), "background_music": pick_music(cid)}}
-            path = video.render(script, workdir, cfg, S.pixabay_api_key or "", ai=src)
+            cfg = {**S.raw, "video": {**S.raw.get("video", {}), "background_music": approved_music(item)}}
+            path = video.render(script, workdir, cfg, S.pixabay_api_key or "", ai=src,
+                                narration=approved_narration(item))
         finally:
             run = src.finish_run() or {}
         with LOCK:
@@ -860,6 +997,21 @@ def tiktok_links() -> dict:
     return reply(msg("\n".join(lines)))
 
 
+def plan_cmd() -> dict:
+    cast = cast_items()
+    if not cast:
+        return reply(msg(
+            "🧑‍🎨 <b>Trước khi lập kế hoạch: bạn có muốn chọn nhân vật bằng ảnh không?</b>\n\n"
+            "Gửi ảnh từng nhân vật vào đây (mỗi ảnh một tin), phần chú thích ghi <b>tên – vai</b>, ví dụ:\n"
+            "<code>Bé Na - con gái út 8 tuổi</code>\n<code>Bà nội - 70 tuổi</code>\n"
+            "Bot đọc ảnh và lưu mô tả. Gửi xong thì gõ /kehoach lần nữa.\n\n"
+            "Hoặc để AI tự tạo cả gia đình nhân vật:",
+            kb([("✨ Để AI tự tạo nhân vật", "pk:0")])))
+    names = ", ".join(c["name"] for c in cast)
+    return reply(msg(f"⏳ Đang lập kế hoạch 30 ngày với {len(cast)} nhân vật từ ảnh của bạn ({esc(names)}) "
+                     "(2–5 phút)…"), next_step={"action": "plan"})
+
+
 def characters() -> dict:
     with LOCK:
         plan = active_plan() or latest_plan()
@@ -944,8 +1096,7 @@ def tg_command(body: dict = BODY, x_worker_token: str = TOKEN) -> dict:
     if (stop := _tg_guard(body)) is not None:
         return stop
     cmd = str(body.get("text", "")).split()[0].split("@")[0].lower()
-    table = {"/kehoach": lambda: reply(msg("⏳ Đang quét đối thủ và lập kế hoạch 30 ngày (2–5 phút)…"),
-                                       next_step={"action": "plan"}),
+    table = {"/kehoach": plan_cmd,
              "/kichban": lambda: reply(msg("⏳ Đang viết kịch bản (khoảng 1 phút)…"), next_step={"action": "script"}),
              "/clip": resend_prompts,
              "/trangthai": lambda: reply(msg(status_text())), "/ngansach": lambda: reply(msg(budget_text())),
@@ -982,6 +1133,10 @@ def tg_button(body: dict = BODY, x_worker_token: str = TOKEN) -> dict:
         "bx": lambda: _budget_decision(n, False, mid),
         "mx": lambda: delete_music(n, mid),
         "ca": lambda: apply_cast_to_plan(n, mid),
+        "am": lambda: reply(msg("⏳ Đang đổi nhạc…"), next_step={"action": "audio", "id": n, "what": "music"}),
+        "av": lambda: reply(msg("⏳ Đang đổi giọng đọc…"), next_step={"action": "audio", "id": n, "what": "voice"}),
+        "pk": lambda: reply(clear_buttons(mid), msg("⏳ Đang quét đối thủ và lập kế hoạch 30 ngày (2–5 phút)…"),
+                            next_step={"action": "plan"}),
         "cx": lambda: delete_cast(n, mid),
     }
     return _safe(handlers.get(action, reply))
@@ -1098,6 +1253,8 @@ def cont(body: dict = BODY, x_worker_token: str = TOKEN) -> dict:
         return _safe(next_script)
     if action == "rewrite":
         return _safe(rewrite_script, int(n), body.get("feedback"))
+    if action == "audio":
+        return _safe(change_audio, int(n), body.get("what") or "music")
     if action == "photo":
         return _safe(describe_photo, body.get("path") or "", body.get("caption") or "")
     if action == "paid":

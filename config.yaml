@@ -44,7 +44,10 @@ content:
   plan_days: 30               # số ngày mỗi kế hoạch (n8n + worker)
 
 voice:
-  name: "vi-VN-HoaiMyNeural"  # hoặc vi-VN-NamMinhNeural (giọng nam)
+  name: "vi-VN-HoaiMyNeural"  # giọng mặc định
+  options:                    # nút "🎙 Đổi giọng" khi duyệt kịch bản sẽ xoay vòng các giọng này
+    - "vi-VN-HoaiMyNeural"    # nữ
+    - "vi-VN-NamMinhNeural"   # nam
   rate: "-8%"                 # chậm hơn một chút cho cảm xúc
 
 video:
