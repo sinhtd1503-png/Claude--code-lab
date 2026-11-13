@@ -61,9 +61,11 @@ if (u.callback_query) {
     route = 'tg/audio';
     Object.assign(body, { file_id: a.file_id, file_size: a.file_size || 0, file_name: a.file_name || '',
                           mime_type: a.mime_type || '', title: a.title || '' });
-  } else if (m.photo) {
+  } else if (m.photo || (m.document && (m.document.mime_type || '').startsWith('image/'))) {
+    const p = m.photo ? m.photo[m.photo.length - 1] : m.document;
     route = 'tg/photo';
-    Object.assign(body, { file_id: m.photo[m.photo.length - 1].file_id, caption: m.caption || '' });
+    Object.assign(body, { file_id: p.file_id, file_size: p.file_size || 0, mime_type: p.mime_type || 'image/jpeg',
+                          caption: m.caption || '' });
   } else if ((m.text || '').startsWith('/')) {
     route = 'tg/command'; body.text = m.text;
   } else if (m.text) {

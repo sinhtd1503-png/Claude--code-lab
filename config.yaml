@@ -113,6 +113,7 @@ budget:
       suggest_monthly_usd: 5
       est_plan_usd: 0.8       # ước tính 1 lần lập kế hoạch 30 ngày
       est_script_usd: 0.15    # ước tính 1 kịch bản
+      est_image_usd: 0.05     # ước tính đọc 1 ảnh nhân vật
       price_in_per_m: 4       # Claude Opus 5.5: $4 / 1 triệu token vào
       price_out_per_m: 20     #                  $20 / 1 triệu token ra
     apify:                    # quét đối thủ — gói Free của Apify tặng ~5 USD/tháng nên thường $0

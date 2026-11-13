@@ -159,6 +159,7 @@ HELP = ("🤖 <b>Trợ lý kênh TikTok</b>\n\n"
         "/trangthai – xem tình trạng hệ thống\n"
         "/ngansach – chi phí tháng này\n"
         "/nhanvat – nhân vật cố định & prompt ảnh nhân vật\n"
+        "📷 Gửi ảnh + chú thích tên (vd 'Bé Na - con gái 8 tuổi') – đặt nhân vật theo ảnh của bạn\n"
         "/nhac – thư viện nhạc nền (gửi file mp3 để thêm)\n"
         "/phongcach – xem/sửa mô tả phong cách kênh mẫu\n"
         "/tiktok – kết nối tài khoản TikTok\n\n"
@@ -255,9 +256,13 @@ def create_plan(feedback: str | None = None, previous: dict | None = None) -> di
             recent = DB_.recent_titles(60)
         if refs and not ref_top:
             notes.append("ℹ️ Chưa có dữ liệu video của kênh mẫu — dùng mô tả phong cách trong config.yaml.")
+        cast = cast_items()
         plan = series.make_plan(niche(), top, recent, PLAN_DAYS, feedback=feedback, previous=previous,
-                                reference=ref_top)
+                                reference=ref_top, cast=cast)
         data = plan.model_dump()
+        if cast:
+            data["bible"] = series.apply_cast(data["bible"], cast)
+            notes.append(f"🧑‍🎨 Dùng {len(cast)} nhân vật từ ảnh của bạn.")
         with LOCK:
             cur = DB_.conn.execute("INSERT INTO plans (ts, status, data, feedback) VALUES (?, 'review', ?, ?)",
                                    (now_ts(), json.dumps(data, ensure_ascii=False), feedback))
@@ -465,6 +470,86 @@ def style_cmd(text: str) -> dict:
                      "Muốn sửa: gõ <code>/phongcach</code> + mô tả mới trong cùng một tin nhắn, ví dụ:\n"
                      "<code>/phongcach Clip AI người thật, nắng chiều vàng, giọng nữ trầm ấm, nhạc piano nhẹ, "
                      "câu mở đầu 'Ai còn nhớ…', 20 giây</code>"))
+
+
+# ---------------------------------------------------------------- characters from the owner's reference photos
+
+CAST_KEY = "character_refs"
+IMG_TYPES = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp"}
+
+
+def cast_items() -> list[dict]:
+    with LOCK:
+        return (DB_.kv_get(CAST_KEY) or {}).get("items", [])
+
+
+def _save_cast(items: list[dict]) -> None:
+    with LOCK:
+        DB_.kv_set(CAST_KEY, {"items": items})
+
+
+def receive_photo(body: dict) -> dict:
+    if int(body.get("file_size") or 0) > 20 * 1024 * 1024:
+        return reply(msg("⚠️ Ảnh lớn hơn 20 MB, bot không tải được. Hãy gửi ảnh nhẹ hơn."))
+    ext = {"image/png": ".png", "image/webp": ".webp"}.get(str(body.get("mime_type") or ""), ".jpg")
+    d = DATA / "characters"
+    d.mkdir(parents=True, exist_ok=True)
+    dst = d / f"nv_{now_ts()}_{secrets.token_hex(3)}{ext}"
+    _tg_download(str(body["file_id"]), dst)
+    caption = str(body.get("caption") or "").strip()[:300]
+    return reply(msg("⏳ Đang đọc ảnh nhân vật (khoảng 30 giây)…"),
+                 next_step={"action": "photo", "path": rel(dst), "caption": caption})
+
+
+def describe_photo(path: str, caption: str) -> dict:
+    p = (DATA / str(path)).resolve()
+    if not p.is_relative_to(DATA) or not p.is_file():
+        return reply(msg("⚠️ Không tìm thấy ảnh vừa gửi, hãy gửi lại."))
+    est = float(((S.raw.get("budget") or {}).get("services", {}).get("claude", {})).get("est_image_usd", 0.05))
+    with LOCK:
+        BUDGET.ensure("claude", est, "Đọc ảnh nhân vật để viết mô tả cố định.",
+                      resume={"action": "photo", "path": path, "caption": caption})
+        plan = active_plan() or latest_plan()
+    era = (plan or {}).get("data", {}).get("bible", {}).get("era", "") if plan else ""
+    ch = series.describe_character(p.read_bytes(), IMG_TYPES.get(p.suffix.lower(), "image/jpeg"), caption, era)
+    items = cast_items()
+    same = [x for x in items if x["name"].strip().lower() == ch.name.strip().lower()]
+    items = [x for x in items if x not in same]
+    cid = max([x["id"] for x in cast_items()] + [0]) + 1
+    items.append({"id": cid, **ch.model_dump(), "image": rel(p), "ts": now_ts()})
+    _save_cast(items)
+    text = (f"🧑‍🎨 <b>Nhân vật từ ảnh: {esc(ch.name)}</b> – {esc(ch.role)}"
+            + (" <i>(thay cho ảnh cũ cùng tên)</i>" if same else "") + "\n\n"
+            f"<i>{esc(ch.look_en)}</i>\n\nPhong cách ảnh: {esc(ch.style_en)}\n\n"
+            "Kế hoạch mới (/kehoach) sẽ tự dùng đúng nhân vật này. Bấm nút dưới để dùng ngay cho kế hoạch đang chạy. "
+            "Muốn đổi tên/vai: gửi lại ảnh kèm chú thích, vd <code>Bé Na - con gái út 8 tuổi</code>.")
+    rows = [[("✅ Dùng cho kế hoạch đang chạy", f"ca:{cid}")], [("🗑 Xoá nhân vật này", f"cx:{cid}")]] if plan \
+        else [[("🗑 Xoá nhân vật này", f"cx:{cid}")]]
+    return reply(msg(text, kb(*rows)))
+
+
+def apply_cast_to_plan(cid: int, mid: int | None) -> dict:
+    item = next((x for x in cast_items() if x["id"] == cid), None)
+    with LOCK:
+        plan = active_plan() or latest_plan()
+        if not item or not plan:
+            return reply(clear_buttons(mid), msg("Không áp dụng được (nhân vật đã xoá hoặc chưa có kế hoạch)."))
+        data = plan["data"]
+        data["bible"] = series.apply_cast(data["bible"], [item])
+        DB_.conn.execute("UPDATE plans SET data=? WHERE id=?", (json.dumps(data, ensure_ascii=False), plan["id"]))
+        DB_.conn.commit()
+    return reply(clear_buttons(mid), msg(f"✅ Đã đưa <b>{esc(item['name'])}</b> vào kế hoạch #KH{plan['id']}. "
+                                         "Áp dụng cho các kịch bản viết từ bây giờ (/nhanvat để xem)."))
+
+
+def delete_cast(cid: int, mid: int | None) -> dict:
+    items = cast_items()
+    item = next((x for x in items if x["id"] == cid), None)
+    if not item:
+        return reply(clear_buttons(mid))
+    _save_cast([x for x in items if x["id"] != cid])
+    return reply(clear_buttons(mid), msg(f"🗑 Đã xoá nhân vật {esc(item['name'])} khỏi danh sách ảnh mẫu. "
+                                         "Kế hoạch đang chạy giữ nguyên; kế hoạch mới sẽ không dùng nhân vật này."))
 
 
 # ---------------------------------------------------------------- background music library
@@ -778,15 +863,26 @@ def tiktok_links() -> dict:
 def characters() -> dict:
     with LOCK:
         plan = active_plan() or latest_plan()
+    cast = cast_items()
+    photos = [media("photo", DATA / c["image"], f"🧑‍🎨 {esc(c['name'])} – {esc(c['role'])} (ảnh mẫu, dùng làm Ingredients "
+                    "trong Flow)", kb([("🗑 Xoá", f"cx:{c['id']}")]))
+              for c in cast if (DATA / c["image"]).is_file()]
     if not plan:
-        return reply(msg("Chưa có kế hoạch. Gõ /kehoach trước."))
+        tip = msg("Chưa có kế hoạch. Gõ /kehoach — kế hoạch sẽ dùng các nhân vật trong ảnh bạn đã gửi."
+                  if cast else "Chưa có kế hoạch. Gõ /kehoach trước.\n\n💡 Gửi ảnh nhân vật (kèm chú thích tên, "
+                  "vd <code>Bé Na - con gái út 8 tuổi</code>) để kế hoạch dùng đúng nhân vật bạn muốn.")
+        return reply(tip, *photos)
     b = plan["data"]["bible"]
     lines = [f"🏡 <b>Nhân vật cố định</b> ({esc(b['era'])})", ""]
     lines += [f"• <b>{esc(c['name'])}</b> – {esc(c['role'])}\n<i>{esc(c['look_en'])}</i>" for c in b["characters"]]
     lines += ["", "🖼 <b>Tạo ảnh nhân vật chuẩn (làm 1 lần/tháng)</b>: dán prompt dưới vào Google Flow "
               "(chế độ tạo ảnh) hoặc Gemini/Whisk, lưu ảnh đẹp nhất vào Ảnh của iPad. Mỗi lần tạo clip, thêm ảnh này "
-              "vào <i>Ingredients</i>.", "", f"<code>{esc(series.character_sheet_prompt(b))}</code>"]
-    return reply(msg("\n".join(lines)))
+              "vào <i>Ingredients</i>.", "", f"<code>{esc(series.character_sheet_prompt(b))}</code>",
+              "", "💡 Muốn nhân vật theo ảnh của bạn: gửi ảnh vào đây kèm chú thích tên và vai, "
+              "vd <code>Bé Na - con gái út 8 tuổi</code>."]
+    if photos:
+        lines += ["", "⬇️ Ảnh mẫu bạn đã gửi (lưu lại để thêm vào Ingredients trong Flow):"]
+    return reply(msg("\n".join(lines)), *photos)
 
 
 def resend_prompts() -> dict:
@@ -885,6 +981,8 @@ def tg_button(body: dict = BODY, x_worker_token: str = TOKEN) -> dict:
         "ba": lambda: _budget_decision(n, True, mid),
         "bx": lambda: _budget_decision(n, False, mid),
         "mx": lambda: delete_music(n, mid),
+        "ca": lambda: apply_cast_to_plan(n, mid),
+        "cx": lambda: delete_cast(n, mid),
     }
     return _safe(handlers.get(action, reply))
 
@@ -965,7 +1063,7 @@ def tg_photo(body: dict = BODY, x_worker_token: str = TOKEN) -> dict:
     _auth(x_worker_token)
     if (stop := _tg_guard(body)) is not None:
         return stop
-    return reply(msg("Bot chỉ cần clip video. Ảnh nhân vật hãy dùng trong Google Flow (mục Ingredients)."))
+    return _safe(receive_photo, body)
 
 
 @app.post("/scheduled/plan")
@@ -1000,6 +1098,8 @@ def cont(body: dict = BODY, x_worker_token: str = TOKEN) -> dict:
         return _safe(next_script)
     if action == "rewrite":
         return _safe(rewrite_script, int(n), body.get("feedback"))
+    if action == "photo":
+        return _safe(describe_photo, body.get("path") or "", body.get("caption") or "")
     if action == "paid":
         return _safe(request_paid, int(n), None)
     return reply()

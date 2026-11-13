@@ -1,6 +1,7 @@
 """Claude-powered trend analysis and script writing."""
 from __future__ import annotations
 
+import base64
 import json
 import logging
 
@@ -64,7 +65,13 @@ def _client() -> anthropic.Anthropic:
 
 
 def _parse(system: str, user: str, schema: type[BaseModel], effort: str = "high",
-           max_tokens: int = 16000) -> BaseModel:
+           max_tokens: int = 16000, images: list[tuple[bytes, str]] | None = None) -> BaseModel:
+    """`images`: optional list of (bytes, media_type) sent before the text (Claude vision)."""
+    content: str | list = user
+    if images:
+        content = [{"type": "image", "source": {"type": "base64", "media_type": mt,
+                                                "data": base64.b64encode(data).decode()}} for data, mt in images]
+        content.append({"type": "text", "text": user})
     # Streaming avoids HTTP timeouts on long outputs (the 30-day plan); get_final_message() returns the parsed result.
     with _client().beta.messages.stream(
         model=MODEL,
@@ -73,7 +80,7 @@ def _parse(system: str, user: str, schema: type[BaseModel], effort: str = "high"
         fallbacks="default",
         output_config={"effort": effort},
         system=system,
-        messages=[{"role": "user", "content": user}],
+        messages=[{"role": "user", "content": content}],
         output_format=schema,
     ) as stream:
         resp = stream.get_final_message()
