@@ -2,6 +2,32 @@
 
 _Cập nhật: 13/11/2026_
 
+## 🔄 Lệnh cập nhật VPS (sao chép và dán vào Termius)
+
+Mỗi khi có bản mới trên GitHub, chạy lệnh này trên VPS (đang đăng nhập `root`):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/sinhtd1503-png/Claude--code-lab/main/deploy/install.sh | UPDATE_WORKFLOW=1 bash
+```
+
+Nếu lệnh trên báo lỗi khi tải code (do từng sửa `config.yaml` trên VPS), chạy lệnh này trước rồi chạy lại lệnh trên:
+
+```bash
+cd /opt/tiktok-agent && git checkout config.yaml
+```
+
+Kiểm tra hệ thống sau khi cập nhật (3 dòng `caddy`, `n8n`, `worker` đều **Up**):
+
+```bash
+cd /opt/tiktok-agent && docker compose ps
+```
+
+Xem lỗi gần nhất của worker (chép phần chữ lỗi gửi Claude):
+
+```bash
+cd /opt/tiktok-agent && docker compose logs --tail 40 worker
+```
+
 ## 🎯 Mục tiêu dự án
 
 Xây agent tự động cho kênh TikTok ngách **tuổi thơ, kỷ niệm gia đình, hồi ức thế hệ 8x 9x và năng lượng tích cực** (giúp con cái, vợ chồng nhớ lại những điều quý giá thay vì bị cuốn theo cuộc sống hằng ngày). Mỗi ngày agent:
