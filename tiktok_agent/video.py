@@ -190,10 +190,19 @@ def render(script: dict, workdir: Path, cfg: dict, stock_key: str, ai=None) -> P
     final = workdir / "final.mp4"
     music = vid.get("background_music")
     if music and Path(music).exists():
+        total = _duration(workdir / "joined.mp4")
+        fade = min(2.0, total / 4)
+        mus = (f"[1:a]aresample=44100,aformat=channel_layouts=stereo,volume={float(vid.get('music_volume', 0.18))},"
+               f"afade=t=in:d=0.8,afade=t=out:st={max(0.0, total - fade):.2f}:d={fade:.2f}[m0];")
+        if vid.get("music_duck", True):  # music dips under the narration, swells in the pauses
+            mix = ("[0:a]asplit=2[voice][key];"
+                   "[m0][key]sidechaincompress=threshold=0.03:ratio=5:attack=30:release=500[m];"
+                   "[voice][m]amix=inputs=2:duration=first:normalize=0[a]")
+        else:
+            mix = "[0:a][m0]amix=inputs=2:duration=first:normalize=0[a]"
         _run(["ffmpeg", "-y", "-i", "joined.mp4", "-stream_loop", "-1", "-i", str(Path(music).resolve()),
               "-filter_complex",
-              f"[0:v]subtitles=subs.srt:force_style='{style}'[v];"
-              f"[1:a]volume={vid['music_volume']}[m];[0:a][m]amix=inputs=2:duration=first:normalize=0[a]",
+              f"[0:v]subtitles=subs.srt:force_style='{style}'[v];{mus}{mix}",
               "-map", "[v]", "-map", "[a]", "-c:v", "libx264", "-preset", "medium", "-crf", "20",
               "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart",
               "final.mp4"], cwd=workdir)

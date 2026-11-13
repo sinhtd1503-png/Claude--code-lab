@@ -1,32 +1,45 @@
 niche:
-  name: "Tuổi thơ & kỷ niệm gia đình"
+  name: "Ký ức tuổi thơ 8x 9x"
   description: >
-    Kênh kể những câu chuyện về tuổi thơ, kỷ niệm gia đình, những hồi ức đẹp,
-    và năng lượng tích cực — giúp con cái nhớ về cha mẹ, vợ chồng nhớ lại những
-    điều quý giá thay vì bị cuốn theo bộn bề cuộc sống hàng ngày.
-  audience: "Người Việt 22–45 tuổi, đã đi làm xa nhà hoặc đã lập gia đình"
-  tone: "Ấm áp, chậm rãi, chân thành, gợi nhớ; không sến, không giáo điều; kết bằng một thông điệp nhẹ nhàng"
+    Những thước phim ngắn gợi lại tuổi thơ thế hệ 8x 9x: trò chơi, quà vặt, đồ vật, trường lớp, Tết,
+    làng quê, những buổi chiều bên ông bà cha mẹ. Mỗi video đánh thức một ký ức cụ thể (âm thanh, mùi vị,
+    cảm giác) để người xem mỉm cười, thấy ấm lòng và trân quý gia đình, hiện tại.
+  audience: "Người Việt 25–45 tuổi, thế hệ 8x 9x, đã đi làm xa nhà hoặc đã lập gia đình"
+  tone: "Hoài niệm, ấm áp, chậm rãi, chân thành; câu ngắn gợi hình; không sến, không giáo điều; kết bằng một cảm xúc tích cực"
+  # Trụ cột nội dung — kế hoạch 30 ngày xoay vòng giữa các nhóm này
+  pillars:
+    - "Trò chơi tuổi thơ"
+    - "Quà vặt & món ăn xưa"
+    - "Đồ vật xưa trong nhà"
+    - "Trường lớp & thầy cô"
+    - "Tết & mùa lễ hội"
+    - "Làng quê & thiên nhiên"
+    - "Gia đình, ông bà, cha mẹ"
+  # Phong cách của kênh mẫu — Claude bắt chước CÁCH TRÌNH BÀY, không chép nội dung.
+  # Xem vài video của kênh mẫu rồi sửa đoạn này cho sát (chỉ cần tiếng Việt, càng cụ thể càng tốt).
+  style_reference: >
+    Kênh mẫu: @kyuc.tuoitho.8x9x. Video 15–30 giây dựng từ các clip AI chuyển động (người thật, ánh sáng
+    vàng ấm, chất phim cũ, màu hơi phai), bối cảnh Việt Nam thập niên 1990. Có giọng đọc kể chuyện chậm, trầm
+    ấm, xưng "mình"/"chúng ta", câu mở đầu kiểu "Ai còn nhớ…", "Ngày ấy…"; nhạc nền nhẹ, hoài niệm phía sau;
+    phụ đề chạy theo lời đọc. Mỗi video xoay quanh MỘT ký ức cụ thể, kết bằng một câu chạm cảm xúc
+    và câu hỏi gợi bình luận.
 
-# Kênh đối thủ / kênh tham khảo (username TikTok, không có @)
-# Tìm qua Apify ngày 07/11/2026, số follow tại thời điểm đó.
+# Kênh mẫu: học kỹ phong cách, nhịp, hook của các kênh này (ưu tiên hơn kênh tham khảo bên dưới)
+reference_channels:
+  - "kyuc.tuoitho.8x9x"
+
+# Kênh tham khảo thêm (username TikTok, không có @) — học chủ đề và hook
 competitors:
-  # --- Kênh làm video hoài niệm bằng AI ---
-  - "happybabyworld2026"       # Happy Baby World — 124K follow, hoạt hình 3D chuyện ông bà/cháu, tuổi thơ làng quê
-  - "aique64"                  # Mekong Delta Vietnam — 113K follow, video AI tuổi thơ miền Tây thập niên 90 (#AI)
-  - "cachsudungvo3ai"          # Làm video AI theo yêu cầu — 40K follow, video AI hoài niệm (#aihoainiem #klingai)
-  - "inconmainhaxua1"          # Ỉn Con Và Mái Nhà Xưa — 28K follow, hoạt hình tuổi thơ 8x 9x (có thể dùng AI, chưa xác nhận)
-  # --- Kênh hoài niệm 8x 9x lớn (không thấy dấu hiệu AI) — để học chủ đề & hook ---
-  - "thehien.kyuc8x9x"         # KÝ ỨC 8X9X — 530K follow, 13M tim
-  - "nammotnganchintramhoido"  # 1900 hồi đó — 355K follow, 4.2M tim
-
+  - "ngayxuayenbinh"  # 1900 hồi đó — 355K follow, 4.2M tim
+ 
 scraper:
   videos_per_profile: 30      # số video mới nhất lấy mỗi kênh
   lookback_days: 30           # chỉ phân tích video trong N ngày gần đây
   top_n_for_analysis: 25      # số video hiệu quả nhất gửi cho Claude phân tích
 
 content:
-  target_duration_sec: 30     # độ dài video mong muốn
-  scenes: 4                   # số cảnh cố định: 4 cảnh × 1 clip AI 8 giây ≈ 28–32 giây (đặt 3 nếu muốn ~24 giây)
+  target_duration_sec: 24     # độ dài video mong muốn (kênh mẫu: 15–30 giây)
+  scenes: 3                   # số cảnh cố định: 3 cảnh × 1 clip AI 8 giây ≈ 22–26 giây (đặt 4 nếu muốn ~30 giây)
   videos_per_day: 1
   plan_days: 30               # số ngày mỗi kế hoạch (n8n + worker)
 
@@ -36,8 +49,12 @@ voice:
 
 video:
   font: "DejaVu Sans"         # font phải hỗ trợ tiếng Việt
-  background_music: ""        # đường dẫn file nhạc không bản quyền (mp3), để trống nếu không dùng
-  music_volume: 0.12
+  # Nhạc nền: gửi file nhạc (mp3/m4a) vào Telegram cho bot → lưu vào data/music, mỗi video tự xoay vòng 1 bài.
+  # Chỉ dùng nhạc KHÔNG BẢN QUYỀN (YouTube Audio Library, Pixabay Music…). Xem danh sách: /nhac
+  background_music: ""        # (tuỳ chọn) cố định 1 file nhạc cho mọi video; để trống = xoay vòng thư viện
+  music_dir: "music"          # thư mục nhạc trong data/
+  music_volume: 0.18          # âm lượng nhạc so với giọng đọc
+  music_duck: true            # tự hạ nhỏ nhạc khi có giọng đọc
   fallback_query: "family warm sunset"
 
 ai_video:
