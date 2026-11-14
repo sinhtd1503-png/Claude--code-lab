@@ -126,6 +126,13 @@ Xây agent tự động cho kênh TikTok ngách **tuổi thơ, kỷ niệm gia �
 - **`/kehoach` hỏi chọn nhân vật bằng ảnh trước:** chưa có ảnh nhân vật → bot hướng dẫn gửi ảnh (chú thích tên – vai) hoặc bấm "✨ Để AI tự tạo nhân vật"; đã có ảnh → lập kế hoạch với đúng các nhân vật đó
 - Đã kiểm thử trong Docker (căn thời gian, phụ đề, bản nghe thử, đổi nhạc/giọng, dùng lại giọng đã duyệt khi ghép) và thử edge-tts thật với giọng tiếng Việt
 
+### 14/11/2026 (tiếp) — Tự lưu kịch bản đã duyệt lên Google Drive
+- Mỗi lần **Duyệt kịch bản**, hệ thống cập nhật **một file Google Docs** "Kịch bản đã duyệt – TikTok Agent" (thư mục *TikTok Agent*): toàn bộ kịch bản đã duyệt kèm **thoại từng cảnh** (người nói, cảm xúc), nhạc nền, thông điệp, caption; mới nhất ở trên (`tiktok_agent/gdrive.py`)
+- Kết nối bằng **mã thiết bị** của Google: `/drive` → mở google.com/device trên iPad, nhập mã → Cho phép. Quyền `drive.file`: app chỉ thấy file nó tạo
+- Lỗi khi lưu không chặn việc duyệt; lần duyệt sau tự lưu lại toàn bộ; `/drive` → Đồng bộ ngay / Ngắt kết nối
+- Cần tạo OAuth client loại **TVs and Limited Input devices** trên Google Cloud (hướng dẫn: `HUONG_DAN.md` Bước 8b), đặt app ở **In production** để quyền không hết hạn sau 7 ngày; lệnh cài hỏi thêm `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`
+- Đã kiểm thử trong Docker với Google API giả lập (mã thiết bị, chờ xác nhận, tạo thư mục + file, ghi đè cùng file, lỗi upload, làm mới token)
+
 ### 📌 Tóm tắt thay đổi hôm nay (14/11/2026)
 - **Lý do:** chủ kênh thấy giọng đọc thuyết minh khô khan; muốn video là **nhân vật thoại với nhau**, có cảm xúc, nhạc nền nhẹ, hình **anime điện ảnh**, và **tự tạo clip** sau khi duyệt
 - **Đã làm (PR #18, đã merge vào `main`):**
@@ -186,4 +193,5 @@ Xây agent tự động cho kênh TikTok ngách **tuổi thơ, kỷ niệm gia �
 3. **Gửi ảnh nhân vật** (mỗi ảnh một tin, chú thích `Tên - vai`) — chỉ 1 lần.
 4. `/kehoach` → duyệt kế hoạch mới (để có giọng cố định cho nhân vật) → `/kichban` → xem thoại + nghe nhạc → duyệt → nhận video.
 5. Đánh giá video đầu tiên: giọng nhân vật, nhịp thoại, khớp khẩu hình, âm lượng nhạc → báo lại để chỉnh.
-6. Huỷ hoặc gia hạn Contabo trước ngày hết kỳ 1 tháng.
+6. **Bật lưu Google Drive** theo `HUONG_DAN.md` Bước 8b, rồi gõ `/drive` để kết nối.
+7. Huỷ hoặc gia hạn Contabo trước ngày hết kỳ 1 tháng.

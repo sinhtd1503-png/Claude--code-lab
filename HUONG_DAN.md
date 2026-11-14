@@ -213,6 +213,30 @@ Cuối cùng in ra:
 
 ---
 
+## Bước 8b. Tự lưu kịch bản đã duyệt lên Google Drive (15 phút, miễn phí)
+
+Mỗi lần bạn bấm **Duyệt kịch bản**, hệ thống cập nhật một file Google Docs **"Kịch bản đã duyệt – TikTok Agent"**
+(trong thư mục **TikTok Agent** trên Drive), chứa toàn bộ kịch bản đã duyệt kèm thoại từng cảnh, nhạc, caption; mới nhất ở trên.
+Ứng dụng chỉ thấy thư mục và file do nó tạo, không đọc được file khác trên Drive của bạn.
+
+1. Safari → **console.cloud.google.com** → đăng nhập Gmail → chọn **Select a project → New project** → tên `TikTok Agent` → **Create**.
+2. Ô tìm kiếm trên cùng gõ **Google Drive API** → bấm vào → **Enable**.
+3. Menu ☰ → **APIs & Services → OAuth consent screen** (hoặc **Google Auth Platform**) → **Get started**:
+   App name `TikTok Agent`, email của bạn → Audience **External** → điền email liên hệ → **Create**.
+4. Mục **Audience** → bấm **Publish app** → **Confirm** (trạng thái **In production**).
+   ⚠️ Nếu để "Testing", Google tự huỷ quyền sau 7 ngày. App chỉ xin quyền `drive.file` nên không cần Google xét duyệt.
+5. Mục **Clients** (hoặc **Credentials → Create credentials → OAuth client ID**) → Application type
+   **TVs and Limited Input devices** → tên `tiktok-agent` → **Create** → chép **Client ID** và **Client secret** vào Ghi chú.
+6. Termius chạy lệnh cập nhật; khi được hỏi **Google OAuth Client ID / Secret** thì dán vào:
+   ```bash
+   curl -fsSL https://raw.githubusercontent.com/sinhtd1503-png/Claude--code-lab/main/deploy/install.sh | UPDATE_WORKFLOW=1 bash
+   ```
+7. Telegram gửi `/drive` → bot gửi **mã** → Safari mở **google.com/device**, nhập mã → chọn tài khoản → **Allow / Cho phép**
+   (nếu Google cảnh báo "chưa xác minh" thì bấm **Advanced → Go to TikTok Agent**) → quay lại Telegram bấm **✅ Tôi đã cho phép**.
+8. Bot báo **"Đã kết nối Google Drive"** kèm link file. Từ giờ mỗi lần duyệt kịch bản, tin xác nhận sẽ có dòng **📄 Đã lưu vào Google Drive**.
+
+---
+
 ## Bước 9. Chạy thử lần đầu (30 phút)
 
 1. Telegram → gửi `/kehoach`.
@@ -281,6 +305,7 @@ Cuối cùng in ra:
 | `/nhanvat` | Xem nhân vật cố định + prompt ảnh nhân vật |
 | 📷 Gửi ảnh + chú thích | Đặt nhân vật theo ảnh mẫu, vd chú thích `Bé Na - con gái út 8 tuổi` |
 | `/nhac` | Thư viện nhạc nền; gửi file mp3/m4a vào chat để thêm |
+| `/drive` | Kết nối Google Drive / xem link file kịch bản đã duyệt / đồng bộ lại |
 | `/phongcach` | Xem/sửa mô tả phong cách kênh mẫu (`/phongcach` + mô tả mới) |
 | `/trangthai` | Kế hoạch, video đang chờ, kênh TikTok đã kết nối |
 | `/ngansach` | Chi phí tháng này của từng dịch vụ |
