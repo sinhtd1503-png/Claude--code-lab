@@ -32,7 +32,7 @@ from fastapi.responses import FileResponse, HTMLResponse
 
 import hashlib
 
-from . import audio, content, dialogue, scraper, series, video
+from . import audio, content, dialogue, gdrive, scraper, series, video
 from .ai_video import AIBudgetExceeded, AIQuotaError, AIVideoSource
 from .budget import LABELS, Budget, BudgetNeeded
 from .config import load_settings
@@ -48,6 +48,8 @@ S = load_settings(os.getenv("AGENT_CONFIG") or None)
 TZ = ZoneInfo(S["schedule"]["timezone"])
 DATA = S.data_dir.resolve()
 DB_ = DB(DATA / "agent.db")
+DRIVE = (gdrive.GDrive(DB_, os.environ["GOOGLE_CLIENT_ID"], os.environ["GOOGLE_CLIENT_SECRET"])
+         if os.getenv("GOOGLE_CLIENT_ID") and os.getenv("GOOGLE_CLIENT_SECRET") else None)
 BUDGET = Budget(DB_, S.raw.get("budget"), S["schedule"]["timezone"])
 LOCK = threading.RLock()          # guards SQLite + manifests
 HEAVY = threading.Lock()          # one render / paid generation at a time
@@ -165,6 +167,7 @@ HELP = ("🤖 <b>Trợ lý kênh TikTok</b>\n\n"
         "📷 Gửi ảnh + chú thích tên (vd 'Bé Na - con gái 8 tuổi') – đặt nhân vật theo ảnh (gửi 1 lần, dùng mãi)\n"
         "/nhac – thư viện nhạc nền (gửi file mp3 để thêm)\n"
         "/phongcach – xem/sửa mô tả phong cách kênh mẫu\n"
+        "/drive – kết nối Google Drive (tự lưu kịch bản đã duyệt)\n"
         "/tiktok – kết nối tài khoản TikTok\n\n"
         "Mỗi sáng bot gửi 1 kịch bản thoại giữa các nhân vật + nhạc nền. Duyệt → hệ thống tự tạo clip AI có thoại "
         "(hoặc gửi prompt để bạn tạo trên Flow) → ghép video → gửi để duyệt → duyệt xong đăng TikTok.")
@@ -608,17 +611,107 @@ def approve_script(cid: int, message_id: int | None) -> dict:
                   "file": None, "tg_message_id": None} for i, sc in enumerate(scenes)]
         manual().save(cid, {"content_id": cid, "day": dt.datetime.now(TZ).date().isoformat(),
                             "shots": shots, "unassigned": []})
-        DB_.update_content(cid, status="awaiting_clips")
+        sc = item["script"]
+        sc["approved_at"] = now_ts()
+        DB_.update_content(cid, status="awaiting_clips", script=sc)
+    saved = sync_drive()
     if AI_CFG.get("auto_generate"):
         if os.getenv("GEMINI_API_KEY"):
             return reply(clear_buttons(message_id),
-                         msg(f"✅ Đã duyệt kịch bản #{cid}. 🤖 Hệ thống tự tạo {len(scenes)} clip AI có thoại…"),
+                         msg(f"✅ Đã duyệt kịch bản #{cid}.{saved}\n🤖 Hệ thống tự tạo {len(scenes)} clip AI có thoại…"),
                          next_step={"action": "paid", "id": cid})
         return reply(clear_buttons(message_id), msg(
-            f"✅ Đã duyệt kịch bản #{cid}.\nℹ️ Chưa có GEMINI_API_KEY nên chưa tạo clip tự động được — tạo tay miễn "
-            "phí trên Google Flow theo hướng dẫn dưới. (Muốn tự động: thêm GEMINI_API_KEY vào .env.)"),
+            f"✅ Đã duyệt kịch bản #{cid}.{saved}\nℹ️ Chưa có GEMINI_API_KEY nên chưa tạo clip tự động được — tạo tay "
+            "miễn phí trên Google Flow theo hướng dẫn dưới. (Muốn tự động: thêm GEMINI_API_KEY vào .env.)"),
             prompt_messages(cid))
-    return reply(clear_buttons(message_id), msg(f"✅ Đã duyệt kịch bản #{cid}."), prompt_messages(cid))
+    return reply(clear_buttons(message_id), msg(f"✅ Đã duyệt kịch bản #{cid}.{saved}"), prompt_messages(cid))
+
+
+# ---------------------------------------------------------------- Google Drive: one doc with every approved script
+
+APPROVED = ("awaiting_clips", "rendering", "video_review", "publishing", "posted", "failed", "video_rejected")
+
+
+def approved_doc_html() -> str:
+    with LOCK:
+        rows = DB_.conn.execute(f"SELECT id FROM content WHERE status IN ({','.join('?' * len(APPROVED))}) "
+                                "ORDER BY id DESC", APPROVED).fetchall()
+        items = [DB_.get_content(r["id"]) for r in rows]
+    parts = [f"<h1>{esc(gdrive.DOC_NAME)}</h1>",
+             f"<p><i>Tự động cập nhật mỗi khi duyệt kịch bản. Tổng cộng {len(items)} kịch bản, mới nhất ở trên.</i></p>"]
+    for it in items:
+        sc, idea = it["script"] or {}, it["idea"] or {}
+        when = dt.datetime.fromtimestamp(sc.get("approved_at") or it["created_at"], TZ).strftime("%d/%m/%Y %H:%M")
+        parts.append(f"<h2>#{it['id']} – {esc(sc.get('title', ''))}</h2>")
+        parts.append(f"<p><b>Duyệt:</b> {when} · <b>Ngày</b> {esc(str(idea.get('day', '?')))} · "
+                     f"<b>Chủ đề:</b> {esc(idea.get('theme', ''))}</p>")
+        if sc.get("hook"):
+            parts.append(f"<p><b>Mở đầu:</b> {esc(sc['hook'])}</p>")
+        for i, s in enumerate(sc.get("scenes", []), 1):
+            parts.append(f"<h3>Cảnh {i}: {esc(s.get('visual_vi', ''))}</h3>")
+            if "lines" in s:
+                lines = [f"<li><b>{esc(ln['speaker'])}</b> <i>({esc(ln.get('emotion_vi', ''))})</i>: "
+                         f"“{esc(ln['text'])}”</li>" for ln in s["lines"]]
+                parts.append("<ul>" + ("".join(lines) or "<li><i>(không thoại)</i></li>") + "</ul>")
+            elif s.get("narration"):
+                parts.append(f"<p>🗣 {esc(s['narration'])}</p>")
+        a = sc.get("audio") or {}
+        music = Path(a["music"]).stem if a.get("music") else ("không nhạc" if "music" in a else "")
+        if music or sc.get("music_mood"):
+            parts.append(f"<p><b>Nhạc nền:</b> {esc(music or '—')}"
+                         + (f" ({esc(sc['music_mood'])})" if sc.get("music_mood") else "") + "</p>")
+        if sc.get("lesson"):
+            parts.append(f"<p><b>Thông điệp:</b> {esc(sc['lesson'])}</p>")
+        parts.append(f"<p><b>Caption:</b> {esc(it.get('caption') or '')}</p><hr>")
+    return "<html><head><meta charset='utf-8'></head><body>" + "".join(parts) + "</body></html>"
+
+
+def sync_drive() -> str:
+    """Upload the approved-scripts doc; returns a short note for the Telegram message (never raises)."""
+    if DRIVE is None:
+        return ""
+    with LOCK:
+        connected = DRIVE.connected()
+    if not connected:
+        return "\n📄 Chưa lưu Google Drive — gõ /drive để kết nối."
+    try:
+        link = DRIVE.save_doc(approved_doc_html())
+        return f"\n📄 Đã lưu vào Google Drive: {esc(link)}" if link else "\n📄 Đã lưu vào Google Drive."
+    except Exception as e:
+        log.warning("Lưu Google Drive lỗi: %s", e)
+        return (f"\n⚠️ Lưu Google Drive lỗi: {esc(str(e)[:200])}. Lần duyệt sau sẽ tự lưu lại toàn bộ "
+                "(hoặc /drive → Đồng bộ lại).")
+
+
+def drive_cmd() -> dict:
+    if DRIVE is None:
+        return reply(msg("📄 <b>Lưu kịch bản lên Google Drive chưa được bật.</b>\n\nCần điền <code>GOOGLE_CLIENT_ID</code> "
+                         "và <code>GOOGLE_CLIENT_SECRET</code> (OAuth client loại <i>TVs and Limited Input devices</i>) "
+                         "vào .env rồi chạy lại lệnh cài. Xem hướng dẫn trong TIEN_DO.md / HUONG_DAN.md."))
+    if DRIVE.connected():
+        link = DRIVE.doc_link()
+        return reply(msg("📄 <b>Google Drive: đã kết nối.</b>\n" + (f"File kịch bản: {esc(link)}" if link else
+                         "Chưa có file — sẽ tạo ở lần duyệt kịch bản tới (hoặc bấm Đồng bộ ngay)."),
+                         kb([("📤 Đồng bộ ngay", "ds:0")], [("🔌 Ngắt kết nối", "dx:0")])))
+    d = DRIVE.start_device()
+    return reply(msg(f"📄 <b>Kết nối Google Drive</b>\n\n1) Mở {esc(d['url'])} trên Safari\n"
+                     f"2) Nhập mã: <code>{esc(d['code'])}</code>\n3) Chọn đúng tài khoản Google → Cho phép\n"
+                     f"4) Quay lại đây bấm nút dưới.\n\nMã có hiệu lực {d['minutes']} phút. Ứng dụng chỉ thấy được "
+                     "thư mục và file do nó tạo ra, không đọc được các file khác trên Drive của bạn.",
+                     kb([("✅ Tôi đã cho phép", "dc:0")])))
+
+
+def drive_check(mid: int | None) -> dict:
+    if DRIVE is None:
+        return reply(clear_buttons(mid))
+    st = DRIVE.poll_device()
+    if st == "ok":
+        return reply(clear_buttons(mid), msg("✅ Đã kết nối Google Drive. Từ giờ mỗi kịch bản được duyệt sẽ tự lưu "
+                                             "vào file trên Drive." + sync_drive()))
+    if st == "pending":
+        return reply(msg("⏳ Google chưa xác nhận. Nhập mã trên google.com/device, bấm Cho phép, rồi bấm lại nút.",
+                         kb([("✅ Tôi đã cho phép", "dc:0")])))
+    return reply(clear_buttons(mid), msg("❌ Mã đã hết hạn hoặc bị từ chối. Gõ /drive để lấy mã mới."))
 
 
 def _tg_download(file_id: str, dst: Path) -> None:
@@ -1200,7 +1293,8 @@ def tg_command(body: dict = BODY, x_worker_token: str = TOKEN) -> dict:
              "/clip": resend_prompts,
              "/trangthai": lambda: reply(msg(status_text())), "/ngansach": lambda: reply(msg(budget_text())),
              "/nhanvat": characters, "/tiktok": tiktok_links, "/nhac": lambda: reply(music_list()),
-             "/phongcach": lambda: style_cmd(str(body.get("text", "")))}
+             "/phongcach": lambda: style_cmd(str(body.get("text", ""))),
+             "/drive": drive_cmd}
     return _safe(table.get(cmd, lambda: reply(msg(HELP))))
 
 
@@ -1234,6 +1328,10 @@ def tg_button(body: dict = BODY, x_worker_token: str = TOKEN) -> dict:
         "ca": lambda: apply_cast_to_plan(n, mid),
         "am": lambda: reply(msg("⏳ Đang đổi nhạc…"), next_step={"action": "audio", "id": n, "what": "music"}),
         "av": lambda: reply(msg("⏳ Đang đổi giọng đọc…"), next_step={"action": "audio", "id": n, "what": "voice"}),
+        "dc": lambda: drive_check(mid),
+        "ds": lambda: reply(clear_buttons(mid), msg(("📤 Đồng bộ Google Drive:" + sync_drive()) if DRIVE else "")),
+        "dx": lambda: (DRIVE.disconnect() if DRIVE else None) or reply(clear_buttons(mid),
+                                                                        msg("🔌 Đã ngắt kết nối Google Drive.")),
         "pk": lambda: reply(clear_buttons(mid), msg("⏳ Đang quét đối thủ và lập kế hoạch 30 ngày (2–5 phút)…"),
                             next_step={"action": "plan"}),
         "cx": lambda: delete_cast(n, mid),
