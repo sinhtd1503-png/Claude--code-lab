@@ -1,6 +1,6 @@
 # Tiến độ dự án — TikTok Content Agent
 
-_Cập nhật: 13/11/2026_
+_Cập nhật: 14/11/2026_
 
 ## 🔄 Lệnh cập nhật VPS (sao chép và dán vào Termius)
 
@@ -126,6 +126,20 @@ Xây agent tự động cho kênh TikTok ngách **tuổi thơ, kỷ niệm gia �
 - **`/kehoach` hỏi chọn nhân vật bằng ảnh trước:** chưa có ảnh nhân vật → bot hướng dẫn gửi ảnh (chú thích tên – vai) hoặc bấm "✨ Để AI tự tạo nhân vật"; đã có ảnh → lập kế hoạch với đúng các nhân vật đó
 - Đã kiểm thử trong Docker (căn thời gian, phụ đề, bản nghe thử, đổi nhạc/giọng, dùng lại giọng đã duyệt khi ghép) và thử edge-tts thật với giọng tiếng Việt
 
+### 📌 Tóm tắt thay đổi hôm nay (14/11/2026)
+- **Lý do:** chủ kênh thấy giọng đọc thuyết minh khô khan; muốn video là **nhân vật thoại với nhau**, có cảm xúc, nhạc nền nhẹ, hình **anime điện ảnh**, và **tự tạo clip** sau khi duyệt
+- **Đã làm (PR #18, đã merge vào `main`):**
+  - Kịch bản dạng thoại: mỗi cảnh 8 giây có 1–3 câu thoại (ai nói, nói gì, cảm xúc), không còn người dẫn chuyện; mỗi nhân vật có giọng nói cố định
+  - Prompt clip chứa sẵn thoại tiếng Việt + giọng nhân vật + yêu cầu khớp khẩu hình, để video AI tự lồng tiếng
+  - Phong cách anime điện ảnh cố định cho mọi kế hoạch, clip, ảnh nhân vật
+  - Ảnh nhân vật gửi 1 lần là tự áp dụng cho kế hoạch đang chạy và mọi kế hoạch sau
+  - Duyệt kịch bản: xem thoại từng cảnh + nghe thử nhạc nền, đổi nhạc bằng nút
+  - Ghép video giữ tiếng thoại trong clip, nhạc tự hạ khi nhân vật nói, phụ đề theo thoại; clip không có tiếng thì dùng giọng dự phòng
+  - Tự tạo clip bằng Gemini API sau khi duyệt (trả phí, luôn hỏi duyệt ngân sách); hết hạn mức/credit thì báo trên Telegram, có nút thử lại và prompt tạo tay
+  - Lệnh cài hỏi thêm `GEMINI_API_KEY` (tuỳ chọn); thêm mục "Lệnh cập nhật VPS" ở đầu file này (PR #17)
+- **Chưa làm được:** tự động dùng trang tạo video miễn phí — không có trang miễn phí nào cho gọi tự động hợp lệ; tự động hoá web vi phạm điều khoản. Miễn phí vẫn là tạo tay trên Google Flow
+- **Rủi ro cần kiểm tra khi chạy thật:** chất lượng tiếng Việt và khớp khẩu hình do video AI tạo; Gemini có trả về tiếng trong clip hay không (nếu không sẽ dùng giọng dự phòng, kém cảm xúc hơn)
+
 ### 14/11/2026 — Video thoại giữa các nhân vật, phong cách anime điện ảnh, tự tạo clip sau khi duyệt
 - **Bỏ hoàn toàn giọng đọc thuyết minh.** Kịch bản mới (`series.py`): mỗi cảnh 8 giây có 1–3 câu thoại giữa các nhân vật (người nói, câu thoại, cảm xúc, cách nói), âm thanh môi trường, `music_mood`. Mỗi nhân vật có **giọng nói cố định** (`voice_en`, `voice_type`)
 - **Prompt clip có sẵn thoại tiếng Việt** + giọng từng nhân vật + yêu cầu khớp khẩu hình → video AI (Flow/Gemini) tự lồng tiếng nhân vật; không có nhạc trong clip, không người dẫn chuyện
@@ -167,7 +181,9 @@ Xây agent tự động cho kênh TikTok ngách **tuổi thơ, kỷ niệm gia �
 
 ## 📋 Các bước cần cấu hình tiếp
 
-1. **Cập nhật VPS** (nạp lại workflow n8n để nhận file nhạc): `curl -fsSL https://raw.githubusercontent.com/sinhtd1503-png/Claude--code-lab/main/deploy/install.sh | UPDATE_WORKFLOW=1 bash`
-2. **Thêm 3–5 bài nhạc không bản quyền** (YouTube Audio Library, Pixabay Music) bằng cách gửi file vào chat bot; kiểm tra `/nhac`.
-3. **Kiểm tra `/phongcach`**, chỉnh mô tả cho sát kênh mẫu → `/kehoach` để lập kế hoạch mới → duyệt → `/kichban` → làm 1 video để so với kênh mẫu.
-4. Huỷ hoặc gia hạn Contabo trước ngày hết kỳ 1 tháng.
+1. **Cập nhật VPS** bằng lệnh ở mục "🔄 Lệnh cập nhật VPS" đầu file; khi được hỏi Gemini API key: dán khoá (tự tạo clip, trả phí) hoặc Enter (tạo tay trên Flow).
+2. **Thêm 3–5 bài nhạc nền nhẹ, không bản quyền** bằng cách gửi file vào chat bot; kiểm tra `/nhac`.
+3. **Gửi ảnh nhân vật** (mỗi ảnh một tin, chú thích `Tên - vai`) — chỉ 1 lần.
+4. `/kehoach` → duyệt kế hoạch mới (để có giọng cố định cho nhân vật) → `/kichban` → xem thoại + nghe nhạc → duyệt → nhận video.
+5. Đánh giá video đầu tiên: giọng nhân vật, nhịp thoại, khớp khẩu hình, âm lượng nhạc → báo lại để chỉnh.
+6. Huỷ hoặc gia hạn Contabo trước ngày hết kỳ 1 tháng.
