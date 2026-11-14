@@ -86,14 +86,17 @@ Trong Telegram, gửi cho bot:
    **Kết quả đúng:** bot gửi kịch bản 3–4 cảnh.
 7. Test viết lại: **Trả lời** vào tin kịch bản, gõ góp ý (ví dụ "Lời đọc ngắn hơn") → gửi.
    **Kết quả đúng:** bot gửi kịch bản mới.
-8. Sau kịch bản, bot gửi **bản nghe thử 🎧** (giọng đọc liền mạch + nhạc nền, đúng âm thanh của video thành phẩm).
-   Thử **🎵 Đổi nhạc** (xoay vòng các bài trong `/nhac`, có cả "không nhạc") và **🎙 Đổi giọng** (nữ/nam).
-   **Kết quả đúng:** mỗi lần bấm, bot gửi bản nghe thử mới.
-9. Bấm **✅ Duyệt kịch bản & âm thanh**. **Kết quả đúng:** bot gửi các tin **"Cảnh 1… Cảnh 3"**, mỗi tin có prompt tiếng Anh.
+8. Kịch bản giờ là **thoại giữa các nhân vật** (💬 tên nhân vật, cảm xúc, câu thoại), không còn người dẫn chuyện.
+   Sau kịch bản, bot gửi **🎵 nhạc nền nghe thử** (đúng độ dài video). Thử **🎵 Đổi nhạc** (xoay vòng `/nhac`, có cả
+   "không nhạc"). **Kết quả đúng:** mỗi lần bấm, bot gửi bài mới.
+9. Bấm **✅ Duyệt kịch bản & nhạc**.
+   - Có `GEMINI_API_KEY`: bot báo "🤖 Hệ thống tự tạo 3 clip AI có thoại…" → lần đầu hỏi **duyệt ngân sách Gemini**.
+     Duyệt → 5–15 phút sau nhận video. Từ chối → bot gửi prompt để tạo tay trên Flow.
+   - Chưa có key: bot gửi các tin **"Cảnh 1… Cảnh 3"** (prompt có sẵn thoại) để tạo tay trên Flow.
 
 ## Phần 4 – Gửi clip và ghép video (5 phút)
 
-1. Bấm **Trả lời** vào tin **"Cảnh 1"** → đính kèm 1 video → gửi.
+1. Bấm **Trả lời** vào tin **"Cảnh 1"** → đính kèm 1 video (clip Flow **giữ nguyên âm thanh** — Flow tạo luôn giọng thoại) → gửi.
    **Kết quả đúng:** bot báo đã nhận cảnh 1 và gửi **ảnh khung cuối** của clip.
 2. Làm tương tự cho các cảnh còn lại.
 3. Khi đủ clip. **Kết quả đúng:** bot báo "⏳ Đang ghép video", sau 1–3 phút gửi **video 24–32 giây** có giọng đọc

@@ -42,6 +42,18 @@ class AIBudgetExceeded(RuntimeError):
     pass
 
 
+class AIQuotaError(RuntimeError):
+    """The provider refused for quota / billing / credit reasons — the owner has to decide (pay or go manual)."""
+
+
+QUOTA_HINTS = ("resource_exhausted", "quota", "429", "billing", "credit", "insufficient", "payment", "exceeded")
+
+
+def _quota_like(err: Exception) -> bool:
+    t = str(err).lower()
+    return any(h in t for h in QUOTA_HINTS)
+
+
 class AIVideoSource:
     def __init__(self, cfg: dict, db: DB, data_dir: Path, timezone: str):
         self.cfg = cfg
@@ -52,6 +64,7 @@ class AIVideoSource:
         self.db.conn.executescript(SCHEMA)
         self._client = None
         self.run: dict | None = None
+        self.strict = False  # True: raise instead of letting the renderer fall back to stock footage
 
     # ---------- config helpers ----------
     @property
@@ -176,6 +189,25 @@ class AIVideoSource:
     def scene_clip(self, scene_index: int, scene: dict, bible: dict | None,
                    duration: float, workdir: Path) -> Path:
         """Generate all shots for one scene and concatenate them (video only). Raises on failure/budget."""
+        if scene.get("prompt_full"):  # dialogue scene: one shot, prompt used as-is, keep the generated voices
+            sec = int(min(self.cfg["max_shot_sec"], math.ceil(duration)))
+            if sec > self.remaining_today():
+                raise AIBudgetExceeded(f"cần {sec}s, hôm nay còn {self.remaining_today():.0f}s")
+            out = workdir / f"ai_s{scene_index}_dlg.mp4"
+            t0 = time.time()
+            try:
+                iid, in_tok, out_tok = self._generate_shot(scene["prompt_full"], sec, out)
+            except Exception as e:
+                self._record(scene_index, 0, 0, 0, 0, 0.0, "failed", None)
+                raise (AIQuotaError if _quota_like(e) else RuntimeError)(str(e)[:500]) from None
+            cost, in_tok, out_tok = self._cost(sec, in_tok, out_tok)
+            self._record(scene_index, 0, sec, in_tok, out_tok, cost, "ok", iid)
+            if self.run is not None:
+                self.run["shots"].append({"scene": scene_index + 1, "shot": 1, "seconds": sec, "est_cost_usd": cost,
+                                          "gen_time_sec": round(time.time() - t0), "prompt": scene["prompt_full"]})
+                self.run["ai_seconds"] += sec
+                self.run["est_cost_usd"] += cost
+            return out
         shots = self.plan_shots(duration, self.cfg["max_shot_sec"])
         need = sum(shots)
         if need > self.remaining_today():

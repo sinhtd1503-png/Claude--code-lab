@@ -18,11 +18,16 @@ niche:
   # Phong cách của kênh mẫu — Claude bắt chước CÁCH TRÌNH BÀY, không chép nội dung.
   # Xem vài video của kênh mẫu rồi sửa đoạn này cho sát (chỉ cần tiếng Việt, càng cụ thể càng tốt).
   style_reference: >
-    Kênh mẫu: @kyuc.tuoitho.8x9x. Video 15–30 giây dựng từ các clip AI chuyển động (người thật, ánh sáng
-    vàng ấm, chất phim cũ, màu hơi phai), bối cảnh Việt Nam thập niên 1990. Có giọng đọc kể chuyện chậm, trầm
-    ấm, xưng "mình"/"chúng ta", câu mở đầu kiểu "Ai còn nhớ…", "Ngày ấy…"; nhạc nền nhẹ, hoài niệm phía sau;
-    phụ đề chạy theo lời đọc. Mỗi video xoay quanh MỘT ký ức cụ thể, kết bằng một câu chạm cảm xúc
-    và câu hỏi gợi bình luận.
+    Kênh mẫu: @kyuc.tuoitho.8x9x. Video 15–30 giây gồm các clip AI 8 giây, bối cảnh Việt Nam thập niên 1990.
+    KHÔNG có người dẫn chuyện: các nhân vật trong gia đình nói chuyện với nhau bằng những câu thoại ngắn, đời
+    thường, có cảm xúc (trêu đùa, hỏi han, reo vui, thì thầm, nghẹn ngào); nhạc nền nhẹ nhàng, hoài niệm phía sau;
+    phụ đề theo lời thoại. Mỗi video xoay quanh MỘT ký ức cụ thể, kết bằng một khoảnh khắc chạm cảm xúc và câu
+    hỏi gợi bình luận trong caption.
+  # Phong cách hình ảnh CỐ ĐỊNH cho mọi clip và mọi kế hoạch (tiếng Anh, dùng nguyên văn trong prompt)
+  visual_style_en: >
+    Cinematic anime feature-film style: hand-drawn 2D animation look, expressive anime faces, painterly richly
+    detailed backgrounds, soft warm golden-hour light, gentle film grain, nostalgic muted color palette,
+    1990s Vietnam
 
 # Kênh mẫu: học kỹ phong cách, nhịp, hook của các kênh này (ưu tiên hơn kênh tham khảo bên dưới)
 reference_channels:
@@ -49,6 +54,14 @@ voice:
     - "vi-VN-HoaiMyNeural"    # nữ
     - "vi-VN-NamMinhNeural"   # nam
   rate: "-8%"                 # chậm hơn một chút cho cảm xúc
+  # Giọng DỰ PHÒNG khi clip AI không có tiếng thoại (bình thường clip Flow/Gemini tự lồng tiếng nhân vật)
+  fallback:
+    girl:       {voice: "vi-VN-HoaiMyNeural",  pitch: "+35Hz", rate: "+6%"}
+    boy:        {voice: "vi-VN-NamMinhNeural", pitch: "+30Hz", rate: "+6%"}
+    female:     {voice: "vi-VN-HoaiMyNeural",  pitch: "+0Hz",  rate: "-4%"}
+    male:       {voice: "vi-VN-NamMinhNeural", pitch: "+0Hz",  rate: "-4%"}
+    old_female: {voice: "vi-VN-HoaiMyNeural",  pitch: "-12Hz", rate: "-14%"}
+    old_male:   {voice: "vi-VN-NamMinhNeural", pitch: "-12Hz", rate: "-14%"}
 
 video:
   font: "DejaVu Sans"         # font phải hỗ trợ tiếng Việt
@@ -56,7 +69,7 @@ video:
   # Chỉ dùng nhạc KHÔNG BẢN QUYỀN (YouTube Audio Library, Pixabay Music…). Xem danh sách: /nhac
   background_music: ""        # (tuỳ chọn) cố định 1 file nhạc cho mọi video; để trống = xoay vòng thư viện
   music_dir: "music"          # thư mục nhạc trong data/
-  music_volume: 0.18          # âm lượng nhạc so với giọng đọc
+  music_volume: 0.15          # âm lượng nhạc nền (nhẹ, nằm dưới lời thoại)
   music_duck: true            # tự hạ nhỏ nhạc khi có giọng đọc
   fallback_query: "family warm sunset"
 
@@ -67,6 +80,9 @@ ai_video:
   #                   (labs.google/flow, ~50 credit miễn phí/ngày) rồi reply lại bằng file video
   #   "gemini_api"  = tự động hoàn toàn qua Gemini API (trả phí, cần GEMINI_API_KEY)
   provider: "manual_flow"
+  # true = duyệt kịch bản xong, hệ thống TỰ tạo clip bằng Gemini API (trả phí, cần GEMINI_API_KEY) — luôn qua cổng
+  # duyệt ngân sách: hết hạn mức thì bot hỏi bạn trên Telegram trước khi tiêu. Lỗi/hết hạn mức → chuyển sang tạo tay.
+  auto_generate: true
   # Cảnh nào dùng AI, còn lại dùng Pixabay:
   #   "first" = chỉ cảnh mở đầu (hook) | "all" = tất cả | "none" = không dùng | [1, 3] = cảnh số 1 và 3
   scenes: "all"

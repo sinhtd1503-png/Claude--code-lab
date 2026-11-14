@@ -126,6 +126,17 @@ Xây agent tự động cho kênh TikTok ngách **tuổi thơ, kỷ niệm gia �
 - **`/kehoach` hỏi chọn nhân vật bằng ảnh trước:** chưa có ảnh nhân vật → bot hướng dẫn gửi ảnh (chú thích tên – vai) hoặc bấm "✨ Để AI tự tạo nhân vật"; đã có ảnh → lập kế hoạch với đúng các nhân vật đó
 - Đã kiểm thử trong Docker (căn thời gian, phụ đề, bản nghe thử, đổi nhạc/giọng, dùng lại giọng đã duyệt khi ghép) và thử edge-tts thật với giọng tiếng Việt
 
+### 14/11/2026 — Video thoại giữa các nhân vật, phong cách anime điện ảnh, tự tạo clip sau khi duyệt
+- **Bỏ hoàn toàn giọng đọc thuyết minh.** Kịch bản mới (`series.py`): mỗi cảnh 8 giây có 1–3 câu thoại giữa các nhân vật (người nói, câu thoại, cảm xúc, cách nói), âm thanh môi trường, `music_mood`. Mỗi nhân vật có **giọng nói cố định** (`voice_en`, `voice_type`)
+- **Prompt clip có sẵn thoại tiếng Việt** + giọng từng nhân vật + yêu cầu khớp khẩu hình → video AI (Flow/Gemini) tự lồng tiếng nhân vật; không có nhạc trong clip, không người dẫn chuyện
+- **Phong cách hình ảnh cố định "anime điện ảnh"** (`niche.visual_style_en`) áp vào mọi kế hoạch, kịch bản, prompt, ảnh nhân vật
+- **Ảnh nhân vật gửi 1 lần, dùng mãi:** mọi bible (kế hoạch đang chạy và các kế hoạch sau) tự áp nhân vật từ ảnh + phong cách cố định (`fix_bible`); không cần bấm áp dụng
+- **Duyệt kịch bản:** bot gửi thoại từng cảnh + **nhạc nền nghe thử** với nút Duyệt kịch bản & nhạc / Đổi nhạc / Viết bản khác / Bỏ
+- **Ghép video** (`dialogue.py`): giữ tiếng thoại trong clip, nhạc nền nhẹ tự hạ khi nhân vật nói, phụ đề theo câu thoại. Clip không có tiếng → giọng dự phòng edge-tts theo từng nhân vật (trẻ em/người lớn/người già, `voice.fallback`)
+- **Tự tạo clip sau khi duyệt** (`ai_video.auto_generate`): có `GEMINI_API_KEY` → tự gọi Gemini API, luôn qua cổng duyệt ngân sách; từ chối ngân sách → gửi prompt tạo tay; **hết hạn mức/credit** giữa chừng → bot báo trên Telegram, nút "Thử tạo tự động lại" + prompt tạo tay. Lệnh cài hỏi thêm `GEMINI_API_KEY` (tuỳ chọn)
+- **Chưa có trang tạo video miễn phí có API hợp lệ:** Flow/Kling/Hailuo… bản miễn phí chỉ dùng trên web; tự động hoá web vi phạm điều khoản, dễ bị khoá tài khoản → không làm. Miễn phí vẫn là tạo tay trên Flow
+- Kịch bản cũ dạng thuyết minh vẫn ghép được như trước. Đã kiểm thử trong Docker (prompt thoại, nhạc nghe thử, ghép video giữ tiếng clip + giọng dự phòng, tự tạo clip, duyệt/từ chối ngân sách, hết hạn mức)
+
 ## 🧭 Các quyết định quan trọng
 
 | Vấn đề | Quyết định | Lý do |
