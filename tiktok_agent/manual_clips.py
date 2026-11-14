@@ -139,6 +139,16 @@ class ManualClipSource:
         parts = []
         base_vf = (f"scale={W}:{H}:force_original_aspect_ratio=increase:flags=lanczos,"
                    f"crop={W}:{H},setsar=1,fps={FPS},format=yuv420p")
+        if scene.get("keep_audio"):
+            # Dialogue clip: keep the characters' voices; never slow it down (that would distort the speech).
+            s = shots[0]
+            out = workdir / f"flow_s{s['scene']}_dlg.mp4"
+            _ffmpeg(["-i", s["file"], "-t", f"{duration + 0.5:.3f}", "-vf", base_vf, "-c:v", "libx264",
+                     "-preset", "veryfast", "-crf", "20", "-c:a", "aac", "-b:a", "160k", str(out)])
+            if self.run is not None:
+                self.run["shots"].append({"scene": s["scene"], "shot": 1, "seconds": round(duration, 2)})
+                self.run["ai_seconds"] += duration
+            return out
         if len(shots) == 1:
             # One clip for the whole scene: if the voice-over is longer, slow the clip down slightly
             # (up to max_stretch) instead of visibly looping it; if shorter, just cut it.

@@ -77,6 +77,7 @@ ask APIFY_TOKEN        "Apify token (quét đối thủ)" optional
 ask TIKTOK_CLIENT_KEY  "TikTok Client Key" optional
 ask TIKTOK_CLIENT_SECRET "TikTok Client Secret" optional
 ask PIXABAY_API_KEY    "Pixabay API key (video dự phòng)" optional
+ask GEMINI_API_KEY     "Gemini API key (tự tạo clip AI, trả phí, luôn hỏi duyệt ngân sách)" optional
 
 [ -n "$(get_env WORKER_TOKEN)" ] || set_env WORKER_TOKEN "$(openssl rand -hex 24)"
 [ -n "$(get_env TELEGRAM_WEBHOOK_SECRET)" ] || set_env TELEGRAM_WEBHOOK_SECRET "$(openssl rand -hex 24)"

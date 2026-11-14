@@ -32,8 +32,8 @@ from fastapi.responses import FileResponse, HTMLResponse
 
 import hashlib
 
-from . import audio, content, scraper, series, video
-from .ai_video import AIVideoSource
+from . import audio, content, dialogue, scraper, series, video
+from .ai_video import AIBudgetExceeded, AIQuotaError, AIVideoSource
 from .budget import LABELS, Budget, BudgetNeeded
 from .config import load_settings
 from .db import DB
@@ -162,12 +162,12 @@ HELP = ("🤖 <b>Trợ lý kênh TikTok</b>\n\n"
         "/trangthai – xem tình trạng hệ thống\n"
         "/ngansach – chi phí tháng này\n"
         "/nhanvat – nhân vật cố định & prompt ảnh nhân vật\n"
-        "📷 Gửi ảnh + chú thích tên (vd 'Bé Na - con gái 8 tuổi') – đặt nhân vật theo ảnh của bạn\n"
+        "📷 Gửi ảnh + chú thích tên (vd 'Bé Na - con gái 8 tuổi') – đặt nhân vật theo ảnh (gửi 1 lần, dùng mãi)\n"
         "/nhac – thư viện nhạc nền (gửi file mp3 để thêm)\n"
         "/phongcach – xem/sửa mô tả phong cách kênh mẫu\n"
         "/tiktok – kết nối tài khoản TikTok\n\n"
-        "Mỗi sáng bot gửi 1 kịch bản. Duyệt → bot gửi prompt để tạo clip miễn phí → bạn gửi lại clip → "
-        "bot ghép video và gửi để duyệt → duyệt xong bot đăng TikTok.")
+        "Mỗi sáng bot gửi 1 kịch bản thoại giữa các nhân vật + nhạc nền. Duyệt → hệ thống tự tạo clip AI có thoại "
+        "(hoặc gửi prompt để bạn tạo trên Flow) → ghép video → gửi để duyệt → duyệt xong đăng TikTok.")
 
 
 # ====================================================================== state helpers
@@ -211,9 +211,23 @@ def manual() -> ManualClipSource:
     return ManualClipSource(AI_CFG, DB_, DATA, S["schedule"]["timezone"])
 
 
+def fix_bible(bible: dict) -> dict:
+    """Every bible gets the channel's fixed visual style and the owner's photo characters — set once, used always."""
+    b = dict(bible or {})
+    style = (niche().get("visual_style_en") or "").strip()
+    if style:
+        b["style_en"] = " ".join(style.split())
+    cast = cast_items()
+    return series.apply_cast(b, cast) if cast else b
+
+
 def content_bible(item: dict) -> dict:
     plan = get_plan(item["idea"]["plan_id"]) if item["idea"].get("plan_id") else None
-    return (plan or {}).get("data", {}).get("bible", {})
+    return fix_bible((plan or {}).get("data", {}).get("bible", {}))
+
+
+def is_dialogue(script: dict | None) -> bool:
+    return any("lines" in s for s in (script or {}).get("scenes", []))
 
 
 def rel(p: Path) -> str:
@@ -263,8 +277,8 @@ def create_plan(feedback: str | None = None, previous: dict | None = None) -> di
         plan = series.make_plan(niche(), top, recent, PLAN_DAYS, feedback=feedback, previous=previous,
                                 reference=ref_top, cast=cast)
         data = plan.model_dump()
+        data["bible"] = fix_bible(data["bible"])
         if cast:
-            data["bible"] = series.apply_cast(data["bible"], cast)
             notes.append(f"🧑‍🎨 Dùng {len(cast)} nhân vật từ ảnh của bạn.")
         with LOCK:
             cur = DB_.conn.execute("INSERT INTO plans (ts, status, data, feedback) VALUES (?, 'review', ?, ?)",
@@ -318,12 +332,21 @@ def script_messages(cid: int) -> list[dict]:
     lines = [f"📝 <b>Kịch bản #{cid}</b> · Ngày {idea.get('day', '?')}/{PLAN_DAYS} · <i>{esc(idea.get('theme', ''))}</i>",
              f"<b>{esc(sc['title'])}</b>", "", f"🎣 <b>Hook:</b> {esc(sc['hook'])}", ""]
     for i, s in enumerate(sc["scenes"], 1):
-        lines += [f"🎬 <b>Cảnh {i}</b> – {esc(s['visual_vi'])}", f"🗣 {esc(s['narration'])}", ""]
+        lines.append(f"🎬 <b>Cảnh {i}</b> – {esc(s['visual_vi'])}")
+        if "lines" in s:
+            lines += [f"   💬 <b>{esc(ln['speaker'])}</b> <i>({esc(ln.get('emotion_vi', ''))})</i>: “{esc(ln['text'])}”"
+                      for ln in s["lines"]] or ["   <i>(không thoại – chỉ hình và âm thanh)</i>"]
+        else:
+            lines.append(f"🗣 {esc(s['narration'])}")
+        lines.append("")
+    if sc.get("music_mood"):
+        lines.append(f"🎵 <b>Không khí nhạc gợi ý:</b> {esc(sc['music_mood'])}")
     lines += [f"💡 <b>Thông điệp:</b> {esc(sc['lesson'])}", "", f"📣 <b>Caption:</b> {esc(item['caption'])}", ""]
     voice_msg = audio_message(cid)
     if voice_msg:
-        lines.append("🎧 <b>Nghe thử giọng đọc + nhạc nền ở tin tiếp theo</b>, rồi bấm duyệt ở đó. "
-                     "Muốn sửa lời: <b>Trả lời (Reply)</b> tin này và gõ góp ý.")
+        lines.append(("🎧 <b>Nghe thử nhạc nền ở tin tiếp theo</b>, rồi bấm duyệt ở đó. " if is_dialogue(sc) else
+                      "🎧 <b>Nghe thử giọng đọc + nhạc nền ở tin tiếp theo</b>, rồi bấm duyệt ở đó. ") +
+                     "Muốn sửa thoại/nội dung: <b>Trả lời (Reply)</b> tin này và gõ góp ý.")
         return long_msg("\n".join(lines)) + [voice_msg]
     err = (sc.get("audio_error") or "")[:200]
     lines.append(("⚠️ Chưa tạo được bản nghe thử" + (f" ({esc(err)})" if err else "") + ". ") +
@@ -385,9 +408,37 @@ def prepare_audio(cid: int, voice: str | None = None, music: str | None = None) 
     return sc["audio"]
 
 
+def prepare_music(cid: int, music: str | None = None) -> dict:
+    """Dialogue scripts: the voices come from the clips, so the owner approves the dialogue text + the music."""
+    with LOCK:
+        item = DB_.get_content(cid)
+    sc = item["script"]
+    cur = sc.get("audio") or {}
+    if music is None:
+        if "music" in cur:
+            music = cur["music"]
+        else:
+            m = pick_music(cid)
+            music = (rel(Path(m)) if Path(m).resolve().is_relative_to(DATA) else str(Path(m).resolve())) if m else ""
+    total = float(len(sc["scenes"]) * CLIP_SEC)
+    d = DATA / "audio" / str(cid)
+    d.mkdir(parents=True, exist_ok=True)
+    prev = dialogue.music_preview(str(DATA / music) if music else None, total, S.raw, d / f"music_{now_ts()}.mp3")
+    for old in d.glob("music_*.mp3"):
+        if old != prev:
+            old.unlink(missing_ok=True)
+    sc["audio"] = {"mode": "dialogue", "music": music, "preview": rel(prev) if prev else "", "total": total}
+    sc.pop("audio_error", None)
+    with LOCK:
+        DB_.update_content(cid, script=sc)
+    return sc["audio"]
+
+
 def _try_prepare_audio(cid: int) -> None:
     try:
-        prepare_audio(cid)
+        with LOCK:
+            dlg = is_dialogue(DB_.get_content(cid)["script"])
+        prepare_music(cid) if dlg else prepare_audio(cid)
     except Exception as e:  # edge-tts outage etc. — the script can still be approved; render retries TTS
         log.warning("Không tạo được bản nghe thử #%s: %s", cid, e)
         with LOCK:
@@ -400,6 +451,16 @@ def _try_prepare_audio(cid: int) -> None:
 def audio_message(cid: int) -> dict | None:
     item = DB_.get_content(cid)
     a = (item["script"] or {}).get("audio") or {}
+    if a.get("mode") == "dialogue":
+        rows = [[("✅ Duyệt kịch bản & nhạc", f"sa:{cid}")],
+                [("🎵 Đổi nhạc", f"am:{cid}"), ("🔄 Viết bản khác", f"sr:{cid}"), ("❌ Bỏ", f"sx:{cid}")]]
+        if not a.get("preview") or not (DATA / a["preview"]).is_file():
+            return msg(f"🎵 <b>#{cid} – Nhạc nền:</b> không dùng nhạc. Gửi file mp3/m4a vào đây để thêm vào thư viện "
+                       "(/nhac), rồi bấm Đổi nhạc.", kb(*rows))
+        cap = (f"🎵 <b>#{cid} – Nhạc nền:</b> {esc(Path(a['music']).stem)} ({a['total']:.0f}s)\n\n"
+               "Trong video, nhạc sẽ nhỏ hơn và tự hạ xuống khi nhân vật nói. Giọng nhân vật do video AI tạo "
+               "cùng clip (khớp khẩu hình).")
+        return media("audio", DATA / a["preview"], cap, kb(*rows))
     if not a.get("preview") or not (DATA / a["preview"]).is_file():
         return None
     music = Path(a["music"]).stem if a.get("music") else "không nhạc"
@@ -417,6 +478,13 @@ def change_audio(cid: int, what: str) -> dict:
     if not item or item["status"] != "script_review":
         return reply(msg(f"Kịch bản #{cid} không còn ở bước duyệt."))
     a = item["script"].get("audio") or {}
+    if is_dialogue(item["script"]):
+        opts = [rel(t) for t in music_tracks()] + [""]
+        if len(opts) == 1:
+            return reply(msg("🎵 Thư viện nhạc đang trống. Gửi file mp3/m4a vào đây để thêm nhạc, rồi bấm Đổi nhạc."))
+        cur = a.get("music", "")
+        prepare_music(cid, opts[(opts.index(cur) + 1) % len(opts)] if cur in opts else opts[0])
+        return reply(audio_message(cid))
     if what == "music":
         opts = [rel(t) for t in music_tracks()] + [""]
         if len(opts) == 1:
@@ -467,7 +535,7 @@ def next_script(scheduled: bool = False) -> dict:
         BUSY.add(key)
     try:
         idea = {**json.loads(row["idea"]), "plan_id": plan["id"], "plan_day_id": row["id"]}
-        script, caption = _write(idea, plan["data"]["bible"], plan["data"]["patterns"])
+        script, caption = _write(idea, fix_bible(plan["data"]["bible"]), plan["data"]["patterns"])
         with LOCK:
             cid = DB_.create_content(idea)
             DB_.update_content(cid, script=script, caption=caption, status="script_review")
@@ -492,7 +560,7 @@ def rewrite_script(cid: int, feedback: str | None, message_id: int | None = None
         BUSY.add(f"c{cid}")
     try:
         plan = get_plan(item["idea"]["plan_id"])
-        script, caption = _write(item["idea"], plan["data"]["bible"], plan["data"]["patterns"],
+        script, caption = _write(item["idea"], fix_bible(plan["data"]["bible"]), plan["data"]["patterns"],
                                  feedback=feedback, previous=item["script"])
         with LOCK:
             old_audio = (item["script"] or {}).get("audio") or {}
@@ -513,7 +581,8 @@ def prompt_messages(cid: int) -> list[dict]:
                "1) Mở <b>labs.google/flow</b> trên Safari (tài khoản Google miễn phí).\n"
                "2) Chạm vào khung prompt của từng cảnh bên dưới để <b>sao chép</b> → dán vào Flow → chọn "
                "khung <b>dọc 9:16</b>, 8 giây → tạo → tải clip về.\n"
-               "3) Quay lại Telegram, <b>Trả lời (Reply)</b> đúng tin nhắn \"Cảnh N\" và gửi clip đó. "
+               "3) Quay lại Telegram, <b>Trả lời (Reply)</b> đúng tin nhắn \"Cảnh N\" và gửi clip đó "
+               "(<b>giữ nguyên âm thanh</b> — Flow tạo luôn giọng thoại của nhân vật). "
                f"Hoặc gửi cả {n} clip một lượt theo đúng thứ tự cảnh.\n\n"
                "💡 Để nhân vật giống nhau: trong Flow thêm ảnh nhân vật (/nhanvat) vào phần <i>Ingredients</i>; "
                "sau mỗi clip bot gửi khung hình cuối để bạn làm khung bắt đầu cho cảnh sau.")]
@@ -540,6 +609,15 @@ def approve_script(cid: int, message_id: int | None) -> dict:
         manual().save(cid, {"content_id": cid, "day": dt.datetime.now(TZ).date().isoformat(),
                             "shots": shots, "unassigned": []})
         DB_.update_content(cid, status="awaiting_clips")
+    if AI_CFG.get("auto_generate"):
+        if os.getenv("GEMINI_API_KEY"):
+            return reply(clear_buttons(message_id),
+                         msg(f"✅ Đã duyệt kịch bản #{cid}. 🤖 Hệ thống tự tạo {len(scenes)} clip AI có thoại…"),
+                         next_step={"action": "paid", "id": cid})
+        return reply(clear_buttons(message_id), msg(
+            f"✅ Đã duyệt kịch bản #{cid}.\nℹ️ Chưa có GEMINI_API_KEY nên chưa tạo clip tự động được — tạo tay miễn "
+            "phí trên Google Flow theo hướng dẫn dưới. (Muốn tự động: thêm GEMINI_API_KEY vào .env.)"),
+            prompt_messages(cid))
     return reply(clear_buttons(message_id), msg(f"✅ Đã duyệt kịch bản #{cid}."), prompt_messages(cid))
 
 
@@ -634,10 +712,10 @@ def describe_photo(path: str, caption: str) -> dict:
     text = (f"🧑‍🎨 <b>Nhân vật từ ảnh: {esc(ch.name)}</b> – {esc(ch.role)}"
             + (" <i>(thay cho ảnh cũ cùng tên)</i>" if same else "") + "\n\n"
             f"<i>{esc(ch.look_en)}</i>\n\nPhong cách ảnh: {esc(ch.style_en)}\n\n"
-            "Kế hoạch mới (/kehoach) sẽ tự dùng đúng nhân vật này. Bấm nút dưới để dùng ngay cho kế hoạch đang chạy. "
+            "✅ Đã lưu và <b>tự áp dụng cho mọi kịch bản từ giờ</b> (cả kế hoạch đang chạy và các kế hoạch sau) — "
+            "chỉ cần gửi ảnh 1 lần. Hình ảnh luôn theo phong cách cố định của kênh (anime điện ảnh).\n"
             "Muốn đổi tên/vai: gửi lại ảnh kèm chú thích, vd <code>Bé Na - con gái út 8 tuổi</code>.")
-    rows = [[("✅ Dùng cho kế hoạch đang chạy", f"ca:{cid}")], [("🗑 Xoá nhân vật này", f"cx:{cid}")]] if plan \
-        else [[("🗑 Xoá nhân vật này", f"cx:{cid}")]]
+    rows = [[("🗑 Xoá nhân vật này", f"cx:{cid}")]]
     return reply(msg(text, kb(*rows)))
 
 
@@ -816,6 +894,10 @@ def reset_clips(cid: int, message_id: int | None) -> dict:
 
 def _render_script(item: dict, prompts: list[str] | None = None) -> dict:
     sc = item["script"]
+    if is_dialogue(sc):
+        return {"title": sc["title"], "visual_bible": {},
+                "scenes": [{"lines": s.get("lines") or [], "visual_query": s["visual_query"], "keep_audio": True,
+                            **({"prompt_full": prompts[i]} if prompts else {})} for i, s in enumerate(sc["scenes"])]}
     scenes = [{"narration": s["narration"], "visual_query": s["visual_query"],
                "shots": [prompts[i]] if prompts else [s["action_en"]]} for i, s in enumerate(sc["scenes"])]
     return {"title": sc["title"], "scenes": scenes, "visual_bible": {},
@@ -859,12 +941,29 @@ def do_render(cid: int, paid: bool = False) -> dict:
             src = manual()
             script = _render_script(item)
         src.start_run(cid)
+        run: dict = {}
         try:
             cfg = {**S.raw, "video": {**S.raw.get("video", {}), "background_music": approved_music(item)}}
-            path = video.render(script, workdir, cfg, S.pixabay_api_key or "", ai=src,
-                                narration=approved_narration(item))
-        finally:
+            if is_dialogue(item["script"]):
+                src.strict = paid  # paid clips must not silently turn into stock footage
+                path = dialogue.render_dialogue(script, workdir, cfg, S.pixabay_api_key or "", src,
+                                                content_bible(item))
+            else:
+                path = video.render(script, workdir, cfg, S.pixabay_api_key or "", ai=src,
+                                    narration=approved_narration(item))
+        except (AIQuotaError, AIBudgetExceeded) as e:
             run = src.finish_run() or {}
+            with LOCK:
+                BUDGET.record("gemini_video", float(run.get("est_cost_usd", 0)), f"#{cid} (dừng giữa chừng)")
+                DB_.update_content(cid, status="awaiting_clips", error=str(e)[:2000])
+            return reply(msg(
+                f"⚠️ <b>Tạo clip tự động cho #{cid} bị dừng: hết hạn mức / hết credit.</b>\n"
+                f"<i>{esc(str(e)[:300])}</i>\n\nBạn chọn:\n"
+                "• Nâng hạn mức hoặc đăng ký gói trả phí của Gemini API (Google AI Studio → Billing), rồi bấm "
+                "<b>Thử tạo tự động lại</b>.\n• Hoặc tạo tay miễn phí trên Google Flow với các prompt bên dưới.",
+                kb([("🔁 Thử tạo tự động lại", f"pg:{cid}")])), prompt_messages(cid))
+        finally:
+            run = run or src.finish_run() or {}
         with LOCK:
             if paid:
                 BUDGET.record("gemini_video", float(run.get("est_cost_usd", 0)), f"#{cid}")
@@ -1175,7 +1274,15 @@ def _budget_decision(rid: int, approve: bool, mid: int | None) -> dict:
     if not req:
         return reply(clear_buttons(mid))
     if req["status"] == "rejected":
-        return reply(clear_buttons(mid), msg(f"❌ Đã từ chối ngân sách #NS{rid}. Không phát sinh chi phí."))
+        resume = json.loads(req["resume"]) if req["resume"] else {}
+        extra = []
+        if resume.get("action") == "paid" and resume.get("id"):
+            with LOCK:
+                it = DB_.get_content(int(resume["id"]))
+            if it and it["status"] == "awaiting_clips":
+                extra = [msg("Không tạo tự động. Bạn tạo tay miễn phí trên Google Flow nhé:"),
+                         *prompt_messages(int(resume["id"]))]
+        return reply(clear_buttons(mid), msg(f"❌ Đã từ chối ngân sách #NS{rid}. Không phát sinh chi phí."), *extra)
     if req["status"] != "approved":
         return reply(clear_buttons(mid))
     resume = json.loads(req["resume"]) if req["resume"] else None

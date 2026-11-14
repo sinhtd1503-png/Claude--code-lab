@@ -24,6 +24,11 @@ class Character(BaseModel):
     look_en: str = Field(description="TIẾNG ANH. Ngoại hình CỐ ĐỊNH rất cụ thể: tuổi, dáng, khuôn mặt, kiểu tóc, "
                                      "trang phục và màu sắc cố định (vd 'Vietnamese girl, 8 years old, round face, "
                                      "short black bob hair with straight bangs, faded red cotton shirt, dark blue shorts')")
+    voice_en: str = Field(default="", description="TIẾNG ANH. Giọng nói CỐ ĐỊNH để video AI lồng tiếng nhất quán: tuổi, "
+                                                  "chất giọng, nhịp, giọng miền, vd 'bright playful 8-year-old girl "
+                                                  "voice, Northern Vietnamese accent'")
+    voice_type: str = Field(default="female", description="Một trong: girl | boy | female | male | old_female | "
+                                                          "old_male (dùng cho giọng dự phòng)")
 
 
 class SeriesBible(BaseModel):
@@ -42,6 +47,10 @@ class CharacterFromImage(BaseModel):
                                      "phục và màu sắc, phụ kiện. Không nêu danh tính người thật")
     style_en: str = Field(description="TIẾNG ANH, 1 câu: phong cách hình ảnh của ảnh (ảnh thật, phim cũ, 3D, minh hoạ…), "
                                       "ánh sáng, tông màu")
+    voice_en: str = Field(default="", description="TIẾNG ANH. Giọng nói hợp với nhân vật (tuổi, giới tính, tính cách), "
+                                                  "giọng miền Bắc, vd 'warm gentle elderly woman voice, slow, Northern "
+                                                  "Vietnamese accent'")
+    voice_type: str = Field(default="female", description="Một trong: girl | boy | female | male | old_female | old_male")
 
 
 class DayIdea(BaseModel):
@@ -64,20 +73,32 @@ class MonthPlan(BaseModel):
     days: list[DayIdea] = Field(description="Đúng số ngày yêu cầu, chủ đề xen kẽ, không trùng lặp")
 
 
+class DialogueLine(BaseModel):
+    speaker: str = Field(description="Tên nhân vật nói (đúng tên trong bible)")
+    text: str = Field(description="Câu thoại tiếng Việt, tự nhiên, đời thường, 3–10 từ")
+    emotion_vi: str = Field(description="Cảm xúc khi nói, tiếng Việt ngắn, vd 'hào hứng', 'thì thầm', 'nghẹn ngào'")
+    delivery_en: str = Field(description="TIẾNG ANH. Cách nói để video AI diễn: cảm xúc, âm lượng, nhịp, vd "
+                                         "'excited, giggling, fast'")
+
+
 class SeriesScene(BaseModel):
-    narration: str = Field(description="Lời đọc tiếng Việt của cảnh, 15–19 từ (đọc ~6–7 giây), tối đa 21 từ")
     visual_vi: str = Field(description="Mô tả hình ảnh của cảnh bằng tiếng Việt, 1 câu, để chủ kênh duyệt")
     characters: list[str] = Field(description="Tên nhân vật xuất hiện trong cảnh (đúng tên trong bible)")
+    lines: list[DialogueLine] = Field(description="1–3 câu thoại giữa các nhân vật trong cảnh 8 giây, TỔNG tối đa "
+                                                  "16 từ; có thể 0 câu nếu cảnh chỉ có hình + âm thanh")
     action_en: str = Field(description="TIẾNG ANH. MỘT hành động liền mạch, cụ thể trong 8 giây: ai làm gì, ở đâu "
-                                       "trong bối cảnh, biểu cảm; không mô tả lại ngoại hình nhân vật")
+                                       "trong bối cảnh, biểu cảm, ai nói với ai; không mô tả lại ngoại hình nhân vật")
     camera_en: str = Field(description="TIẾNG ANH. Góc máy và chuyển động máy, vd 'slow push-in, eye level'")
+    ambient_en: str = Field(default="", description="TIẾNG ANH. Âm thanh môi trường, vd 'cicadas, distant rooster, "
+                                                    "wind in bamboo'")
     visual_query: str = Field(description="TIẾNG ANH, 2–4 từ để tìm video stock dự phòng trên Pixabay")
 
 
 class SeriesScript(BaseModel):
     title: str
-    hook: str
+    hook: str = Field(description="Câu thoại mở đầu gây tò mò/gợi nhớ (chính là câu thoại đầu tiên)")
     scenes: list[SeriesScene]
+    music_mood: str = Field(default="", description="Kiểu nhạc nền hợp video, tiếng Việt, vd 'piano nhẹ, hoài niệm'")
     lesson: str = Field(description="Thông điệp của video, 1 câu")
     caption: str = Field(description="Caption TikTok tiếng Việt, ấm áp, có câu hỏi gợi bình luận")
     hashtags: list[str] = Field(description="5–8 hashtag, không có dấu #")
@@ -88,6 +109,7 @@ class SeriesScript(BaseModel):
 def system_prompt(niche: dict) -> str:
     pillars = niche.get("pillars") or ["Tuổi thơ 8x 9x", "Gia đình", "Làng quê", "Trường lớp", "Tết"]
     style = (niche.get("style_reference") or "").strip()
+    visual = (niche.get("visual_style_en") or "").strip()
     return f"""Bạn là biên kịch và chiến lược gia nội dung cho một kênh TikTok tiếng Việt.
 
 Ngách: {niche['name']}
@@ -98,8 +120,13 @@ Trụ cột nội dung: {' | '.join(pillars)}
 
 Phong cách trình bày phải theo sát kênh mẫu (hình ảnh, nhịp, cách kể, âm thanh, chữ trên màn hình):
 <style_reference>
-{style or 'Video hoài niệm ngắn, clip AI chuyển động, giọng đọc kể chuyện + nhạc nền nhẹ, phụ đề theo lời đọc.'}
+{style or 'Video hoài niệm ngắn, clip AI chuyển động, nhân vật thoại với nhau + nhạc nền nhẹ, phụ đề theo lời thoại.'}
 </style_reference>
+
+Hình thức video (bắt buộc):
+- KHÔNG có người dẫn chuyện, KHÔNG có giọng đọc thuyết minh. Câu chuyện kể hoàn toàn bằng THOẠI tự nhiên, có cảm xúc
+  giữa các nhân vật (trêu đùa, hỏi han, thì thầm, reo lên, nghẹn ngào…), kèm âm thanh môi trường và nhạc nền nhẹ.
+- Phong cách hình ảnh cố định: {visual or 'phim hoạt hình anime điện ảnh, nền vẽ tay chi tiết, ánh sáng ấm'}.
 
 Giá trị cốt lõi của kênh:
 - Mỗi video đánh thức MỘT ký ức tuổi thơ 8x 9x thật cụ thể, bằng chi tiết giác quan (âm thanh, mùi vị, cảm giác
@@ -112,8 +139,8 @@ Nguyên tắc:
   nhân vật hoàn toàn mới; không chép caption, kịch bản, câu chữ hay nhân vật của họ.
 - Không bịa số liệu, không giả danh người thật, không clickbait sai sự thật, không chính trị, không cảnh nguy hiểm
   hay bạo lực với trẻ em, không quảng cáo sản phẩm, không nhắc tên thương hiệu thật.
-- Video là phim ngắn dựng bằng AI: vài clip 8 giây + giọng đọc + nhạc nền + phụ đề; nhân vật và bối cảnh cố định
-  trong suốt series để người xem nhận ra "gia đình" của kênh."""
+- Video là phim ngắn dựng bằng AI: vài clip 8 giây, nhân vật nói thoại (video AI tự lồng tiếng, khớp khẩu hình) +
+  nhạc nền + phụ đề; nhân vật, giọng nói và bối cảnh cố định suốt series để người xem nhận ra "gia đình" của kênh."""
 
 
 def _compact(videos: list[dict]) -> list[dict]:
@@ -156,8 +183,8 @@ def make_plan(niche: dict, videos: list[dict], recent_titles: list[str], days: i
     parts.append(
         f"Hãy: (1) rút ra pattern hiệu quả; (2) tạo series bible cho một gia đình Việt Nam cố định dùng suốt {days} ngày; "
         f"(3) lên kế hoạch ĐÚNG {days} ngày, mỗi ngày MỘT ký ức tuổi thơ cụ thể khác nhau, sống lại qua chính các "
-        "nhân vật này; xoay vòng đều các trụ cột nội dung; mỗi ngày kết bằng một cảm xúc ấm áp khác nhau. "
-        "style_en của bible phải mô tả đúng phong cách hình ảnh của kênh mẫu. Viết ngắn gọn."
+        "nhân vật này qua những cuộc trò chuyện; xoay vòng đều các trụ cột nội dung; mỗi ngày kết bằng một cảm xúc ấm "
+        "áp khác nhau. Mỗi nhân vật cần voice_en (giọng nói cố định) và voice_type. Viết ngắn gọn."
     )
     log.info("Claude: lập kế hoạch %d ngày (%d video kênh mẫu, %d video tham khảo)…", days, len(ref), len(compact))
     return _parse(system_prompt(niche), "\n\n".join(parts), MonthPlan, effort="medium", max_tokens=32000)
@@ -169,11 +196,12 @@ def write_script(niche: dict, bible: dict, idea: dict, patterns: list[str], scen
         f"Viết kịch bản video TikTok ~{scenes * clip_sec - 4}–{scenes * clip_sec} giây cho ngày sau trong series:",
         f"<idea>\n{json.dumps(idea, ensure_ascii=False)}\n</idea>",
         f"Series bible (nhân vật và bối cảnh cố định — dùng đúng tên):\n<bible>\n{json.dumps(bible, ensure_ascii=False)}\n</bible>",
-        f"Kịch bản gồm ĐÚNG {scenes} cảnh. Mỗi cảnh là MỘT clip video AI {clip_sec} giây nên lời đọc mỗi cảnh chỉ "
-        f"15–19 từ. Các cảnh nối tiếp nhau liền mạch về thời gian và không gian (cùng buổi, cùng nơi, trang phục "
-        "không đổi): cảnh 1 = hook gợi nhớ (kiểu 'Ai còn nhớ…'), giữa = sống lại ký ức bằng chi tiết giác quan, "
-        "cảnh cuối = cảm xúc đọng lại + câu chạm lòng. "
-        "Hành động cuối của cảnh trước nối được với đầu cảnh sau.",
+        f"Kịch bản gồm ĐÚNG {scenes} cảnh. Mỗi cảnh là MỘT clip video AI {clip_sec} giây, trong đó các nhân vật NÓI "
+        f"VỚI NHAU: 1–3 câu thoại ngắn, TỔNG tối đa 16 từ mỗi cảnh (để kịp nói tự nhiên trong {clip_sec} giây, có "
+        "khoảng lặng). KHÔNG có người dẫn chuyện. Các cảnh nối tiếp liền mạch về thời gian và không gian (cùng buổi, "
+        "cùng nơi, trang phục không đổi): cảnh 1 = câu thoại mở đầu gây tò mò/gợi nhớ, giữa = cùng nhau sống lại ký ức "
+        "(chi tiết giác quan qua lời thoại và hành động), cảnh cuối = khoảnh khắc chạm lòng, câu thoại đọng lại. "
+        "Hành động cuối của cảnh trước nối được với đầu cảnh sau. Chọn music_mood hợp cảm xúc.",
     ]
     if patterns:
         parts.append(f"Pattern hiệu quả từ đối thủ:\n<patterns>\n{json.dumps(patterns, ensure_ascii=False)}\n</patterns>")
@@ -186,8 +214,8 @@ def write_script(niche: dict, bible: dict, idea: dict, patterns: list[str], scen
     elif previous:
         parts.append("Chủ kênh muốn một phiên bản KHÁC hẳn (hook và cách kể khác), vẫn cùng ý tưởng:\n"
                      f"<previous>\n{json.dumps(previous, ensure_ascii=False)}\n</previous>")
-    parts.append("Lời văn theo đúng giọng kể của kênh mẫu: tự nhiên như kể chuyện với bạn cùng thế hệ, câu ngắn, "
-                 "gợi hình, dễ đọc to. Caption ngắn, gợi nhớ, kết bằng câu hỏi gợi bình luận "
+    parts.append("Thoại như người Việt nói thật ngoài đời (xưng hô đúng vai: con – mẹ, cháu – bà, anh – em…), có cảm "
+                 "xúc, không văn vẻ, không giảng giải. Caption ngắn, gợi nhớ, kết bằng câu hỏi gợi bình luận "
                  "(vd 'Bạn còn nhớ không?').")
     log.info("Claude: viết kịch bản '%s'", idea.get("title"))
     return _parse(system_prompt(niche), "\n\n".join(parts), SeriesScript, effort="high")
@@ -208,11 +236,15 @@ def apply_cast(bible: dict, cast: list[dict], limit: int = 6) -> dict:
     chars = list(bible.get("characters") or [])
     for c in cast:
         entry = {"name": c["name"], "role": c["role"], "look_en": c["look_en"]}
+        if c.get("voice_en"):
+            entry["voice_en"] = c["voice_en"]
+        if c.get("voice_type"):
+            entry["voice_type"] = c["voice_type"]
         idx = next((i for i, x in enumerate(chars) if x["name"].strip().lower() == c["name"].strip().lower()), None)
         if idx is None:
             chars.insert(0, entry)
         else:
-            chars[idx] = entry
+            chars[idx] = {**chars[idx], **entry}  # keep the voice the plan gave this character
     keep = {c["name"].strip().lower() for c in cast}
     extra = [x for x in chars if x["name"].strip().lower() not in keep]
     ordered = [x for x in chars if x["name"].strip().lower() in keep]
@@ -228,11 +260,12 @@ def character_block(bible: dict, names: list[str]) -> str:
 
 
 def clip_prompt(bible: dict, scene: dict, index: int, total: int) -> str:
+    chars = {c["name"]: c for c in bible.get("characters", [])}
     parts = [
-        "Vertical 9:16 cinematic live-action shot, 8 seconds, part of a short nostalgic film about a Vietnamese "
-        "1990s childhood memory.",
-        f"Era and place: {bible.get('era', '')}.",
+        "Vertical 9:16 animated shot, 8 seconds, part of a short nostalgic film about a Vietnamese 1990s childhood "
+        "memory.",
         f"Visual style (identical in every shot): {bible.get('style_en', '').rstrip('.')}.",
+        f"Era and place: {bible.get('era', '')}.",
         f"Setting (same place in every shot): {bible.get('setting_en', '').rstrip('.')}.",
         f"Characters (exact same faces, hair, clothing and age in every shot): {character_block(bible, scene.get('characters', []))}.",
         f"Action: {scene['action_en'].rstrip('.')}.",
@@ -240,7 +273,21 @@ def clip_prompt(bible: dict, scene: dict, index: int, total: int) -> str:
     ]
     if index > 0:
         parts.append("Continuity: continues directly from the previous shot, same moment of the day, same lighting.")
-    parts.append("No text, no captions, no subtitles, no logos, no watermark. No dialogue, no lip-sync; soft ambient sound only.")
+    lines = scene.get("lines") or []
+    if lines:
+        spoken = []
+        for ln in lines:
+            voice = (chars.get(ln["speaker"]) or {}).get("voice_en", "")
+            spoken.append(f'{ln["speaker"]} ({ln.get("delivery_en", "")}{"; " + voice if voice else ""}) says in '
+                          f'Vietnamese: "{ln["text"]}"')
+        parts.append("Dialogue, in this order, natural pauses, accurate lip-sync, spoken in Vietnamese: "
+                     + " Then ".join(spoken) + ".")
+    else:
+        parts.append("No dialogue.")
+    amb = (scene.get("ambient_en") or "").rstrip(".")
+    parts.append(f"Sound: {'the dialogue and ' if lines else ''}soft ambient sound{(' (' + amb + ')') if amb else ''}; "
+                 "no background music, no narrator.")
+    parts.append("No text, no captions, no subtitles, no logos, no watermark.")
     return "\n".join(parts)
 
 
@@ -248,5 +295,5 @@ def character_sheet_prompt(bible: dict) -> str:
     """One-time prompt for a reference image of the cast (used as 'ingredients' in Flow for every clip)."""
     chars = "; ".join(f"{c['name']} ({c['role']}): {c['look_en']}" for c in bible.get("characters", []))
     return ("Character reference sheet, full body, front view, plain light background, soft even light, "
-            f"photorealistic, {bible.get('style_en', '').rstrip('.')}. Characters standing side by side: {chars}. "
+            f"{bible.get('style_en', '').rstrip('.')}. Characters standing side by side: {chars}. "
             "No text.")
