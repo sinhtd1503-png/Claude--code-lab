@@ -58,6 +58,89 @@ def deaccent(s: str) -> str:
     return "".join(ch for ch in unicodedata.normalize("NFKD", s) if not unicodedata.combining(ch))
 
 
+VOICES = {"vi-VN-HoaiMyNeural": "Hoài My (nữ)", "vi-VN-NamMinhNeural": "Nam Minh (nam)"}
+PITCH_RANGE, RATE_RANGE = (-100, 100), (-50, 100)
+
+
+def _num(v) -> int:
+    m = re.search(r"[+-]?\d+", str(v if v is not None else ""))
+    return int(m.group()) if m else 0
+
+
+def norm_pitch(v) -> str:
+    """'5', '+5hz', '-10 Hz', 0 → '+5Hz' (edge-tts needs a sign and Hz), clamped to ±100 Hz."""
+    return f"{max(PITCH_RANGE[0], min(PITCH_RANGE[1], _num(v))):+d}Hz"
+
+
+def norm_rate(v) -> str:
+    """'0%', '5', '-10 %' → '+0%' (edge-tts needs a sign and %), clamped to -50…+100 %."""
+    return f"{max(RATE_RANGE[0], min(RATE_RANGE[1], _num(v))):+d}%"
+
+
+def norm_voice(v) -> str:
+    v = str(v or "")
+    return v if re.fullmatch(r"[a-z]{2,}-[A-Z]{2,}-\w+Neural", v) else "vi-VN-HoaiMyNeural"
+
+
+_PITCH = r"(?:pitch|cao\s*độ|cao\s*do|độ\s*cao|do\s*cao)"
+_RATE = r"(?:rate|speed|tốc\s*độ|toc\s*do|tốc|toc)"
+STEP = 5
+
+
+def parse_voice(text: str, cur: dict) -> tuple[dict, list[str]] | None:
+    """Owner's voice request → new tts dict + what changed (Vietnamese), or None if nothing understood.
+
+    Absolute:  'pitch -10 rate +5', 'cao độ: 20Hz, tốc độ -5%', or two bare numbers '-10 +5' (pitch, rate)
+    Relative:  'trầm hơn', 'cao hơn nữa', 'nhanh hơn', 'chậm hơn nhiều' (step 5, 'nhiều' = 10)
+    Voice:     'giọng nam' / 'giọng nữ' / 'Nam Minh' / 'Hoài My'
+    """
+    t = norm(text)
+    pitch, rate, voice = _num(cur.get("pitch")), _num(cur.get("rate")), cur.get("voice") or "vi-VN-HoaiMyNeural"
+    seen = []
+    m = re.search(_PITCH + r"\s*[:=]?\s*([+-]?\s*\d+)", t)
+    if m:
+        pitch = _num(m.group(1).replace(" ", "")); seen.append("pitch")
+    m = re.search(_RATE + r"\s*[:=]?\s*([+-]?\s*\d+)", t)
+    if m:
+        rate = _num(m.group(1).replace(" ", "")); seen.append("rate")
+    if not seen:
+        nums = re.findall(r"(?<![\w])[+-]?\d+(?:\s*(?:hz|%))?", t)
+        if len(nums) == 2:
+            pitch, rate = _num(nums[0]), _num(nums[1]); seen += ["pitch", "rate"]
+        elif len(nums) == 1 and ("hz" in nums[0]):
+            pitch = _num(nums[0]); seen.append("pitch")
+        elif len(nums) == 1 and "%" in nums[0]:
+            rate = _num(nums[0]); seen.append("rate")
+    big = 2 if re.search(r"\b(?:nhiều|nhieu|hẳn|rõ|lắm|lam)\b", t) else 1
+    for words, what, sign in ((("trầm hơn", "thấp hơn", "tram hon", "thap hon", "sâu hơn", "già hơn"), "pitch", -1),
+                              (("cao hơn", "thanh hơn", "trong hơn", "cao hon", "trẻ hơn", "non hơn"), "pitch", 1),
+                              (("nhanh hơn", "nhanh hon", "lẹ hơn"), "rate", 1),
+                              (("chậm hơn", "cham hon", "từ tốn hơn", "chậm rãi hơn"), "rate", -1)):
+        if what not in seen and any(w in t for w in words):
+            if what == "pitch":
+                pitch += sign * STEP * big
+            else:
+                rate += sign * STEP * big
+            seen.append(what)
+    if re.search(r"giọng\s*nam|nam\s*minh|giong\s*nam|\bnam\b", t):
+        voice = "vi-VN-NamMinhNeural"; seen.append("voice")
+    elif re.search(r"giọng\s*nữ|hoài\s*my|hoai\s*my|giong\s*nu|\bnữ\b", t):
+        voice = "vi-VN-HoaiMyNeural"; seen.append("voice")
+    if not seen:
+        return None
+    new = {"voice": voice, "pitch": norm_pitch(pitch), "rate": norm_rate(rate)}
+    notes = []
+    if new["voice"] != cur.get("voice"):
+        notes.append(f"giọng gốc {VOICES.get(new['voice'], new['voice'])}")
+    if new["pitch"] != norm_pitch(cur.get("pitch")):
+        notes.append(f"cao độ {norm_pitch(cur.get('pitch'))} → {new['pitch']}")
+    if new["rate"] != norm_rate(cur.get("rate")):
+        notes.append(f"tốc độ {norm_rate(cur.get('rate'))} → {new['rate']}")
+    if _num(pitch) != _num(new["pitch"]) or _num(rate) != _num(new["rate"]):
+        notes.append(f"(giới hạn: cao độ {PITCH_RANGE[0]}…+{PITCH_RANGE[1]}Hz, tốc độ {RATE_RANGE[0]}…+{RATE_RANGE[1]}%)")
+    return new, notes
+
+
 class Cast:
     def __init__(self, data_dir: Path, defaults: list[dict] | None):
         self.data_dir = Path(data_dir)
@@ -80,8 +163,8 @@ class Cast:
             "voice_en": " ".join(str(c.get("voice_en") or "").split()),
             "speech_vi": " ".join(str(c.get("speech_vi") or "").split()),
             "voice_type": str(c.get("voice_type") or "female"),
-            "tts": {"voice": str(tts.get("voice") or "vi-VN-HoaiMyNeural"), "pitch": str(tts.get("pitch") or "+0Hz"),
-                    "rate": str(tts.get("rate") or "+0%")},
+            "tts": {"voice": norm_voice(tts.get("voice")), "pitch": norm_pitch(tts.get("pitch")),
+                    "rate": norm_rate(tts.get("rate"))},
             "image": str(c.get("image") or ""),
         }
 

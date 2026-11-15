@@ -35,7 +35,7 @@ import hashlib
 from . import audio, content, dialogue, gdrive, scraper, series, video
 from .ai_video import AIAuthError, AIBudgetExceeded, AIPolicyError, AIQuotaError, AIVideoSource
 from .budget import LABELS, Budget, BudgetNeeded
-from .cast import Cast, bible_characters, parse_edit
+from .cast import Cast, bible_characters, parse_edit, parse_voice
 from .config import load_settings
 from .db import DB
 from .manual_clips import ManualClipSource
@@ -179,7 +179,7 @@ HELP = ("🤖 <b>Trợ lý kênh TikTok</b>\n\n"
         "/trangthai – xem tình trạng hệ thống\n"
         "/ngansach – chi phí tháng này\n"
         "/nhanvat – 6 nhân vật cố định (ảnh mẫu, ngoại hình, cách nói)\n"
-        "/giong – nghe/chọn giọng cố định của từng nhân vật\n"
+        "/giong – nghe/chọn giọng từng nhân vật; /giong Ông pitch -10 rate -5 – nhập cao độ/tốc độ\n"
         "/themnv Tên - vai – thêm nhân vật mới (vd /themnv Cô Lan - cô giáo)\n"
         "📷 Gửi ảnh + chú thích tên nhân vật (vd 'Ông', 'Bé Na') – ảnh mẫu (gửi 1 lần, dùng mãi)\n"
         "/nhac – thư viện nhạc nền (gửi file mp3 để thêm)\n"
@@ -931,7 +931,7 @@ def card_text(c: dict) -> str:
 
 
 def card_buttons(i: int, c: dict) -> dict:
-    rows = [[("🔊 Nghe giọng", f"gp:{i}"), ("🎙 Đổi giọng", f"gv:{i}")],
+    rows = [[("🔊 Nghe giọng", f"gp:{i}"), ("🎙 Đổi giọng", f"gv:{i}"), ("✏️ Nhập giọng", f"ge:{i}")],
             [("📷 Thay ảnh" if c.get("image") else "📷 Thêm ảnh", f"cp:{i}")]]
     if c.get("image"):
         rows[1].append(("🗑 Xoá ảnh mẫu", f"cx:{i}"))
@@ -1116,6 +1116,8 @@ def edit_cast(key: str, text: str) -> dict:
     if not c:
         return reply(msg("Không tìm thấy nhân vật này (có thể đã đổi trong data/nhan_vat.yaml). Gõ /nhanvat."))
     fields = parse_edit(text)
+    if not fields and parse_voice(text, c["tts"]):
+        return apply_voice(key, text)
     if not fields:
         return reply(msg("Để sửa, trả lời thẻ nhân vật với từng dòng dạng:\n<code>Tên: Bé Na\nVai: em út, hồn nhiên\n"
                          "Ngoại hình: little girl, short bob hair, red shirt…\nGiọng: sweet little girl voice…\n"
@@ -1156,7 +1158,8 @@ def voice_cmd() -> dict:
               "trên Flow. Bản nghe thử lúc duyệt kịch bản chính là âm thanh thành phẩm." if mode == "fixed" else
               "✅ <b>Giọng trong clip</b> (đang dùng): giữ giọng Flow/Gemini tạo, khớp khẩu hình hơn nhưng có thể "
               "khác nhau giữa các clip."), "",
-             "Giọng từng nhân vật (bấm để nghe/đổi):"]
+             "Giọng từng nhân vật (bấm để nghe; dưới bản nghe có nút ✏️ để <b>nhập cao độ/tốc độ</b>). Nhập nhanh: "
+             "<code>/giong Ông pitch -10 rate -5</code> hoặc <code>/giong Bé Na cao hơn</code>:"]
     lines += [f"• <b>{esc(c['name'])}</b>: {esc(VOICE_LABELS.get(c['tts']['voice'], c['tts']['voice']))} "
               f"{esc(c['tts']['pitch'])} {esc(c['tts']['rate'])}" for c in cast_items()]
     rows = [[(("🔘 " if mode == "fixed" else "") + "Giọng cố định", "gm:1"),
@@ -1165,6 +1168,73 @@ def voice_cmd() -> dict:
     rows += [[(f"🔊 {items[k]['name']}", f"gp:{k}") for k in range(j, min(j + 3, len(items)))]
              for j in range(0, len(items), 3)]
     return reply(msg("\n".join(lines), kb(*rows)))
+
+
+VOICE_EDIT = "pending_voice_edit"
+VOICE_HELP = ("Gõ yêu cầu, ví dụ:\n"
+              "• <code>pitch -10 rate +5</code> (hoặc <code>cao độ -10 tốc độ 5</code>, hoặc chỉ <code>-10 5</code>)\n"
+              "• <code>trầm hơn</code>, <code>cao hơn nhiều</code>, <code>nhanh hơn</code>, <code>chậm hơn</code> "
+              "(mỗi lần 5, \"nhiều\" = 10)\n"
+              "• <code>giọng nam</code> / <code>giọng nữ</code> (đổi giọng gốc)\n"
+              "Cao độ (pitch) tính bằng Hz: âm = trầm, dương = cao (−100…+100). Tốc độ (rate) tính bằng %: "
+              "âm = chậm, dương = nhanh (−50…+100).")
+
+
+def ask_voice_edit(i: int) -> dict:
+    items = cast_items()
+    if not 0 <= i < len(items):
+        return reply()
+    c = items[i]
+    with LOCK:
+        DB_.kv_set(VOICE_EDIT, {"key": c["key"], "ts": now_ts()})
+    t = c["tts"]
+    return reply(msg(f"✏️ <b>Chỉnh giọng {esc(c['name'])}</b> [GIONG:{esc(c['key'])}]\n"
+                     f"Hiện tại: {esc(VOICE_LABELS.get(t['voice'], t['voice']))} · cao độ <b>{esc(t['pitch'])}</b> · "
+                     f"tốc độ <b>{esc(t['rate'])}</b>\n\n{VOICE_HELP}\n\nGõ ngay tin tiếp theo (trong 10 phút), hoặc "
+                     "<b>Trả lời</b> tin này."))
+
+
+def apply_voice(key: str, text: str) -> dict:
+    c = CAST.get(key)
+    if not c:
+        return reply(msg("Không tìm thấy nhân vật này. Gõ /giong."))
+    got = parse_voice(text, c["tts"])
+    if not got:
+        return reply(msg(f"🤔 Chưa hiểu yêu cầu giọng cho {esc(c['name'])}.\n\n{VOICE_HELP}"))
+    new, notes = got
+    CAST.update(key, tts=new)
+    head = msg(f"✅ <b>{esc(c['name'])}</b>: " + (esc("; ".join(notes)) if notes else "giữ nguyên")
+               + ". Áp dụng cho bản nghe thử và video ghép từ giờ. Nghe thử bên dưới; muốn chỉnh tiếp cứ gõ tiếp "
+               "(vd <code>trầm hơn</code>).")
+    with LOCK:
+        DB_.kv_set(VOICE_EDIT, {"key": key, "ts": now_ts()})  # keep fine-tuning without pressing again
+    return reply(head, *voice_sample(_cast_index(key))["messages"])
+
+
+def voice_cmd_text(text: str) -> dict:
+    """/giong → menu; /giong Ông pitch -10 rate +5 → set directly."""
+    arg = text.partition(" ")[2].strip()
+    if not arg:
+        return voice_cmd()
+    m = re.search(r"(?:pitch|rate|cao|tốc|toc|trầm|tram|nhanh|chậm|cham|thấp|thap|giọng|giong|[+-]?\d)", arg, re.I)
+    name = arg[:m.start()].strip(" :,-") if m else arg
+    c = CAST.find(name) if name else None
+    if not c:
+        return reply(msg("Ghi tên nhân vật trước yêu cầu, ví dụ <code>/giong Ông pitch -10 rate -5</code> hoặc "
+                         "<code>/giong Bé Na cao hơn</code>."))
+    if not m:
+        return ask_voice_edit(_cast_index(c["key"]))
+    return apply_voice(c["key"], arg[m.start():])
+
+
+def pending_voice_text(text: str) -> dict | None:
+    with LOCK:
+        pv = DB_.kv_get(VOICE_EDIT) or {}
+    if pv.get("key") and now_ts() - int(pv.get("ts", 0)) < 600 and not text.startswith("/"):
+        c = CAST.get(pv["key"])
+        if c and parse_voice(text, c["tts"]):
+            return apply_voice(pv["key"], text)
+    return None
 
 
 def set_voice_mode(n: int, mid: int | None) -> dict:
@@ -1185,8 +1255,11 @@ def voice_sample(i: int) -> dict:
     if not f.is_file():
         text = SAMPLE_LINES.get(c.get("voice_type"), "Ngày xưa ấy mà, cả nhà mình vui lắm.")
         dialogue.tts_line(text, tts, f)
-    return reply(media("audio", f, f"🔊 Giọng cố định của <b>{esc(c['name'])}</b> ({esc(tts['pitch'])}, "
-                                   f"{esc(tts['rate'])})", kb([("🎙 Đổi giọng", f"gv:{i}")])))
+    return reply(media("audio", f, f"🔊 Giọng cố định của <b>{esc(c['name'])}</b> [GIONG:{esc(c['key'])}]\n"
+                                   f"{esc(VOICE_LABELS.get(tts['voice'], tts['voice']))} · cao độ {esc(tts['pitch'])} · "
+                                   f"tốc độ {esc(tts['rate'])}\nMuốn chỉnh: <b>Trả lời</b> tin này, vd "
+                                   "<code>pitch -10 rate +5</code> hoặc <code>trầm hơn</code>",
+                       kb([("✏️ Nhập giọng", f"ge:{i}"), ("🎙 Giọng gợi ý khác", f"gv:{i}")])))
 
 
 SAMPLE_LINES = {"old_male": "Ngày xưa ấy mà, ông cũng thả diều ngoài đê suốt buổi chiều đấy cháu ạ.",
@@ -1727,7 +1800,7 @@ def tg_command(body: dict = BODY, x_worker_token: str = TOKEN) -> dict:
               "/trangthai": lambda: reply(msg(status_text())), "/ngansach": lambda: reply(msg(budget_text())),
              "/nhanvat": characters, "/tiktok": tiktok_links, "/nhac": lambda: reply(music_list()),
              "/phongcach": lambda: style_cmd(str(body.get("text", ""))),
-             "/drive": drive_cmd, "/giong": voice_cmd,
+             "/drive": drive_cmd, "/giong": lambda: voice_cmd_text(str(body.get("text", ""))),
              "/themnv": lambda: add_cast_cmd(str(body.get("text", ""))),
              "/clip": lambda: resend_prompts(str(body.get("text", "")))}
     return _safe(table.get(cmd, lambda: reply(msg(HELP))))
@@ -1777,6 +1850,7 @@ def tg_button(body: dict = BODY, x_worker_token: str = TOKEN) -> dict:
         "gm": lambda: set_voice_mode(n, mid),
         "gp": lambda: voice_sample(n),
         "gv": lambda: cycle_voice(n, mid),
+        "ge": lambda: ask_voice_edit(n),
         "am": lambda: reply(msg("⏳ Đang đổi nhạc…"), next_step={"action": "audio", "id": n, "what": "music"}),
         "av": lambda: reply(msg("⏳ Đang đổi giọng đọc…"), next_step={"action": "audio", "id": n, "what": "voice"}),
         "dc": lambda: drive_check(mid),
@@ -1847,8 +1921,12 @@ def tg_text(body: dict = BODY, x_worker_token: str = TOKEN) -> dict:
     if (stop := _tg_guard(body)) is not None:
         return stop
     ref, text = body.get("reply_to_text") or "", str(body.get("text", "")).strip()
+    if m := re.search(r"\[GIONG:([\w-]+)\]", ref):
+        return _safe(apply_voice, m.group(1), text)
     if m := re.search(r"\[NV:([\w-]+)\]", ref):
         return _safe(edit_cast, m.group(1), text)
+    if not ref and (pv := _safe(pending_voice_text, text)) and pv.get("messages"):
+        return pv
     if m := re.search(r"#KH(\d+)", ref):
         return _safe(_redo_plan, int(m.group(1)), text, None)
     if m := re.search(r"Kịch bản #(\d+)", ref):

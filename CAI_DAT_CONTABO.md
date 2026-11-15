@@ -155,7 +155,7 @@ sau khi TikTok duyệt app (audit).
 | `/trangthai` | Xem tiến độ |
 | `/ngansach` | Chi phí tháng |
 | `/nhanvat` | 6 nhân vật cố định (Ông, Bà, Bố, Mẹ, bé trai, bé gái) |
-| `/giong` | Nghe/đổi giọng từng nhân vật |
+| `/giong` | Nghe/đổi giọng; nhập cao độ/tốc độ: `/giong Ông pitch -10 rate -5` |
 | `/themnv Tên - vai` | Thêm nhân vật mới (vd `/themnv Cô Lan - cô giáo`); hoặc gửi ảnh chú thích `Tên - vai` → ➕ Nhân vật mới |
 | 📷 Gửi ảnh + chú thích tên | Ảnh mẫu nhân vật, vd chú thích `Ông` |
 | `/nhac` | Thư viện nhạc nền (gửi file mp3 để thêm) |
