@@ -257,7 +257,10 @@ Mỗi lần bạn bấm **Duyệt kịch bản**, hệ thống cập nhật mộ
    - **Thêm nhân vật** (hàng xóm, thầy cô…): gửi ảnh với chú thích `Tên - vai` → bấm **➕ Nhân vật mới**, hoặc gõ
      `/themnv Cô Lan - cô giáo chủ nhiệm` (bot tự viết mô tả và gửi prompt tạo ảnh). Nhân vật thêm có nút xoá;
      6 nhân vật chính chỉ sửa được, không xoá.
-   - **Giọng:** gửi `/giong` → bấm 🔊 để nghe giọng từng người, **🎙 Đổi giọng** để chọn giọng khác.
+   - **Giọng:** gửi `/giong` → bấm 🔊 để nghe giọng từng người. Muốn chỉnh theo ý: bấm **✏️ Nhập giọng** (hoặc
+     **Trả lời** bản nghe thử) và gõ yêu cầu, ví dụ `pitch -10 rate +5`, `cao độ 20 tốc độ -5`, `trầm hơn`,
+     `nhanh hơn nhiều`, `giọng nam`. Nhập nhanh một lệnh: `/giong Ông pitch -10 rate -5`.
+     Cao độ (pitch, Hz): âm = trầm, dương = cao (−100…+100). Tốc độ (rate, %): âm = chậm, dương = nhanh (−50…+100).
      Mặc định dùng **Giọng cố định**: khi ghép video, bot thay tiếng trong clip bằng giọng riêng của từng nhân vật
      nên mọi clip đều cùng giọng, kể cả clip tạo tay. Bản nghe thử lúc duyệt kịch bản chính là âm thanh thành phẩm.
    - Tất cả được lưu trong `/opt/tiktok-agent/data/nhan_vat.yaml` (sửa bằng nano cũng được; cập nhật code không
@@ -321,7 +324,7 @@ Mỗi lần bạn bấm **Duyệt kịch bản**, hệ thống cập nhật mộ
 | `/kichban` | Viết ngay kịch bản tiếp theo (bình thường bot tự gửi 07:00) |
 | `/clip` | Gửi lại tất cả prompt clip; `/clip 2` gửi riêng cảnh 2 (khi thiếu tin) |
 | `/nhanvat` | 6 nhân vật cố định: ảnh mẫu, ngoại hình, cách nói (Trả lời thẻ để sửa) |
-| `/giong` | Nghe/đổi giọng từng nhân vật; chọn giọng cố định hay giọng trong clip |
+| `/giong` | Nghe/đổi giọng từng nhân vật; `/giong Ông pitch -10 rate -5` hoặc `/giong Bé Na cao hơn` để nhập cao độ/tốc độ |
 | `/themnv Tên - vai` | Thêm nhân vật mới (vd `/themnv Cô Lan - cô giáo`); hoặc gửi ảnh chú thích `Tên - vai` → ➕ Nhân vật mới |
 | 📷 Gửi ảnh + chú thích | Ảnh mẫu cho một nhân vật, chú thích là tên, vd `Ông`, `Bé Na` |
 | `/nhac` | Thư viện nhạc nền; gửi file mp3/m4a vào chat để thêm |

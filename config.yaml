@@ -47,7 +47,7 @@ cast:
     voice_en: "deep, slightly husky elderly male voice, slow and warm, soft chuckle, Northern Vietnamese accent"
     speech_vi: "Xưng 'ông', gọi cháu là 'cháu' hoặc 'con'; nói chậm, hay cười khà khà, thích kể 'ngày xưa ấy mà…'"
     voice_type: old_male
-    tts: {voice: "vi-VN-NamMinhNeural", pitch: "-14Hz", rate: "-14%"}
+    tts: {voice: "vi-VN-NamMinhNeural", pitch: "+5Hz", rate: "-5%"}
   - key: ba
     name: "Bà"
     role: "Bà nội, dịu dàng, chiều cháu, hay dặn dò"
@@ -59,7 +59,7 @@ cast:
     voice_en: "soft, warm elderly female voice, slow and tender, slightly raspy, Northern Vietnamese accent"
     speech_vi: "Xưng 'bà', gọi cháu là 'cháu' hoặc 'cục vàng của bà'; giọng ngọt, hay dặn 'từ từ thôi cháu'"
     voice_type: old_female
-    tts: {voice: "vi-VN-HoaiMyNeural", pitch: "-12Hz", rate: "-14%"}
+    tts: {voice: "vi-VN-HoaiMyNeural", pitch: "-15Hz", rate: "-5%"}
   - key: bo
     name: "Bố"
     role: "Bố, ít nói, chịu khó, hài hước kín đáo"
@@ -70,7 +70,7 @@ cast:
     voice_en: "steady mid-low adult male voice, calm and kind, medium pace, Northern Vietnamese accent"
     speech_vi: "Xưng 'bố', gọi con là 'con', gọi ông bà là 'ông bà' khi nói với con; nói ngắn, hay trêu con"
     voice_type: male
-    tts: {voice: "vi-VN-NamMinhNeural", pitch: "-4Hz", rate: "-4%"}
+    tts: {voice: "vi-VN-NamMinhNeural", pitch: "+20Hz", rate: "0%"}
   - key: me
     name: "Mẹ"
     role: "Mẹ, đảm đang, ân cần, hay mắng yêu"
@@ -81,7 +81,7 @@ cast:
     voice_en: "gentle clear adult female voice, warm and caring, medium pace, Northern Vietnamese accent"
     speech_vi: "Xưng 'mẹ', gọi con là 'con'; ân cần, hay mắng yêu 'cái thằng này', 'con bé này'"
     voice_type: female
-    tts: {voice: "vi-VN-HoaiMyNeural", pitch: "+0Hz", rate: "-4%"}
+    tts: {voice: "vi-VN-HoaiMyNeural", pitch: "+10Hz", rate: "+5%"}
   - key: be_trai
     name: "Cu Tí"
     role: "Bé trai, anh, nghịch ngợm, hiếu động, thương em"
@@ -92,7 +92,7 @@ cast:
     voice_en: "bright energetic young boy voice, high-pitched, fast and playful, Northern Vietnamese accent"
     speech_vi: "Xưng 'con' với bố mẹ, 'cháu' với ông bà, 'anh' với em gái; hay khoe, hay reo 'ơ, hay quá!'"
     voice_type: boy
-    tts: {voice: "vi-VN-NamMinhNeural", pitch: "+30Hz", rate: "+6%"}
+    tts: {voice: "vi-VN-NamMinhNeural", pitch: "+50Hz", rate: "+10%"}
   - key: be_gai
     name: "Bé Na"
     role: "Bé gái, em út, hồn nhiên, tò mò, hay hỏi"
@@ -103,7 +103,7 @@ cast:
     voice_en: "sweet high-pitched little girl voice, giggly and curious, Northern Vietnamese accent"
     speech_vi: "Xưng 'con'/'cháu', gọi anh là 'anh Tí'; hồn nhiên, hay hỏi 'sao thế ạ?', 'thật á?'"
     voice_type: girl
-    tts: {voice: "vi-VN-HoaiMyNeural", pitch: "+35Hz", rate: "+6%"}
+    tts: {voice: "vi-VN-HoaiMyNeural", pitch: "+60Hz", rate: "-10%"}
 
 # Kênh mẫu: học kỹ phong cách, nhịp, hook của các kênh này (ưu tiên hơn kênh tham khảo bên dưới)
 reference_channels:
