@@ -244,8 +244,20 @@ Mỗi lần bạn bấm **Duyệt kịch bản**, hệ thống cập nhật mộ
 3. 2–5 phút sau bot gửi **🗓 Kế hoạch 30 ngày**: gia đình nhân vật cố định + lịch 30 chủ đề.
    - Đồng ý → **✅ Duyệt kế hoạch**.
    - Muốn sửa → **Trả lời (Reply)** tin nhắn kế hoạch (chạm giữ tin → Trả lời) và gõ góp ý, vd "thêm chủ đề Tết, bớt chủ đề trường học".
-4. Gửi `/nhanvat` → bot gửi mô tả nhân vật + **prompt tạo ảnh nhân vật chuẩn**. Làm 1 lần:
-   chạm vào khung prompt (tự sao chép) → tạo ảnh trên Google Flow/Gemini → lưu ảnh đẹp nhất vào **Ảnh**.
+4. **Cài 6 nhân vật cố định (làm 1 lần, dùng mãi):** gửi `/nhanvat` → bot gửi 6 thẻ: **Ông, Bà, Bố, Mẹ, bé trai
+   (Cu Tí), bé gái (Bé Na)**, mỗi thẻ có ngoại hình, giọng, cách xưng hô. Mọi kịch bản và prompt clip dùng nguyên văn
+   các thẻ này, nên mặt, quần áo và giọng giống nhau giữa các clip.
+   - **Ảnh mẫu:** thẻ nào báo "Chưa có ảnh mẫu" thì chạm khung prompt (tự sao chép) → tạo ảnh trên Google Flow
+     (chế độ ảnh) hoặc Gemini → lưu ảnh đẹp nhất → gửi ảnh vào bot, **chú thích là tên nhân vật** (vd `Ông`).
+     Hoặc gửi ảnh của bạn (ảnh tự vẽ/AI, không dùng ảnh người thật khi chưa được đồng ý). Bot tự mô tả ngoại hình
+     theo ảnh và lưu ảnh làm mẫu.
+   - **Sửa mô tả:** **Trả lời** thẻ nhân vật, gõ từng dòng `Tên: …`, `Vai: …`, `Ngoại hình: …`, `Giọng: …`,
+     `Cách nói: …`. Ngoại hình và Giọng nên viết tiếng Anh.
+   - **Giọng:** gửi `/giong` → bấm 🔊 để nghe giọng từng người, **🎙 Đổi giọng** để chọn giọng khác.
+     Mặc định dùng **Giọng cố định**: khi ghép video, bot thay tiếng trong clip bằng giọng riêng của từng nhân vật
+     nên mọi clip đều cùng giọng, kể cả clip tạo tay. Bản nghe thử lúc duyệt kịch bản chính là âm thanh thành phẩm.
+   - Tất cả được lưu trong `/opt/tiktok-agent/data/nhan_vat.yaml` (sửa bằng nano cũng được; cập nhật code không
+     ghi đè). Giá trị ban đầu nằm ở mục `cast:` trong `config.yaml`.
 5. Gửi `/kichban` (hoặc chờ 07:00 sáng mai) → bot gửi **📝 Kịch bản** 4 cảnh.
    **✅ Duyệt kịch bản** / **🔄 Viết bản khác** / **❌ Bỏ** — hoặc Reply để góp ý cụ thể. Bot ghi nhớ góp ý cho các kịch bản sau.
 6. Duyệt xong, bot gửi **4 prompt** (mỗi cảnh 1 tin). Tạo clip — xem mục **"Tạo clip trên iPad"** ngay dưới.
@@ -257,7 +269,9 @@ Mỗi lần bạn bấm **Duyệt kịch bản**, hệ thống cập nhật mộ
 1. Safari → **labs.google/flow** → đăng nhập Google → tạo **New project**.
    (Nếu trang báo không hỗ trợ: bấm **aA** trên thanh địa chỉ → **Yêu cầu trang web cho máy tính**.)
 2. Trên Telegram, **chạm vào khung prompt cảnh 1** → prompt tự sao chép.
-3. Trong Flow: chọn chế độ tạo video, **dán prompt**, chọn tỉ lệ **dọc 9:16**, thêm **ảnh nhân vật** vào mục *Ingredients* (giúp nhân vật giống nhau) → **Tạo**.
+3. Trong Flow: chọn chế độ tạo video, **dán prompt**, chọn tỉ lệ **dọc 9:16**, bấm **+ Ingredients** và thêm
+   **ảnh mẫu của đúng các nhân vật ghi ở dòng "🧩 Ingredients"** dưới cảnh đó (bot gửi sẵn các ảnh này trước
+   các prompt) → **Tạo**.
 4. Clip xong → bấm **Tải xuống** → lưu vào **Ảnh** hoặc **Tệp**.
 5. Telegram → **chạm giữ tin "Cảnh 1"** → **Trả lời** → biểu tượng 📎 → chọn clip → Gửi.
 6. Bot trả lời "đã nhận cảnh 1 (1/4)" và gửi **khung hình cuối của cảnh 1**. Với cảnh 2, nếu Flow có chế độ
@@ -302,8 +316,9 @@ Mỗi lần bạn bấm **Duyệt kịch bản**, hệ thống cập nhật mộ
 | `/kehoach` | Lập kế hoạch 30 ngày mới (tự chạy khi kế hoạch cũ còn ≤ 2 ngày) |
 | `/kichban` | Viết ngay kịch bản tiếp theo (bình thường bot tự gửi 07:00) |
 | `/clip` | Gửi lại prompt của video đang chờ clip |
-| `/nhanvat` | Xem nhân vật cố định + prompt ảnh nhân vật |
-| 📷 Gửi ảnh + chú thích | Đặt nhân vật theo ảnh mẫu, vd chú thích `Bé Na - con gái út 8 tuổi` |
+| `/nhanvat` | 6 nhân vật cố định: ảnh mẫu, ngoại hình, cách nói (Trả lời thẻ để sửa) |
+| `/giong` | Nghe/đổi giọng từng nhân vật; chọn giọng cố định hay giọng trong clip |
+| 📷 Gửi ảnh + chú thích | Ảnh mẫu cho một nhân vật, chú thích là tên, vd `Ông`, `Bé Na` |
 | `/nhac` | Thư viện nhạc nền; gửi file mp3/m4a vào chat để thêm |
 | `/drive` | Kết nối Google Drive / xem link file kịch bản đã duyệt / đồng bộ lại |
 | `/phongcach` | Xem/sửa mô tả phong cách kênh mẫu (`/phongcach` + mô tả mới) |

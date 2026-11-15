@@ -29,6 +29,82 @@ niche:
     detailed backgrounds, soft warm golden-hour light, gentle film grain, nostalgic muted color palette,
     1990s Vietnam
 
+# 6 NHÂN VẬT CỐ ĐỊNH của kênh (một gia đình) — dùng nguyên văn trong mọi kịch bản và prompt clip để mặt, quần áo
+# và giọng nói giống nhau giữa các clip. Đây là GIÁ TRỊ BAN ĐẦU: lần chạy đầu hệ thống chép sang data/nhan_vat.yaml,
+# sau đó bạn sửa ở đó (hoặc qua Telegram: gửi ảnh kèm chú thích vai, /nhanvat, /giong) — cập nhật code không ghi đè.
+#   look_en : ngoại hình + trang phục CỐ ĐỊNH (tiếng Anh). Trẻ em: KHÔNG ghi số tuổi (Google sẽ chặn).
+#   voice_en: giọng CỐ ĐỊNH (tiếng Anh) cho Flow/Gemini lồng tiếng.   speech_vi: xưng hô, cách nói.
+#   tts     : giọng cố định khi ghép (edge-tts). voice_type: girl|boy|female|male|old_female|old_male
+cast:
+  - key: ong
+    name: "Ông"
+    role: "Ông nội, hiền từ, hóm hỉnh, hay kể chuyện ngày xưa"
+    aliases: ["ông nội"]
+    look_en: >-
+      Vietnamese grandfather, elderly man, thin kind face with smiling eyes and deep laugh lines, short neat white
+      hair, thin white mustache, slightly stooped, faded light-brown collarless traditional cotton shirt with cloth
+      buttons, loose dark-brown trousers, simple brown sandals
+    voice_en: "deep, slightly husky elderly male voice, slow and warm, soft chuckle, Northern Vietnamese accent"
+    speech_vi: "Xưng 'ông', gọi cháu là 'cháu' hoặc 'con'; nói chậm, hay cười khà khà, thích kể 'ngày xưa ấy mà…'"
+    voice_type: old_male
+    tts: {voice: "vi-VN-NamMinhNeural", pitch: "-14Hz", rate: "-14%"}
+  - key: ba
+    name: "Bà"
+    role: "Bà nội, dịu dàng, chiều cháu, hay dặn dò"
+    aliases: ["bà nội"]
+    look_en: >-
+      Vietnamese grandmother, elderly woman, round gentle face with a warm smile, grey hair in a low bun wrapped with a
+      black velvet headband, dark-brown long-sleeved traditional blouse, black silk trousers, small green jade bracelet
+      on her left wrist
+    voice_en: "soft, warm elderly female voice, slow and tender, slightly raspy, Northern Vietnamese accent"
+    speech_vi: "Xưng 'bà', gọi cháu là 'cháu' hoặc 'cục vàng của bà'; giọng ngọt, hay dặn 'từ từ thôi cháu'"
+    voice_type: old_female
+    tts: {voice: "vi-VN-HoaiMyNeural", pitch: "-12Hz", rate: "-14%"}
+  - key: bo
+    name: "Bố"
+    role: "Bố, ít nói, chịu khó, hài hước kín đáo"
+    aliases: []
+    look_en: >-
+      Vietnamese father in his late thirties, tanned skin, square jaw, short black side-parted hair, light stubble,
+      olive-green short-sleeved shirt, khaki trousers, old silver wristwatch
+    voice_en: "steady mid-low adult male voice, calm and kind, medium pace, Northern Vietnamese accent"
+    speech_vi: "Xưng 'bố', gọi con là 'con', gọi ông bà là 'ông bà' khi nói với con; nói ngắn, hay trêu con"
+    voice_type: male
+    tts: {voice: "vi-VN-NamMinhNeural", pitch: "-4Hz", rate: "-4%"}
+  - key: me
+    name: "Mẹ"
+    role: "Mẹ, đảm đang, ân cần, hay mắng yêu"
+    aliases: []
+    look_en: >-
+      Vietnamese mother in her mid thirties, oval face, gentle eyes, long straight black hair in a low ponytail,
+      pale-blue floral cotton blouse, dark trousers
+    voice_en: "gentle clear adult female voice, warm and caring, medium pace, Northern Vietnamese accent"
+    speech_vi: "Xưng 'mẹ', gọi con là 'con'; ân cần, hay mắng yêu 'cái thằng này', 'con bé này'"
+    voice_type: female
+    tts: {voice: "vi-VN-HoaiMyNeural", pitch: "+0Hz", rate: "-4%"}
+  - key: be_trai
+    name: "Cu Tí"
+    role: "Bé trai, anh, nghịch ngợm, hiếu động, thương em"
+    aliases: ["tí", "bé trai"]
+    look_en: >-
+      Vietnamese little boy, slim, round face, big bright eyes, short spiky black hair with a cowlick, white
+      short-sleeved shirt, navy-blue shorts, simple sandals
+    voice_en: "bright energetic young boy voice, high-pitched, fast and playful, Northern Vietnamese accent"
+    speech_vi: "Xưng 'con' với bố mẹ, 'cháu' với ông bà, 'anh' với em gái; hay khoe, hay reo 'ơ, hay quá!'"
+    voice_type: boy
+    tts: {voice: "vi-VN-NamMinhNeural", pitch: "+30Hz", rate: "+6%"}
+  - key: be_gai
+    name: "Bé Na"
+    role: "Bé gái, em út, hồn nhiên, tò mò, hay hỏi"
+    aliases: ["na", "bé gái"]
+    look_en: >-
+      Vietnamese little girl, small, round face with rosy cheeks, big curious eyes, short black bob hair with straight
+      bangs and a small red hair clip, faded red cotton shirt with a white collar, dark-blue shorts
+    voice_en: "sweet high-pitched little girl voice, giggly and curious, Northern Vietnamese accent"
+    speech_vi: "Xưng 'con'/'cháu', gọi anh là 'anh Tí'; hồn nhiên, hay hỏi 'sao thế ạ?', 'thật á?'"
+    voice_type: girl
+    tts: {voice: "vi-VN-HoaiMyNeural", pitch: "+35Hz", rate: "+6%"}
+
 # Kênh mẫu: học kỹ phong cách, nhịp, hook của các kênh này (ưu tiên hơn kênh tham khảo bên dưới)
 reference_channels:
   - "kyuc.tuoitho.8x9x"
@@ -54,7 +130,13 @@ voice:
     - "vi-VN-HoaiMyNeural"    # nữ
     - "vi-VN-NamMinhNeural"   # nam
   rate: "-8%"                 # chậm hơn một chút cho cảm xúc
-  # Giọng DỰ PHÒNG khi clip AI không có tiếng thoại (bình thường clip Flow/Gemini tự lồng tiếng nhân vật)
+  # Giọng thoại khi ghép video (đổi nhanh bằng lệnh /giong trên Telegram):
+  #   "fixed" = mỗi nhân vật LUÔN một giọng cố định (tts trong nhân vật) → giống hệt nhau giữa mọi clip, kể cả clip
+  #             tạo tay trên Flow; bản nghe thử lúc duyệt kịch bản chính là âm thanh thành phẩm. Tiếng trong clip bị thay.
+  #   "clip"  = giữ giọng do Flow/Gemini tạo trong clip (khớp khẩu hình hơn, nhưng giọng có thể lệch giữa các clip)
+  dialogue_voice: "fixed"
+  # Các giọng để chọn trong /giong (nút "Đổi giọng" của từng nhân vật xoay vòng danh sách này);
+  # cũng là giọng DỰ PHÒNG khi clip không có tiếng
   fallback:
     girl:       {voice: "vi-VN-HoaiMyNeural",  pitch: "+35Hz", rate: "+6%"}
     boy:        {voice: "vi-VN-NamMinhNeural", pitch: "+30Hz", rate: "+6%"}
@@ -87,6 +169,7 @@ ai_video:
   #   "first" = chỉ cảnh mở đầu (hook) | "all" = tất cả | "none" = không dùng | [1, 3] = cảnh số 1 và 3
   scenes: "all"
   max_shot_sec: 8             # mỗi shot AI tối đa 8 giây (cảnh dài hơn sẽ tách nhiều shot)
+  reference_images: true      # gửi kèm ảnh mẫu nhân vật (data/nhan_vat.yaml) cho Gemini để giữ đúng khuôn mặt
 
   manual:                     # dùng khi provider = manual_flow
     max_shots_per_day: 4      # 50 credit/ngày ÷ ~12 credit/clip 8s (Omni Flash 720p) ≈ 4 clip

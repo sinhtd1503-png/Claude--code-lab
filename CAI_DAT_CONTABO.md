@@ -154,8 +154,9 @@ sau khi TikTok duyệt app (audit).
 |---|---|
 | `/trangthai` | Xem tiến độ |
 | `/ngansach` | Chi phí tháng |
-| `/nhanvat` | Bộ nhân vật |
-| 📷 Gửi ảnh + chú thích | Nhân vật theo ảnh mẫu |
+| `/nhanvat` | 6 nhân vật cố định (Ông, Bà, Bố, Mẹ, bé trai, bé gái) |
+| `/giong` | Nghe/đổi giọng từng nhân vật |
+| 📷 Gửi ảnh + chú thích tên | Ảnh mẫu nhân vật, vd chú thích `Ông` |
 | `/nhac` | Thư viện nhạc nền (gửi file mp3 để thêm) |
 | `/drive` | Kết nối Google Drive (lưu kịch bản đã duyệt) |
 | `/phongcach` | Xem/sửa phong cách kênh mẫu |

@@ -177,11 +177,22 @@ class AIVideoSource:
         return "\n".join(parts)
 
     # ---------- generation ----------
-    def _generate_shot(self, prompt: str, seconds: int, out: Path) -> tuple[str, int | None, int | None]:
+    @staticmethod
+    def _input(prompt: str, images: list[Path] | None):
+        """Text prompt, plus the characters' reference images (same faces in every clip) when there are any."""
+        if not images:
+            return prompt
+        mt = {".png": "image/png", ".webp": "image/webp"}
+        return [{"type": "text", "text": prompt}] + [
+            {"type": "image", "data": base64.b64encode(Path(p).read_bytes()).decode(),
+             "mime_type": mt.get(Path(p).suffix.lower(), "image/jpeg")} for p in images]
+
+    def _generate_shot(self, prompt: str, seconds: int, out: Path,
+                       images: list[Path] | None = None) -> tuple[str, int | None, int | None]:
         c = self.cfg
         inter = self.client.interactions.create(
             model=c["model"],
-            input=prompt,
+            input=self._input(prompt, images),
             response_format={"type": "video", "aspect_ratio": "9:16",
                              "resolution": c["resolution"], "duration": f"{seconds}s"},
             background=True,
@@ -215,8 +226,19 @@ class AIVideoSource:
                 raise AIBudgetExceeded(f"cần {sec}s, hôm nay còn {self.remaining_today():.0f}s")
             out = workdir / f"ai_s{scene_index}_dlg.mp4"
             t0 = time.time()
+            imgs = [Path(p) for p in scene.get("ref_images") or [] if Path(p).is_file()]
+            if not self.cfg.get("reference_images", True):
+                imgs = []
             try:
-                iid, in_tok, out_tok = self._generate_shot(scene["prompt_full"], sec, out)
+                try:
+                    iid, in_tok, out_tok = (self._generate_shot(scene["prompt_full"], sec, out, images=imgs) if imgs
+                                            else self._generate_shot(scene["prompt_full"], sec, out))
+                except Exception as e:
+                    from .policy import policy_like
+                    if not imgs or _auth_like(e) or _quota_like(e) or policy_like(e):
+                        raise
+                    log.warning("Model không nhận ảnh mẫu nhân vật (%s) → tạo lại chỉ với prompt", str(e)[:200])
+                    iid, in_tok, out_tok = self._generate_shot(scene["prompt_full"], sec, out)
             except Exception as e:
                 self._record(scene_index, 0, 0, 0, 0, 0.0, "failed", None)
                 from .policy import policy_like
