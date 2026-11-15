@@ -33,7 +33,7 @@ from fastapi.responses import FileResponse, HTMLResponse
 import hashlib
 
 from . import audio, content, dialogue, gdrive, scraper, series, video
-from .ai_video import AIBudgetExceeded, AIPolicyError, AIQuotaError, AIVideoSource
+from .ai_video import AIAuthError, AIBudgetExceeded, AIPolicyError, AIQuotaError, AIVideoSource
 from .budget import LABELS, Budget, BudgetNeeded
 from .config import load_settings
 from .db import DB
@@ -1101,6 +1101,18 @@ def do_render(cid: int, paid: bool = False) -> dict:
             else:
                 path = video.render(script, workdir, cfg, S.pixabay_api_key or "", ai=src,
                                     narration=approved_narration(item))
+        except AIAuthError as e:
+            src.finish_run()
+            with LOCK:
+                DB_.update_content(cid, status="awaiting_clips", error=str(e)[:2000])
+            return reply(msg(
+                f"⚠️ <b>Không tạo được clip tự động cho #{cid}: Gemini API key không hợp lệ.</b> Chưa tốn đồng nào.\n\n"
+                "Cách sửa:\n1) Mở <b>aistudio.google.com/apikey</b> → <b>Create API key</b> → chép khoá (bắt đầu bằng "
+                "<code>AIza</code>).\n2) Termius: <code>cd /opt/tiktok-agent &amp;&amp; nano .env</code> → dòng "
+                "<code>GEMINI_API_KEY=</code> dán khoá mới (không dấu cách, không ngoặc kép) → lưu.\n"
+                "3) Chạy lại lệnh cập nhật VPS (để hệ thống nhận khoá mới), rồi bấm <b>Thử tạo tự động lại</b>.\n\n"
+                "Hoặc tạo tay miễn phí trên Google Flow với các prompt bên dưới.",
+                kb([("🔁 Thử tạo tự động lại", f"pg:{cid}")])), prompt_messages(cid))
         except AIPolicyError as e:
             run = src.finish_run() or {}
             with LOCK:
@@ -1152,6 +1164,12 @@ def do_render(cid: int, paid: bool = False) -> dict:
         return reply(out)
     except Exception as e:
         log.exception("render #%s failed", cid)
+        if paid:  # automatic generation failed: go back to "waiting for clips" so the owner can retry or do it by hand
+            with LOCK:
+                DB_.update_content(cid, status="awaiting_clips", error=str(e)[:2000])
+            return reply(msg(f"⚠️ Tạo clip tự động cho #{cid} lỗi: {esc(str(e)[:300])}\n\n"
+                             "Bấm thử lại, hoặc tạo tay trên Google Flow với các prompt bên dưới.",
+                             kb([("🔁 Thử tạo tự động lại", f"pg:{cid}")])), prompt_messages(cid))
         with LOCK:
             DB_.update_content(cid, status="failed", error=str(e)[:2000])
         return reply(msg(f"⚠️ Ghép video #{cid} lỗi: {esc(str(e)[:400])}",

@@ -53,6 +53,19 @@ class AIPolicyError(RuntimeError):
         self.scene = scene
 
 
+class AIAuthError(RuntimeError):
+    """The API key is missing, invalid, or not allowed to use the Gemini API."""
+
+
+AUTH_HINTS = ("api_key_invalid", "api key not valid", "permission_denied", "unauthenticated", "api key expired",
+              "api_key_service_blocked", "has not been used in project", "is disabled")
+
+
+def _auth_like(err: Exception) -> bool:
+    t = str(err).lower()
+    return any(h in t for h in AUTH_HINTS)
+
+
 QUOTA_HINTS = ("resource_exhausted", "quota", "429", "billing", "credit", "insufficient", "payment", "exceeded")
 
 
@@ -207,6 +220,8 @@ class AIVideoSource:
             except Exception as e:
                 self._record(scene_index, 0, 0, 0, 0, 0.0, "failed", None)
                 from .policy import policy_like
+                if _auth_like(e):
+                    raise AIAuthError(str(e)[:500]) from None
                 if _quota_like(e):
                     raise AIQuotaError(str(e)[:500]) from None
                 if policy_like(e):
