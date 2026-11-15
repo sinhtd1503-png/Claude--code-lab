@@ -33,7 +33,7 @@ from fastapi.responses import FileResponse, HTMLResponse
 import hashlib
 
 from . import audio, content, dialogue, gdrive, scraper, series, video
-from .ai_video import AIBudgetExceeded, AIQuotaError, AIVideoSource
+from .ai_video import AIBudgetExceeded, AIPolicyError, AIQuotaError, AIVideoSource
 from .budget import LABELS, Budget, BudgetNeeded
 from .config import load_settings
 from .db import DB
@@ -151,10 +151,14 @@ def budget_msg(req: dict) -> dict:
     text = (f"💰 <b>Yêu cầu duyệt ngân sách #NS{req['id']}</b>\n\n"
             f"Dịch vụ: <b>{esc(LABELS.get(s, s))}</b>\nTháng: {req['month']}\n"
             f"Đã dùng tháng này: ${BUDGET.spent(s):.2f} · hạn mức hiện tại: ${BUDGET.allowance(s):.2f}\n"
-            f"Đề xuất duyệt thêm: <b>${req['amount_usd']:.2f}</b>\n\n"
-            f"Lý do: {esc(req['reason'] or '')}\n\n"
+            + (f"Lần này cần tối thiểu: <b>${req['need_usd']:.2f}</b>\n" if req.get("need_usd") else "")
+            + f"\nLý do: {esc(req['reason'] or '')}\n\n"
+            "Chọn mức duyệt thêm cho tháng này (chỉ là hạn mức tối đa, dùng bao nhiêu tính bấy nhiêu). "
             "Hệ thống sẽ không tiêu thêm đồng nào cho dịch vụ này tới khi bạn duyệt.")
-    return msg(text, kb([("✅ Duyệt", f"ba:{req['id']}"), ("❌ Từ chối", f"bx:{req['id']}")]))
+    opts = BUDGET.options(req)
+    rows = [[(f"✅ Duyệt ${o:g}", f"bo:{req['id']}_{int(round(o * 100))}") for o in opts[i:i + 2]]
+            for i in range(0, len(opts), 2)]
+    return msg(text, kb(*rows, [("❌ Từ chối", f"bx:{req['id']}")]))
 
 
 HELP = ("🤖 <b>Trợ lý kênh TikTok</b>\n\n"
@@ -591,12 +595,36 @@ def prompt_messages(cid: int) -> list[dict]:
                "sau mỗi clip bot gửi khung hình cuối để bạn làm khung bắt đầu cho cảnh sau.")]
     for i, s in enumerate(m["shots"]):
         scene = DB_.get_content(cid)["script"]["scenes"][i]
-        out.append(msg(f"🎬 <b>#{cid} · Cảnh {i + 1}/{n}</b> – {esc(scene['visual_vi'])}\n\n<code>{esc(s['prompt'])}</code>"))
+        out.append(scene_prompt_msg(cid, i, n, scene, s["prompt"]))
     if os.getenv("GEMINI_API_KEY"):
         usd = float((S.raw.get("budget") or {}).get("services", {}).get("gemini_video", {}).get("usd_per_clip", 0.19))
         out.append(msg("Không muốn tạo tay?",
                        kb([(f"🤖 Tạo tự động bằng Gemini (≈ ${usd * n:.2f})", f"pg:{cid}")])))
     return out
+
+
+def scene_prompt_msg(cid: int, i: int, n: int, scene: dict, prompt: str, note: str = "") -> dict:
+    return msg(f"🎬 <b>#{cid} · Cảnh {i + 1}/{n}</b> – {esc(scene['visual_vi'])}{note}\n\n<code>{esc(prompt)}</code>",
+               kb([("🛡 Flow báo vi phạm chính sách → viết lại", f"fp:{cid * 100 + i}")]))
+
+
+def fix_prompt(n: int) -> dict:
+    """Owner says Flow refused scene i of video cid: rewrite that prompt to be policy-safe and resend it."""
+    cid, i = divmod(n, 100)
+    with LOCK:
+        item = DB_.get_content(cid)
+        m = manual().load(cid)
+        if not item or not m or i >= len(m["shots"]) or item["status"] not in ("awaiting_clips", "failed"):
+            return reply(msg(f"#{cid} không còn ở bước tạo clip."))
+        est = float(((S.raw.get("budget") or {}).get("services", {}).get("claude", {})).get("est_fix_usd", 0.03))
+        BUDGET.ensure("claude", est, "Viết lại prompt clip cho đúng chính sách Google.", resume={"action": "fixprompt", "id": n})
+    out = series.safer_prompt(m["shots"][i]["prompt"])
+    with LOCK:
+        m = manual().load(cid)
+        m["shots"][i]["prompt"] = out.prompt_en
+        manual().save(cid, m)
+    note = f"\n🛡 <i>Đã viết lại an toàn hơn: {esc(out.changes_vi)}</i>"
+    return reply(scene_prompt_msg(cid, i, len(m["shots"]), item["script"]["scenes"][i], out.prompt_en, note))
 
 
 def approve_script(cid: int, message_id: int | None) -> dict:
@@ -662,6 +690,8 @@ def approved_doc_html() -> str:
                          + (f" ({esc(sc['music_mood'])})" if sc.get("music_mood") else "") + "</p>")
         if sc.get("lesson"):
             parts.append(f"<p><b>Thông điệp:</b> {esc(sc['lesson'])}</p>")
+        if sc.get("drive_video"):
+            parts.append(f"<p><b>Video:</b> <a href='{esc(sc['drive_video'])}'>{esc(sc['drive_video'])}</a></p>")
         parts.append(f"<p><b>Caption:</b> {esc(it.get('caption') or '')}</p><hr>")
     return "<html><head><meta charset='utf-8'></head><body>" + "".join(parts) + "</body></html>"
 
@@ -681,6 +711,31 @@ def sync_drive() -> str:
         log.warning("Lưu Google Drive lỗi: %s", e)
         return (f"\n⚠️ Lưu Google Drive lỗi: {esc(str(e)[:200])}. Lần duyệt sau sẽ tự lưu lại toàn bộ "
                 "(hoặc /drive → Đồng bộ lại).")
+
+
+def upload_video_drive(cid: int, path: Path) -> str:
+    """Put a freshly rendered video in Drive (TikTok Agent/Video); returns a short note (never raises)."""
+    if DRIVE is None:
+        return ""
+    with LOCK:
+        connected = DRIVE.connected()
+        item = DB_.get_content(cid)
+    if not connected:
+        return "\n📁 Chưa lưu video lên Drive (/drive để kết nối)."
+    title = re.sub(r'[\\/:*?"<>|]+', " ", (item["script"] or {}).get("title", ""))[:60].strip()
+    name = f"#{cid} {title} {dt.datetime.now(TZ).strftime('%Y-%m-%d %H%M')}.mp4"
+    try:
+        link = DRIVE.upload_video(Path(path), name)
+    except Exception as e:
+        log.warning("Tải video lên Drive lỗi: %s", e)
+        return f"\n⚠️ Chưa tải được video lên Drive: {esc(str(e)[:150])}"
+    with LOCK:
+        item = DB_.get_content(cid)
+        sc = item["script"]
+        sc["drive_video"] = link
+        DB_.update_content(cid, script=sc)
+    sync_drive()  # the script document gets the video link too
+    return f"\n📁 Đã lưu video lên Drive (thư mục Video): {esc(link)}" if link else "\n📁 Đã lưu video lên Drive."
 
 
 def drive_cmd() -> dict:
@@ -891,9 +946,11 @@ def receive_audio(body: dict) -> dict:
 def music_list() -> dict:
     tracks = music_tracks()
     if not tracks:
-        return msg("🎵 <b>Thư viện nhạc nền đang trống.</b>\n\nGửi file nhạc (mp3/m4a, dưới 20 MB) vào đây để thêm. "
+        return msg("🎵 <b>Thư viện nhạc nền đang trống</b> (thư mục data/music trên VPS chưa có file nào).\n\n"
+                   "Nếu bạn đã gửi file mà bot <b>không trả lời \"🎵 Đã thêm nhạc nền\"</b>: hãy chạy lệnh cập nhật VPS "
+                   "rồi gửi lại file.\n\nGửi file nhạc (mp3/m4a, dưới 20 MB) vào đây để thêm. "
                    "Chỉ dùng nhạc <b>không bản quyền</b> (YouTube Audio Library, Pixabay Music…). "
-                   "Mỗi video sẽ tự xoay vòng một bài, nhạc tự nhỏ lại khi có giọng đọc.")
+                   "Mỗi video sẽ tự xoay vòng một bài, nhạc tự nhỏ lại khi nhân vật nói.")
     lines = ["🎵 <b>Thư viện nhạc nền</b> (mỗi video xoay vòng 1 bài):"]
     lines += [f"{i + 1}. {esc(t.name)}" for i, t in enumerate(tracks)]
     lines += ["", "Gửi thêm file nhạc để bổ sung. Bấm nút để xoá bài không dùng."]
@@ -1044,6 +1101,27 @@ def do_render(cid: int, paid: bool = False) -> dict:
             else:
                 path = video.render(script, workdir, cfg, S.pixabay_api_key or "", ai=src,
                                     narration=approved_narration(item))
+        except AIPolicyError as e:
+            run = src.finish_run() or {}
+            with LOCK:
+                BUDGET.record("gemini_video", float(run.get("est_cost_usd", 0)), f"#{cid} (bị chặn chính sách)")
+                m = manual().load(cid)
+                tries = int(m.get("policy_retries", 0))
+            if tries < 1 and m and e.scene < len(m["shots"]):  # rewrite the refused scene once and try again
+                fixed = series.safer_prompt(m["shots"][e.scene]["prompt"], str(e))
+                with LOCK:
+                    m["shots"][e.scene]["prompt"] = fixed.prompt_en
+                    m["policy_retries"] = tries + 1
+                    manual().save(cid, m)
+                    DB_.update_content(cid, status="rendering")
+                return reply(msg(f"🛡 Google từ chối prompt cảnh {e.scene + 1} của #{cid} vì chính sách nội dung. "
+                                 f"Đã viết lại an toàn hơn ({esc(fixed.changes_vi)}) và đang tạo lại…"),
+                             next_step={"action": "generate", "id": cid})
+            with LOCK:
+                DB_.update_content(cid, status="awaiting_clips", error=str(e)[:2000])
+            return reply(msg(f"⚠️ Google vẫn từ chối cảnh {e.scene + 1} của #{cid} vì chính sách nội dung. Bạn tạo tay "
+                             "trên Flow (bấm 🛡 dưới cảnh để viết lại prompt), hoặc bấm Viết bản khác cho kịch bản.",
+                             kb([("🔁 Thử tạo tự động lại", f"pg:{cid}")])), prompt_messages(cid))
         except (AIQuotaError, AIBudgetExceeded) as e:
             run = src.finish_run() or {}
             with LOCK:
@@ -1063,7 +1141,9 @@ def do_render(cid: int, paid: bool = False) -> dict:
             DB_.update_content(cid, video_path=str(path), status="video_review", error=None)
         fallbacks = run.get("fallbacks") or []
         dur = video._duration(path)
-        cap = (f"🎞 <b>Video #{cid}</b> · {esc(item['script']['title'])} · {dur:.0f}s\n\n{esc(item['caption'])}")
+        drive_note = upload_video_drive(cid, path)
+        cap = (f"🎞 <b>Video #{cid}</b> · {esc(item['script']['title'])} · {dur:.0f}s{drive_note}\n\n"
+               f"{esc(item['caption'])}")
         out = [media("video", path, cap, kb([("✅ Duyệt & đăng TikTok", f"va:{cid}")],
                                             [("🔁 Thay clip", f"vc:{cid}"), ("❌ Bỏ", f"vx:{cid}")]))]
         if fallbacks:
@@ -1089,6 +1169,10 @@ def request_paid(cid: int, message_id: int | None) -> dict:
         n = len(item["script"]["scenes"])
         BUDGET.ensure("gemini_video", usd * n, f"Tạo tự động {n} clip AI cho video #{cid} (≈ ${usd:.2f}/clip).",
                       resume={"action": "paid", "id": cid})
+        m = manual().load(cid)
+        if m and m.get("policy_retries"):
+            m["policy_retries"] = 0
+            manual().save(cid, m)
         DB_.update_content(cid, status="rendering")
     return reply(clear_buttons(message_id), msg(f"🤖 Đang tạo {n} clip AI cho #{cid} (có thể 5–15 phút)…"),
                  next_step={"action": "generate", "id": cid})
@@ -1305,6 +1389,14 @@ def tg_button(body: dict = BODY, x_worker_token: str = TOKEN) -> dict:
         return stop
     action, _, arg = str(body.get("data", "")).partition(":")
     mid = body.get("message_id")
+    if action == "bo":  # approve a budget request with the amount the owner picked
+        try:
+            rid, cents = (int(x) for x in arg.split("_"))
+        except ValueError:
+            return reply()
+        if not 0 < cents <= 100_000:
+            return reply()
+        return _safe(_budget_decision, rid, True, mid, cents / 100)
     try:
         n = int(arg)
     except ValueError:
@@ -1329,6 +1421,8 @@ def tg_button(body: dict = BODY, x_worker_token: str = TOKEN) -> dict:
         "am": lambda: reply(msg("⏳ Đang đổi nhạc…"), next_step={"action": "audio", "id": n, "what": "music"}),
         "av": lambda: reply(msg("⏳ Đang đổi giọng đọc…"), next_step={"action": "audio", "id": n, "what": "voice"}),
         "dc": lambda: drive_check(mid),
+        "fp": lambda: reply(msg("⏳ Đang viết lại prompt cho đúng chính sách Google…"),
+                            next_step={"action": "fixprompt", "id": n}),
         "ds": lambda: reply(clear_buttons(mid), msg(("📤 Đồng bộ Google Drive:" + sync_drive()) if DRIVE else "")),
         "dx": lambda: (DRIVE.disconnect() if DRIVE else None) or reply(clear_buttons(mid),
                                                                         msg("🔌 Đã ngắt kết nối Google Drive.")),
@@ -1366,9 +1460,9 @@ def _redo_plan(pid: int, feedback: str | None, mid: int | None) -> dict:
                  next_step={"action": "plan_redo", "id": pid, "feedback": feedback})
 
 
-def _budget_decision(rid: int, approve: bool, mid: int | None) -> dict:
+def _budget_decision(rid: int, approve: bool, mid: int | None, amount: float | None = None) -> dict:
     with LOCK:
-        req = BUDGET.decide(rid, approve)
+        req = BUDGET.decide(rid, approve, amount)
     if not req:
         return reply(clear_buttons(mid))
     if req["status"] == "rejected":
@@ -1418,6 +1512,19 @@ def tg_audio(body: dict = BODY, x_worker_token: str = TOKEN) -> dict:
     return _safe(receive_audio, body)
 
 
+@app.post("/tg/other")
+def tg_other(body: dict = BODY, x_worker_token: str = TOKEN) -> dict:
+    _auth(x_worker_token)
+    if (stop := _tg_guard(body)) is not None:
+        return stop
+    what = esc(" ".join(x for x in (str(body.get("kind") or ""), str(body.get("file_name") or ""),
+                                     str(body.get("mime_type") or "")) if x))
+    return reply(msg(f"🤔 Bot chưa dùng được file này ({what}).\n\n"
+                     "• Nhạc nền: gửi file <b>mp3 / m4a</b> (dưới 20 MB)\n"
+                     "• Clip cảnh: gửi <b>video mp4</b>, trả lời đúng tin \"Cảnh N\"\n"
+                     "• Nhân vật: gửi <b>ảnh</b> kèm chú thích tên – vai"))
+
+
 @app.post("/tg/photo")
 def tg_photo(body: dict = BODY, x_worker_token: str = TOKEN) -> dict:
     _auth(x_worker_token)
@@ -1458,6 +1565,8 @@ def cont(body: dict = BODY, x_worker_token: str = TOKEN) -> dict:
         return _safe(next_script)
     if action == "rewrite":
         return _safe(rewrite_script, int(n), body.get("feedback"))
+    if action == "fixprompt":
+        return _safe(fix_prompt, int(n))
     if action == "audio":
         return _safe(change_audio, int(n), body.get("what") or "music")
     if action == "photo":

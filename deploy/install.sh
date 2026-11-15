@@ -107,11 +107,16 @@ wait_n8n
 say "7/8 Nạp workflow n8n và bật chạy"
 # Chỉ nạp lần đầu, để không ghi đè chỉnh sửa bạn làm trong giao diện n8n.
 # Muốn nạp lại bản mới nhất từ GitHub:  UPDATE_WORKFLOW=1 bash deploy/install.sh
-if [ "${UPDATE_WORKFLOW:-0}" = 1 ] || ! docker compose exec -T n8n n8n list:workflow 2>/dev/null | grep -q "^$WF_ID|"; then
+# Tự nạp lại khi file workflow trên GitHub đổi (vd thêm loại tin nhắn mới), kể cả khi quên UPDATE_WORKFLOW=1.
+WF_SHA="$(sha256sum n8n/workflows/tiktok-agent.json | cut -c1-16)"
+OLD_SHA="$(cat data/.workflow_sha 2>/dev/null || true)"
+if [ "${UPDATE_WORKFLOW:-0}" = 1 ] || [ "$WF_SHA" != "$OLD_SHA" ] || \
+   ! docker compose exec -T n8n n8n list:workflow 2>/dev/null | grep -q "^$WF_ID|"; then
   docker compose exec -T n8n n8n import:workflow --input=/workflows/tiktok-agent.json 2>&1 | grep -E "imported|Error" || true
   docker compose exec -T n8n n8n publish:workflow --id="$WF_ID" 2>&1 | grep -E "Publishing|Error" || true
   docker compose restart n8n >/dev/null
   wait_n8n
+  echo "$WF_SHA" > data/.workflow_sha
 else
   echo "  Workflow đã có sẵn — giữ nguyên (đặt UPDATE_WORKFLOW=1 để nạp lại)."
 fi
