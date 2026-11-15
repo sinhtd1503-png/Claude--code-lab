@@ -30,6 +30,7 @@ class Character(BaseModel):
                                                   "voice, Northern Vietnamese accent'")
     voice_type: str = Field(default="female", description="Một trong: girl | boy | female | male | old_female | "
                                                           "old_male (dùng cho giọng dự phòng)")
+    speech_vi: str = Field(default="", description="Cách xưng hô và nói chuyện cố định, tiếng Việt")
 
 
 class SeriesBible(BaseModel):
@@ -172,12 +173,10 @@ def make_plan(niche: dict, videos: list[dict], recent_titles: list[str], days: i
     parts.append("Các tiêu đề kênh đã làm (tránh trùng):\n"
                  f"<recent>\n{json.dumps(recent_titles, ensure_ascii=False)}\n</recent>")
     if cast:
-        people = [{"name": c["name"], "role": c["role"], "look_en": c["look_en"]} for c in cast]
-        parts.append("NHÂN VẬT DO CHỦ KÊNH CHỌN (từ ảnh minh hoạ) — series bible PHẢI dùng đúng các nhân vật này, "
-                     "giữ nguyên văn name, role và look_en; chỉ được thêm tối đa 2 nhân vật phụ nếu thật cần. "
-                     "style_en của bible phải hợp với phong cách các ảnh:\n"
-                     f"<cast>\n{json.dumps(people, ensure_ascii=False)}\n</cast>\n"
-                     f"Phong cách ảnh: {json.dumps([c.get('style_en', '') for c in cast], ensure_ascii=False)}")
+        parts.append("GIA ĐÌNH CỐ ĐỊNH CỦA KÊNH (chủ kênh đã cấu hình) — series bible PHẢI gồm ĐÚNG và CHỈ các nhân vật "
+                     "này, giữ nguyên văn name, role, look_en, voice_en, voice_type, speech_vi; KHÔNG thêm nhân vật "
+                     "khác. Mỗi ngày chỉ dùng 2–4 người trong số họ:\n"
+                     f"<cast>\n{json.dumps(cast_brief(cast), ensure_ascii=False)}\n</cast>")
     if previous:
         parts.append("Kế hoạch trước (chủ kênh muốn làm lại):\n"
                      f"<previous>\n{json.dumps(previous, ensure_ascii=False)[:20000]}\n</previous>")
@@ -193,12 +192,22 @@ def make_plan(niche: dict, videos: list[dict], recent_titles: list[str], days: i
     return _parse(system_prompt(niche), "\n\n".join(parts), MonthPlan, effort="medium", max_tokens=32000)
 
 
+def cast_brief(chars: list[dict]) -> list[dict]:
+    return [{k: c.get(k, "") for k in ("name", "role", "look_en", "voice_en", "voice_type", "speech_vi")} for c in chars]
+
+
 def write_script(niche: dict, bible: dict, idea: dict, patterns: list[str], scenes: int, clip_sec: int,
                  owner_notes: list[str], feedback: str | None = None, previous: dict | None = None) -> SeriesScript:
+    names = [c["name"] for c in bible.get("characters", [])]
+    brief = {**{k: v for k, v in bible.items() if k != "characters"}, "characters": cast_brief(bible.get("characters", []))}
     parts = [
         f"Viết kịch bản video TikTok ~{scenes * clip_sec - 4}–{scenes * clip_sec} giây cho ngày sau trong series:",
         f"<idea>\n{json.dumps(idea, ensure_ascii=False)}\n</idea>",
-        f"Series bible (nhân vật và bối cảnh cố định — dùng đúng tên):\n<bible>\n{json.dumps(bible, ensure_ascii=False)}\n</bible>",
+        f"Series bible (nhân vật và bối cảnh cố định):\n<bible>\n{json.dumps(brief, ensure_ascii=False)}\n</bible>",
+        "NHÂN VẬT: chỉ dùng các nhân vật trong bible, viết ĐÚNG tên " + json.dumps(names, ensure_ascii=False)
+        + " ở speaker và characters (nếu ý tưởng nhắc tên khác, đổi sang nhân vật tương ứng trong bible). Mỗi cảnh tối "
+        "đa 3 nhân vật, người nói phải có trong characters của cảnh. Thoại đúng speech_vi (xưng hô, cách nói) của "
+        "từng người, nhất quán từ cảnh đầu đến cảnh cuối. Không mô tả lại ngoại hình hay đổi trang phục.",
         f"Kịch bản gồm ĐÚNG {scenes} cảnh. Mỗi cảnh là MỘT clip video AI {clip_sec} giây, trong đó các nhân vật NÓI "
         f"VỚI NHAU: 1–3 câu thoại ngắn, TỔNG tối đa 16 từ mỗi cảnh (để kịp nói tự nhiên trong {clip_sec} giây, có "
         "khoảng lặng). KHÔNG có người dẫn chuyện. Các cảnh nối tiếp liền mạch về thời gian và không gian (cùng buổi, "
@@ -224,11 +233,13 @@ def write_script(niche: dict, bible: dict, idea: dict, patterns: list[str], scen
     return _parse(system_prompt(niche), "\n\n".join(parts), SeriesScript, effort="high")
 
 
-def describe_character(image: bytes, media_type: str, caption: str, era: str = "") -> CharacterFromImage:
+def describe_character(image: bytes, media_type: str, caption: str, era: str = "", who: str = "") -> CharacterFromImage:
     system = ("Bạn mô tả nhân vật trong ảnh minh hoạ để công cụ tạo video AI dựng lại nhân vật đó nhất quán qua nhiều "
               "clip. Chỉ mô tả những gì nhìn thấy (ngoại hình, trang phục, phong cách ảnh), cụ thể, có màu sắc. Không đoán "
               "hay nêu danh tính người thật, không nhận xét ngoại hình theo hướng tiêu cực.")
-    user = (f"Chú thích của chủ kênh: {caption or '(không có)'}\n"
+    user = ((f"Đây là ảnh mẫu cho nhân vật cố định: {who}. Giữ đúng tên này; mô tả look_en thật chi tiết, cụ thể để "
+             "mọi clip vẽ lại đúng người này (khuôn mặt, kiểu tóc, trang phục, màu sắc).\n" if who else "")
+            + f"Chú thích của chủ kênh: {caption or '(không có)'}\n"
             f"Bối cảnh series: {era or 'Việt Nam thập niên 1990'}\n"
             "Nếu ảnh có nhiều người, chỉ mô tả nhân vật chính (người nổi bật nhất, hoặc người chú thích nhắc tới). "
             "Với trẻ em: KHÔNG ghi số tuổi cụ thể trong look_en (dùng 'little girl', 'young boy'), chỉ mô tả "
@@ -236,56 +247,57 @@ def describe_character(image: bytes, media_type: str, caption: str, era: str = "
     return _parse(system, user, CharacterFromImage, effort="medium", max_tokens=3000, images=[(image, media_type)])
 
 
-def apply_cast(bible: dict, cast: list[dict], limit: int = 6) -> dict:
-    """Force the owner's characters (exact look) into a bible: replace same-name entries, else put them first."""
-    chars = list(bible.get("characters") or [])
-    for c in cast:
-        entry = {"name": c["name"], "role": c["role"], "look_en": c["look_en"]}
-        if c.get("voice_en"):
-            entry["voice_en"] = c["voice_en"]
-        if c.get("voice_type"):
-            entry["voice_type"] = c["voice_type"]
-        idx = next((i for i, x in enumerate(chars) if x["name"].strip().lower() == c["name"].strip().lower()), None)
-        if idx is None:
-            chars.insert(0, entry)
-        else:
-            chars[idx] = {**chars[idx], **entry}  # keep the voice the plan gave this character
-    keep = {c["name"].strip().lower() for c in cast}
-    extra = [x for x in chars if x["name"].strip().lower() not in keep]
-    ordered = [x for x in chars if x["name"].strip().lower() in keep]
-    return {**bible, "characters": (ordered + extra)[:max(limit, len(ordered))]}
+def set_cast(bible: dict, cast: list[dict]) -> dict:
+    """The bible's characters ARE the channel's fixed family (exact look, voice, speech) — nobody else."""
+    return {**bible, "characters": [dict(c) for c in cast]}
 
 
 # ---------- clip prompts (consistency lives here) ----------
 
+def scene_cast(bible: dict, scene: dict) -> list[dict]:
+    """Characters on screen in a scene (listed ones + every speaker), in bible order."""
+    chars = bible.get("characters", [])
+    want = {n.strip().lower() for n in list(scene.get("characters") or [])
+            + [ln.get("speaker", "") for ln in scene.get("lines") or []]}
+    return [c for c in chars if c["name"].strip().lower() in want] or chars[:2]
+
+
 def character_block(bible: dict, names: list[str]) -> str:
     # English look only: the Vietnamese role often contains a child's exact age, which video models refuse
-    chars = bible.get("characters", [])
-    picked = [c for c in chars if c["name"] in names] or chars[:2]
+    picked = scene_cast(bible, {"characters": names})
     return "; ".join(f"{c['name']}: {c['look_en']}" for c in picked)
 
 
 def clip_prompt(bible: dict, scene: dict, index: int, total: int) -> str:
-    chars = {c["name"]: c for c in bible.get("characters", [])}
+    on_screen = scene_cast(bible, scene)
+    chars = {c["name"].strip().lower(): c for c in bible.get("characters", [])}
+    lines = scene.get("lines") or []
     parts = [
         "Vertical 9:16 animated shot, 8 seconds, part of a short nostalgic film about a Vietnamese 1990s childhood "
-        "memory.",
+        "memory. The same family appears in every shot of this film.",
         f"Visual style (identical in every shot): {bible.get('style_en', '').rstrip('.')}.",
         f"Era and place: {bible.get('era', '')}.",
         f"Setting (same place in every shot): {bible.get('setting_en', '').rstrip('.')}.",
-        f"Characters (exact same faces, hair, clothing and age in every shot): {character_block(bible, scene.get('characters', []))}.",
+        "Characters — keep exactly the same face, hairstyle, outfit, colors and body proportions as described (and as "
+        "in the character reference images, if provided); do not add any other people: "
+        + " | ".join(f"{c['name']}: {c['look_en'].rstrip('.')}" for c in on_screen) + ".",
         f"Action: {scene['action_en'].rstrip('.')}.",
         f"Camera: {scene.get('camera_en', 'slow gentle movement').rstrip('.')}.",
     ]
     if index > 0:
-        parts.append("Continuity: continues directly from the previous shot, same moment of the day, same lighting.")
-    lines = scene.get("lines") or []
+        parts.append("Continuity: continues directly from the previous shot, same moment of the day, same lighting, "
+                     "same clothes.")
     if lines:
-        spoken = []
+        speakers = []
         for ln in lines:
-            voice = (chars.get(ln["speaker"]) or {}).get("voice_en", "")
-            spoken.append(f'{ln["speaker"]} ({ln.get("delivery_en", "")}{"; " + voice if voice else ""}) says in '
-                          f'Vietnamese: "{ln["text"]}"')
+            c = chars.get(ln["speaker"].strip().lower())
+            if c and c.get("voice_en") and c not in speakers:
+                speakers.append(c)
+        if speakers:
+            parts.append("Voices (each character always has this exact same voice in every shot): "
+                         + " | ".join(f"{c['name']}: {c['voice_en'].rstrip('.')}" for c in speakers) + ".")
+        spoken = [f'{ln["speaker"]} ({ln.get("delivery_en", "").rstrip(".") or "natural"}) says in Vietnamese: '
+                  f'"{ln["text"]}"' for ln in lines]
         parts.append("Dialogue, in this order, natural pauses, accurate lip-sync, spoken in Vietnamese: "
                      + " Then ".join(spoken) + ".")
     else:
@@ -324,3 +336,10 @@ def character_sheet_prompt(bible: dict) -> str:
     return sanitize("Character reference sheet, full body, front view, plain light background, soft even light, "
                     f"{bible.get('style_en', '').rstrip('.')}. Characters standing side by side: {chars}. "
                     "Wholesome family portrait, everyone fully clothed. No text.")
+
+
+def portrait_prompt(bible: dict, c: dict) -> str:
+    """One-time prompt for ONE character's reference image (Flow image mode / Gemini / Whisk)."""
+    return sanitize(f"Character reference portrait of {c['name']}, full body, front view, neutral friendly pose, plain "
+                    f"light background, soft even light, {bible.get('style_en', '').rstrip('.')}. "
+                    f"{c['look_en'].rstrip('.')}. Wholesome, fully clothed. Only this one person. No text.")

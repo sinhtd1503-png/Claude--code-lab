@@ -4,12 +4,17 @@ The AI video model (Google Flow / Gemini) is asked to voice the dialogue with li
 carries the characters' voices and ambient sound. This module keeps that audio, adds light background music
 that dips under the voices, and burns subtitles from the script's dialogue lines.
 
-If a clip comes back without sound (or a stock fallback is used), each line is voiced by edge-tts with a
-per-character voice (pitch/rate tuned for child / adult / elderly) so the video is never silent.
+Voice modes (config `voice.dialogue_voice`, switchable with /giong):
+  • "fixed": every line is voiced by edge-tts with the character's own fixed voice (cast `tts`), so a character
+    sounds exactly the same in every clip — whether the clip came from Gemini or was made by hand on Flow. The
+    same tracks are built at script approval (preview) and reused at render, so what was approved is what ships.
+  • "clip": keep the voices the video model generated (better lip-sync, may drift between clips); a clip without
+    sound still gets the fixed voices.
 """
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 import subprocess
@@ -47,15 +52,54 @@ def line_times(lines: list[dict], dur: float) -> list[tuple[float, float]]:
     return out
 
 
-async def _tts(text: str, voice: str, rate: str, pitch: str, out: Path) -> None:
-    await edge_tts.Communicate(text, voice, rate=rate, pitch=pitch).save(str(out))
+def _char(speaker: str, characters: dict) -> dict:
+    s = (speaker or "").strip().lower()
+    return next((c for n, c in characters.items() if n.strip().lower() == s), {})
 
 
-def tts_line(text: str, spec: dict, out: Path) -> float:
+def voice_spec(speaker: str, characters: dict, cfg: dict) -> dict:
+    """The character's own fixed voice (cast `tts`), else a preset for its voice type."""
+    c = _char(speaker, characters)
+    if (c.get("tts") or {}).get("voice"):
+        return dict(c["tts"])
+    fb = (cfg.get("voice") or {}).get("fallback") or {}
+    vt = c.get("voice_type") or "female"
+    return fb.get(vt) or fb.get("female") or {"voice": "vi-VN-HoaiMyNeural"}
+
+
+def _pct(v: str) -> int:
+    try:
+        return int(str(v).strip().rstrip("%Hz").replace("+", ""))
+    except ValueError:
+        return 0
+
+
+# delivery words → small rate / volume changes, so the fixed voice still sounds like it means it
+EMOTION = [(("whisper", "thì thầm", "khẽ"), -8, -25), (("excited", "shout", "reo", "hào hứng", "cheer", "fast"), 8, 0),
+           (("sad", "choked", "nghẹn", "tearful", "slow", "tender", "soft", "trầm"), -8, -10),
+           (("laugh", "giggl", "cười"), 4, 0)]
+
+
+def line_spec(line: dict, characters: dict, cfg: dict) -> dict:
+    spec = voice_spec(line.get("speaker", ""), characters, cfg)
+    mood = f"{line.get('delivery_en', '')} {line.get('emotion_vi', '')}".lower()
+    rate, vol = _pct(spec.get("rate", "+0%")), 0
+    for words, dr, dv in EMOTION:
+        if any(w in mood for w in words):
+            rate, vol = rate + dr, min(vol, dv) if dv else vol
+            break
+    return {**spec, "rate": f"{max(-40, min(40, rate)):+d}%", "volume": f"{vol:+d}%"}
+
+
+async def _tts_v(text: str, spec: dict, out: Path) -> None:
+    await edge_tts.Communicate(text, spec.get("voice", "vi-VN-HoaiMyNeural"), rate=spec.get("rate", "+0%"),
+                               pitch=spec.get("pitch", "+0Hz"), volume=spec.get("volume", "+0%")).save(str(out))
+
+
+def _tts_spec(text: str, spec: dict, out: Path) -> float:
     for attempt in range(len(TTS_BACKOFF_SEC) + 1):
         try:
-            asyncio.run(_tts(text, spec.get("voice", "vi-VN-HoaiMyNeural"), spec.get("rate", "+0%"),
-                             spec.get("pitch", "+0Hz"), out))
+            asyncio.run(_tts_v(text, spec, out))
             return _duration(out)
         except edge_tts.exceptions.EdgeTTSException as e:
             if attempt == len(TTS_BACKOFF_SEC):
@@ -65,38 +109,99 @@ def tts_line(text: str, spec: dict, out: Path) -> float:
     raise AssertionError("unreachable")
 
 
-def voice_spec(speaker: str, characters: dict, cfg: dict) -> dict:
-    fb = (cfg.get("voice") or {}).get("fallback") or {}
-    vt = (characters.get(speaker) or {}).get("voice_type") or "female"
-    return fb.get(vt) or fb.get("female") or {"voice": "vi-VN-HoaiMyNeural"}
+def place_lines(durs: list[float], dur: float) -> tuple[list[tuple[float, float]], float]:
+    """Start/end of each spoken line inside a `dur`-second scene, one after another, never overlapping.
+    Returns (times, tempo): tempo > 1 means the lines must be sped up that much to fit."""
+    if not durs:
+        return [], 1.0
+    n, tail = len(durs), 0.3
+    room = dur - LEAD_SEC - tail - GAP_SEC * (n - 1)
+    tempo = min(1.35, max(1.0, sum(durs) / room)) if room > 0 else 1.35
+    durs = [d / tempo for d in durs]
+    slack = max(0.0, room - sum(durs))
+    gap = GAP_SEC + min(0.8, slack / (n + 1))
+    t, out = LEAD_SEC + min(0.6, slack / (n + 1)), []
+    for d in durs:
+        e = min(dur - 0.05, t + d)
+        out.append((round(t, 3), round(e, 3)))
+        t = e + gap
+    return out, tempo
 
 
-def fallback_voices(lines: list[dict], characters: dict, cfg: dict, dur: float, workdir: Path, i: int) -> Path:
-    """Voice each line with edge-tts and place it at its slot; returns a WAV exactly `dur` long."""
-    out = workdir / f"dlg{i}.wav"
+def scene_voice(lines: list[dict], characters: dict, cfg: dict, dur: float, workdir: Path, tag: str) -> dict:
+    """Voice every line of one scene with the speakers' fixed voices → {'path': WAV exactly `dur` long, 'times'}."""
+    workdir.mkdir(parents=True, exist_ok=True)
+    out = workdir / f"voice_{tag}.wav"
     if not lines:
         _run(["ffmpeg", "-y", "-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo", "-t", f"{dur:.3f}", str(out)])
-        return out
+        return {"path": str(out), "times": []}
+    files, durs = [], []
+    for k, ln in enumerate(lines):
+        f = workdir / f"voice_{tag}_{k}.mp3"
+        durs.append(_tts_spec(ln["text"], line_spec(ln, characters, cfg), f))
+        files.append(f)
+    times, tempo = place_lines(durs, dur)
     inputs, chains = [], []
-    for k, (ln, (start, _)) in enumerate(zip(lines, line_times(lines, dur))):
-        f = workdir / f"dlg{i}_{k}.mp3"
-        tts_line(ln["text"], voice_spec(ln["speaker"], characters, cfg), f)
+    for k, (f, (start, _)) in enumerate(zip(files, times)):
         inputs += ["-i", str(f)]
         ms = int(start * 1000)
-        chains.append(f"[{k}:a]aresample=44100,aformat=channel_layouts=stereo,adelay={ms}|{ms}[l{k}]")
-    mix = "".join(f"[l{k}]" for k in range(len(lines)))
+        speed = f"atempo={tempo:.3f}," if tempo > 1.001 else ""
+        chains.append(f"[{k}:a]{speed}aresample=44100,aformat=channel_layouts=stereo,adelay={ms}|{ms}[l{k}]")
+    mix = "".join(f"[l{k}]" for k in range(len(files)))
     _run(["ffmpeg", "-y", *inputs, "-filter_complex",
-          ";".join(chains) + f";{mix}amix=inputs={len(lines)}:normalize=0,apad,atrim=0:{dur:.3f}[a]",
+          ";".join(chains) + f";{mix}amix=inputs={len(files)}:normalize=0,apad,atrim=0:{dur:.3f}[a]",
           "-map", "[a]", str(out)])
+    return {"path": str(out), "times": times}
+
+
+def voice_hash(scenes: list[dict], characters: dict, cfg: dict, dur: float) -> str:
+    specs = [[(ln["text"], line_spec(ln, characters, cfg)) for ln in s.get("lines") or []] for s in scenes]
+    return hashlib.sha1(json.dumps([specs, dur], ensure_ascii=False, sort_keys=True).encode()).hexdigest()[:16]
+
+
+def voice_tracks(scenes: list[dict], characters: dict, cfg: dict, dur: float, outdir: Path) -> list[dict]:
+    """Fixed-voice audio for every scene, cached in `outdir` (built at approval, reused at render)."""
+    outdir.mkdir(parents=True, exist_ok=True)
+    h = voice_hash(scenes, characters, cfg, dur)
+    meta = outdir / "voices.json"
+    if meta.is_file():
+        old = json.loads(meta.read_text(encoding="utf-8"))
+        if old.get("hash") == h and all(Path(t["path"]).is_file() for t in old["tracks"]):
+            return old["tracks"]
+    tracks = [scene_voice(s.get("lines") or [], characters, cfg, dur, outdir, f"s{i}") for i, s in enumerate(scenes)]
+    meta.write_text(json.dumps({"hash": h, "tracks": tracks}, ensure_ascii=False), encoding="utf-8")
+    return tracks
+
+
+def join_tracks(tracks: list[dict], out: Path) -> Path:
+    """Concatenate scene voice WAVs (each already exactly one scene long)."""
+    ins = [x for t in tracks for x in ("-i", t["path"])]
+    _run(["ffmpeg", "-y", *ins, "-filter_complex",
+          "".join(f"[{k}:a]" for k in range(len(tracks))) + f"concat=n={len(tracks)}:v=0:a=1[a]", "-map", "[a]",
+          str(out)])
     return out
 
 
-def render_dialogue(script: dict, workdir: Path, cfg: dict, stock_key: str, ai, bible: dict) -> Path:
-    """`script["scenes"]`: [{lines, visual_query, keep_audio, prompt_full?}], `ai`: clip source (Flow/Gemini)."""
+def tts_line(text: str, spec: dict, out: Path) -> float:
+    return _tts_spec(text, spec, out)
+
+
+def fallback_voices(lines: list[dict], characters: dict, cfg: dict, dur: float, workdir: Path, i: int) -> Path:
+    """Clip without sound: voice its lines with the fixed character voices; returns a WAV exactly `dur` long."""
+    return Path(scene_voice(lines, characters, cfg, dur, workdir, f"fb{i}")["path"])
+
+
+def render_dialogue(script: dict, workdir: Path, cfg: dict, stock_key: str, ai, bible: dict,
+                    voice_mode: str = "clip", voice_dir: Path | None = None) -> Path:
+    """`script["scenes"]`: [{lines, visual_query, keep_audio, prompt_full?}], `ai`: clip source (Flow/Gemini).
+    voice_mode "fixed": replace clip audio with the characters' fixed voices (cached in `voice_dir`)."""
     workdir.mkdir(parents=True, exist_ok=True)
     vid = cfg["video"]
     clip_sec = float((cfg.get("ai_video") or {}).get("max_shot_sec", 8))
     characters = {c["name"]: c for c in (bible or {}).get("characters", [])}
+    fixed = None
+    if voice_mode == "fixed":
+        fixed = voice_tracks(script["scenes"], characters, cfg, clip_sec, voice_dir or workdir / "voices")
     used: set[str] = set()
     segments, srt, t0, idx = [], [], 0.0, 1
     vf = (f"scale={W}:{H}:force_original_aspect_ratio=increase:flags=lanczos,crop={W}:{H},setsar=1,fps={FPS},"
@@ -108,7 +213,7 @@ def render_dialogue(script: dict, workdir: Path, cfg: dict, stock_key: str, ai, 
         if ai is not None and ai.wants_ai(i, len(script["scenes"])):
             try:
                 clip = ai.scene_clip(i, scene, None, clip_sec, workdir)
-                own_voice = has_audio(clip)
+                own_voice = has_audio(clip) and fixed is None
             except Exception as e:
                 log.warning("Clip AI cảnh %d lỗi → dùng video dự phòng: %s", i + 1, e)
                 ai.note_fallback(i, str(e)[:300])
@@ -125,10 +230,14 @@ def render_dialogue(script: dict, workdir: Path, cfg: dict, stock_key: str, ai, 
         seg = workdir / f"seg{i}.mp4"
         v_in = ["-stream_loop", "-1", "-i", str(clip)] if clip else \
             ["-f", "lavfi", "-i", f"color=c=0x3b2f2a:s={W}x{H}:r={FPS}"]
+        times = line_times(lines, dur)
         if own_voice:
             a_in, a_map = [], "0:a"
+        elif fixed is not None:
+            a_in, a_map, times = ["-i", fixed[i]["path"]], "1:a", [tuple(t) for t in fixed[i]["times"]]
         else:
-            a_in, a_map = ["-i", str(fallback_voices(lines, characters, cfg, dur, workdir, i))], "1:a"
+            fb = scene_voice(lines, characters, cfg, dur, workdir, f"fb{i}")
+            a_in, a_map, times = ["-i", fb["path"]], "1:a", fb["times"]
         _run(["ffmpeg", "-y", *v_in, *a_in, "-filter_complex",
               f"[0:v]{vf},fade=t=in:st=0:d=0.25[v];[{a_map}]aresample=44100,aformat=channel_layouts=stereo,"
               f"apad,atrim=0:{dur:.3f}[a]",
@@ -136,7 +245,7 @@ def render_dialogue(script: dict, workdir: Path, cfg: dict, stock_key: str, ai, 
               "-crf", "20", "-c:a", "aac", "-b:a", "160k", str(seg)])
         segments.append(seg)
 
-        for ln, (s, e) in zip(lines, line_times(lines, dur)):
+        for ln, (s, e) in zip(lines, times):
             srt += [str(idx), f"{_srt_time(t0 + s)} --> {_srt_time(t0 + e)}", ln["text"], ""]
             idx += 1
         t0 += dur
@@ -162,6 +271,12 @@ def render_dialogue(script: dict, workdir: Path, cfg: dict, stock_key: str, ai, 
     final = workdir / "final.mp4"
     log.info("Rendered dialogue video %s (%.1fs)", final, _duration(final))
     return final
+
+
+def dialogue_preview(tracks: list[dict], music: str | None, total: float, cfg: dict, out: Path) -> Path:
+    """Fixed voices of every scene + background music, exactly as in the final video."""
+    joined = join_tracks(tracks, out.with_name("voices_joined.wav"))
+    return audio.preview(joined, music, total, cfg, out)
 
 
 def music_preview(music: str | None, total: float, cfg: dict, out: Path) -> Path | None:

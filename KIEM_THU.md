@@ -76,7 +76,8 @@ Trong Telegram, gửi cho bot:
 /nhanvat
 ```
 
-   **Kết quả đúng:** bot gửi prompt ảnh nhân vật.
+   **Kết quả đúng:** bot gửi 6 thẻ nhân vật (Ông, Bà, Bố, Mẹ, Cu Tí, Bé Na); thẻ chưa có ảnh kèm prompt tạo ảnh.
+   Gửi 1 ảnh với chú thích `Ông` → bot trả lại thẻ Ông có ảnh và mô tả mới. Gửi `/giong` → bấm 🔊 Ông → nghe giọng.
 6. Lấy kịch bản ngày 1:
 
 ```
