@@ -126,6 +126,15 @@ Xây agent tự động cho kênh TikTok ngách **tuổi thơ, kỷ niệm gia �
 - **`/kehoach` hỏi chọn nhân vật bằng ảnh trước:** chưa có ảnh nhân vật → bot hướng dẫn gửi ảnh (chú thích tên – vai) hoặc bấm "✨ Để AI tự tạo nhân vật"; đã có ảnh → lập kế hoạch với đúng các nhân vật đó
 - Đã kiểm thử trong Docker (căn thời gian, phụ đề, bản nghe thử, đổi nhạc/giọng, dùng lại giọng đã duyệt khi ghép) và thử edge-tts thật với giọng tiếng Việt
 
+### 📌 Tóm tắt thay đổi hôm nay (15/11/2026)
+- **Yêu cầu của chủ kênh:** thêm mức ngân sách nhỏ ($5, $10) thay vì chỉ $25; prompt hay bị Google Flow chặn vì chính sách; gửi nhạc qua Telegram nhưng bot báo thư viện trống; muốn video ghép xong lưu lên Google Drive
+- **Đã làm (PR #21, đã merge vào `main`; chủ kênh đã cập nhật VPS):**
+  - Duyệt ngân sách bằng nút chọn mức: Gemini $1/$5/$10/$25, Claude $2/$5/$10, Apify $1/$2/$5
+  - Kịch bản và prompt tuân thủ chính sách Google (bộ quy tắc cho biên kịch + tự lọc từ rủi ro); nút 🛡 viết lại prompt cảnh bị Flow chặn; Gemini bị chặn → tự viết lại và thử lại 1 lần
+  - Sửa lỗi nhạc nền: nhận file nhạc gửi dạng tài liệu, trả lời hướng dẫn khi file không dùng được, lệnh cài tự nạp lại workflow n8n khi có bản mới
+  - Video ghép xong tự lưu lên Drive (thư mục TikTok Agent/Video), link gửi kèm video và ghi vào file kịch bản
+- **Đang chờ kiểm tra thật:** gửi lại nhạc (bot phải trả lời "🎵 Đã thêm nhạc nền"), làm 1 video thử với ngân sách Gemini $1 hoặc tạo tay trên Flow, xem video trên Drive, đánh giá giọng nhân vật, khẩu hình, nhạc, hình anime
+
 ### 15/11/2026 — Chọn mức ngân sách, prompt đúng chính sách Google, sửa lỗi nhạc nền, video lên Drive
 - **Ngân sách chọn được nhiều mức:** bot xin duyệt hiện các nút **$1 / $5 / $10 / $25** cho Gemini (Claude: $2/$5/$10, Apify: $1/$2/$5; sửa trong `options_usd`), chỉ hiện các mức đủ cho yêu cầu hiện tại; mặc định đề xuất Gemini giảm còn $5 (≈ 8 video)
 - **Prompt đúng chính sách Google Flow/Veo** (`tiktok_agent/policy.py`): biên kịch nhận bộ quy tắc an toàn (trẻ em luôn mặc đủ, an toàn, không ghi tuổi cụ thể; không bạo lực/trừng phạt, nguy hiểm, rượu thuốc, vũ khí, thương hiệu, nhân vật bản quyền, tên hãng phim…); prompt clip tự lọc từ ngữ rủi ro (giữ nguyên câu thoại); bỏ vai/tuổi tiếng Việt khỏi prompt
