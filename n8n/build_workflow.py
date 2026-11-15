@@ -152,18 +152,38 @@ send_media = node("Telegram gửi ảnh/video", "n8n-nodes-base.httpRequest", 4.
         {"name": "supports_streaming", "value": "={{ " + S + ".payload.supports_streaming || 'false' }}"},
         {"parameterType": "formBinaryData", "name": "={{ " + S + ".field }}", "inputDataFieldName": "data"},
     ]},
-    "options": {"timeout": 600000, "response": {"response": {"neverError": True}},
-                "batching": {"batch": {"batchSize": 1, "batchInterval": 500}}},
-}, [1760, 0])
+    "options": {"timeout": 600000, "batching": {"batch": {"batchSize": 1, "batchInterval": 1100}}},
+}, [1760, 0], retryOnFail=True, maxTries=5, waitBetweenTries=5000, onError="continueErrorOutput")
 
 send = node("Telegram API", "n8n-nodes-base.httpRequest", 4.2, {
     "method": "POST",
     "url": TG + "{{ $json.method }}",
     "sendBody": True, "specifyBody": "json",
     "jsonBody": "={{ JSON.stringify($json.payload) }}",
-    "options": {"timeout": 60000, "response": {"response": {"neverError": True}},
-                "batching": {"batch": {"batchSize": 1, "batchInterval": 300}}},
-}, [1540, 200])
+    "options": {"timeout": 60000, "batching": {"batch": {"batchSize": 1, "batchInterval": 1100}}},
+}, [1540, 200], retryOnFail=True, maxTries=5, waitBetweenTries=5000, onError="continueErrorOutput")
+
+# Telegram cho bot gửi ~1 tin/giây mỗi cuộc trò chuyện; quá nhanh sẽ bị từ chối (429). Mỗi tin gửi cách nhau 1,1 giây
+# và tự thử lại tối đa 5 lần (chờ 5 giây). Tin vẫn lỗi → báo bằng chữ thường để chủ kênh biết thiếu tin nào.
+tg_err = code("Báo tin Telegram lỗi", r"""
+const out = [];
+for (const it of $input.all()) {
+  const e = it.json.error || {};
+  const why = String(e.description || e.message || JSON.stringify(it.json)).slice(0, 300);
+  if (/message is not modified|message to edit not found|query is too old/i.test(why)) continue;
+  out.push({ json: { chat_id: $env.TELEGRAM_CHAT_ID,
+    text: '⚠️ Telegram không nhận 1 tin của bot: ' + why + '\nGõ /clip để gửi lại prompt (hoặc /clip 2 cho riêng cảnh 2).' } });
+}
+return out;
+""", [1980, 200])
+
+tg_err_send = node("Gửi báo lỗi", "n8n-nodes-base.httpRequest", 4.2, {
+    "method": "POST",
+    "url": TG + "sendMessage",
+    "sendBody": True, "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify($json) }}",
+    "options": {"timeout": 30000, "response": {"response": {"neverError": True}}},
+}, [2200, 200])
 
 has_next = node("Còn bước tiếp?", "n8n-nodes-base.if", 2.2, {
     "conditions": {
@@ -185,6 +205,9 @@ for a, b in [(wh, classify), (classify, ack), (classify, call), (ack, send), (s_
 link(has_file, fetch, 0)
 link(has_file, send, 1)
 link(has_next, nxt, 0)
+link(send, tg_err, 1)
+link(send_media, tg_err, 1)
+link(tg_err, tg_err_send)
 
 wf = {
     "id": "TikTokAgent0001",

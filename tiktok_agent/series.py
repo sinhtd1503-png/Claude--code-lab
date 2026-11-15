@@ -252,6 +252,16 @@ def set_cast(bible: dict, cast: list[dict]) -> dict:
     return {**bible, "characters": [dict(c) for c in cast]}
 
 
+def invent_character(name: str, role: str, era: str, style: str) -> CharacterFromImage:
+    """New character from a name + role only (no photo yet): fixed look and voice to reuse in every clip."""
+    system = ("Bạn thiết kế một nhân vật phụ cố định cho series phim ngắn hoạt hình về ký ức tuổi thơ Việt Nam. Mô tả "
+              "cụ thể, có màu sắc, để công cụ tạo video AI vẽ lại giống hệt nhau qua nhiều clip. Không dựa trên người "
+              "thật.\n\n" + RULES_VI)
+    user = (f"Tên: {name}\nVai trò: {role or '(chưa rõ, hãy chọn vai hợp với tên)'}\nBối cảnh: {era}\n"
+            f"Phong cách hình ảnh: {style}\nGiữ nguyên tên. Với trẻ em: không ghi số tuổi trong look_en.")
+    return _parse(system, user, CharacterFromImage, effort="low", max_tokens=3000)
+
+
 # ---------- clip prompts (consistency lives here) ----------
 
 def scene_cast(bible: dict, scene: dict) -> list[dict]:
