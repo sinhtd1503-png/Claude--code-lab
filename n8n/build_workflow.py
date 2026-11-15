@@ -56,7 +56,8 @@ if (u.callback_query) {
   if (vid) {
     route = 'tg/clip';
     Object.assign(body, { file_id: vid.file_id, file_size: vid.file_size || 0, caption: m.caption || '', media_group_id: m.media_group_id || '' });
-  } else if (m.audio || (m.document && (m.document.mime_type || '').startsWith('audio/'))) {
+  } else if (m.audio || (m.document && ((m.document.mime_type || '').startsWith('audio/') ||
+             /\.(mp3|m4a|aac|ogg|wav)$/i.test(m.document.file_name || '')))) {
     const a = m.audio || m.document;
     route = 'tg/audio';
     Object.assign(body, { file_id: a.file_id, file_size: a.file_size || 0, file_name: a.file_name || '',
@@ -66,6 +67,11 @@ if (u.callback_query) {
     route = 'tg/photo';
     Object.assign(body, { file_id: p.file_id, file_size: p.file_size || 0, mime_type: p.mime_type || 'image/jpeg',
                           caption: m.caption || '' });
+  } else if (m.document || m.voice || m.video_note || m.sticker) {
+    const f = m.document || m.voice || m.video_note || {};
+    route = 'tg/other';
+    Object.assign(body, { kind: m.document ? 'document' : m.voice ? 'voice' : m.video_note ? 'video_note' : 'sticker',
+                          file_name: f.file_name || '', mime_type: f.mime_type || '' });
   } else if ((m.text || '').startsWith('/')) {
     route = 'tg/command'; body.text = m.text;
   } else if (m.text) {

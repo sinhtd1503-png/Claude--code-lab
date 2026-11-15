@@ -133,15 +133,19 @@ budget:
       est_plan_usd: 0.8       # ước tính 1 lần lập kế hoạch 30 ngày
       est_script_usd: 0.15    # ước tính 1 kịch bản
       est_image_usd: 0.05     # ước tính đọc 1 ảnh nhân vật
+      est_fix_usd: 0.03       # ước tính viết lại 1 prompt bị Flow chặn
+      options_usd: [2, 5, 10] # các mức bạn chọn được khi bot xin duyệt ngân sách
       price_in_per_m: 4       # Claude Opus 5.5: $4 / 1 triệu token vào
       price_out_per_m: 20     #                  $20 / 1 triệu token ra
     apify:                    # quét đối thủ — gói Free của Apify tặng ~5 USD/tháng nên thường $0
       free_monthly_usd: 5
       suggest_monthly_usd: 2
       est_scrape_usd: 0.5
+      options_usd: [1, 2, 5]
     gemini_video:             # tuỳ chọn: tạo clip tự động bằng Gemini API thay vì tạo tay trên Google Flow
       free_monthly_usd: 0
-      suggest_monthly_usd: 25
-      usd_per_clip: 0.19
+      suggest_monthly_usd: 5
+      usd_per_clip: 0.19      # 1 video 3 cảnh ≈ $0.6 → $5 ≈ 8 video, $10 ≈ 17 video
+      options_usd: [1, 5, 10, 25]
 
 data_dir: "data"

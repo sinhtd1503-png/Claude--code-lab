@@ -1,6 +1,6 @@
 # Tiến độ dự án — TikTok Content Agent
 
-_Cập nhật: 14/11/2026_
+_Cập nhật: 15/11/2026_
 
 ## 🔄 Lệnh cập nhật VPS (sao chép và dán vào Termius)
 
@@ -126,6 +126,14 @@ Xây agent tự động cho kênh TikTok ngách **tuổi thơ, kỷ niệm gia �
 - **`/kehoach` hỏi chọn nhân vật bằng ảnh trước:** chưa có ảnh nhân vật → bot hướng dẫn gửi ảnh (chú thích tên – vai) hoặc bấm "✨ Để AI tự tạo nhân vật"; đã có ảnh → lập kế hoạch với đúng các nhân vật đó
 - Đã kiểm thử trong Docker (căn thời gian, phụ đề, bản nghe thử, đổi nhạc/giọng, dùng lại giọng đã duyệt khi ghép) và thử edge-tts thật với giọng tiếng Việt
 
+### 15/11/2026 — Chọn mức ngân sách, prompt đúng chính sách Google, sửa lỗi nhạc nền, video lên Drive
+- **Ngân sách chọn được nhiều mức:** bot xin duyệt hiện các nút **$1 / $5 / $10 / $25** cho Gemini (Claude: $2/$5/$10, Apify: $1/$2/$5; sửa trong `options_usd`), chỉ hiện các mức đủ cho yêu cầu hiện tại; mặc định đề xuất Gemini giảm còn $5 (≈ 8 video)
+- **Prompt đúng chính sách Google Flow/Veo** (`tiktok_agent/policy.py`): biên kịch nhận bộ quy tắc an toàn (trẻ em luôn mặc đủ, an toàn, không ghi tuổi cụ thể; không bạo lực/trừng phạt, nguy hiểm, rượu thuốc, vũ khí, thương hiệu, nhân vật bản quyền, tên hãng phim…); prompt clip tự lọc từ ngữ rủi ro (giữ nguyên câu thoại); bỏ vai/tuổi tiếng Việt khỏi prompt
+- **Nút "🛡 Flow báo vi phạm chính sách → viết lại"** dưới mỗi prompt cảnh: Claude viết lại cảnh đó an toàn hơn (~$0.03) và gửi lại prompt mới. Tạo tự động bằng Gemini bị chặn chính sách → tự viết lại và thử lại 1 lần, vẫn bị chặn thì chuyển sang tạo tay
+- **Sửa lỗi nhạc nền "thư viện trống":** nhận cả file nhạc gửi dạng tài liệu (mp3/m4a… kể cả khi Telegram không nhận ra loại file); file bot chưa dùng được thì bot trả lời hướng dẫn thay vì im lặng; **lệnh cài tự nạp lại workflow n8n khi file workflow đổi** (trước đây nếu quên `UPDATE_WORKFLOW=1`, n8n cũ không chuyển file nhạc tới hệ thống)
+- **Video ghép xong tự tải lên Google Drive**, thư mục *TikTok Agent/Video* (tên file `#id Tiêu đề ngày giờ.mp4`), link gửi kèm video và ghi vào file kịch bản trên Drive
+- Đã kiểm thử trong Docker (mức ngân sách, lọc chính sách, viết lại prompt, Gemini bị chặn → thử lại, phân loại file n8n, tải video lên Drive giả lập)
+
 ### 14/11/2026 (tiếp) — Tự lưu kịch bản đã duyệt lên Google Drive
 - Mỗi lần **Duyệt kịch bản**, hệ thống cập nhật **một file Google Docs** "Kịch bản đã duyệt – TikTok Agent" (thư mục *TikTok Agent*): toàn bộ kịch bản đã duyệt kèm **thoại từng cảnh** (người nói, cảm xúc), nhạc nền, thông điệp, caption; mới nhất ở trên (`tiktok_agent/gdrive.py`)
 - Kết nối bằng **mã thiết bị** của Google: `/drive` → mở google.com/device trên iPad, nhập mã → Cho phép. Quyền `drive.file`: app chỉ thấy file nó tạo
@@ -188,10 +196,9 @@ Xây agent tự động cho kênh TikTok ngách **tuổi thơ, kỷ niệm gia �
 
 ## 📋 Các bước cần cấu hình tiếp
 
-1. **Cập nhật VPS** bằng lệnh ở mục "🔄 Lệnh cập nhật VPS" đầu file; khi được hỏi Gemini API key: dán khoá (tự tạo clip, trả phí) hoặc Enter (tạo tay trên Flow).
-2. **Thêm 3–5 bài nhạc nền nhẹ, không bản quyền** bằng cách gửi file vào chat bot; kiểm tra `/nhac`.
-3. **Gửi ảnh nhân vật** (mỗi ảnh một tin, chú thích `Tên - vai`) — chỉ 1 lần.
-4. `/kehoach` → duyệt kế hoạch mới (để có giọng cố định cho nhân vật) → `/kichban` → xem thoại + nghe nhạc → duyệt → nhận video.
-5. Đánh giá video đầu tiên: giọng nhân vật, nhịp thoại, khớp khẩu hình, âm lượng nhạc → báo lại để chỉnh.
-6. **Bật lưu Google Drive** theo `HUONG_DAN.md` Bước 8b, rồi gõ `/drive` để kết nối.
-7. Huỷ hoặc gia hạn Contabo trước ngày hết kỳ 1 tháng.
+1. **Cập nhật VPS** bằng lệnh ở mục "🔄 Lệnh cập nhật VPS" đầu file (lệnh cài tự nạp lại workflow n8n mới).
+2. **Gửi lại các file nhạc nền** vào bot; mỗi file bot phải trả lời "🎵 Đã thêm nhạc nền"; kiểm tra `/nhac`.
+3. Nếu chưa: bật Google Drive (`HUONG_DAN.md` Bước 8b) → `/drive`.
+4. `/kichban` → duyệt → khi bot xin ngân sách Gemini, chọn mức **$1 hoặc $5** để thử; hoặc tạo tay trên Flow, cảnh nào Flow báo vi phạm thì bấm **🛡** dưới prompt cảnh đó.
+5. Kiểm tra video trên Telegram và trong thư mục *TikTok Agent/Video* trên Drive.
+6. Huỷ hoặc gia hạn Contabo trước ngày hết kỳ 1 tháng.

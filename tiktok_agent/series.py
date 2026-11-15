@@ -12,6 +12,7 @@ import logging
 from pydantic import BaseModel, Field
 
 from .content import _parse
+from .policy import RULES_VI, sanitize
 
 log = logging.getLogger(__name__)
 
@@ -139,6 +140,8 @@ Nguyên tắc:
   nhân vật hoàn toàn mới; không chép caption, kịch bản, câu chữ hay nhân vật của họ.
 - Không bịa số liệu, không giả danh người thật, không clickbait sai sự thật, không chính trị, không cảnh nguy hiểm
   hay bạo lực với trẻ em, không quảng cáo sản phẩm, không nhắc tên thương hiệu thật.
+
+{RULES_VI}
 - Video là phim ngắn dựng bằng AI: vài clip 8 giây, nhân vật nói thoại (video AI tự lồng tiếng, khớp khẩu hình) +
   nhạc nền + phụ đề; nhân vật, giọng nói và bối cảnh cố định suốt series để người xem nhận ra "gia đình" của kênh."""
 
@@ -227,7 +230,9 @@ def describe_character(image: bytes, media_type: str, caption: str, era: str = "
               "hay nêu danh tính người thật, không nhận xét ngoại hình theo hướng tiêu cực.")
     user = (f"Chú thích của chủ kênh: {caption or '(không có)'}\n"
             f"Bối cảnh series: {era or 'Việt Nam thập niên 1990'}\n"
-            "Nếu ảnh có nhiều người, chỉ mô tả nhân vật chính (người nổi bật nhất, hoặc người chú thích nhắc tới).")
+            "Nếu ảnh có nhiều người, chỉ mô tả nhân vật chính (người nổi bật nhất, hoặc người chú thích nhắc tới). "
+            "Với trẻ em: KHÔNG ghi số tuổi cụ thể trong look_en (dùng 'little girl', 'young boy'), chỉ mô tả "
+            "khuôn mặt, tóc, trang phục; không mô tả cơ thể.")
     return _parse(system, user, CharacterFromImage, effort="medium", max_tokens=3000, images=[(image, media_type)])
 
 
@@ -254,9 +259,10 @@ def apply_cast(bible: dict, cast: list[dict], limit: int = 6) -> dict:
 # ---------- clip prompts (consistency lives here) ----------
 
 def character_block(bible: dict, names: list[str]) -> str:
+    # English look only: the Vietnamese role often contains a child's exact age, which video models refuse
     chars = bible.get("characters", [])
     picked = [c for c in chars if c["name"] in names] or chars[:2]
-    return "; ".join(f"{c['name']} ({c['role']}): {c['look_en']}" for c in picked)
+    return "; ".join(f"{c['name']}: {c['look_en']}" for c in picked)
 
 
 def clip_prompt(bible: dict, scene: dict, index: int, total: int) -> str:
@@ -287,13 +293,34 @@ def clip_prompt(bible: dict, scene: dict, index: int, total: int) -> str:
     amb = (scene.get("ambient_en") or "").rstrip(".")
     parts.append(f"Sound: {'the dialogue and ' if lines else ''}soft ambient sound{(' (' + amb + ')') if amb else ''}; "
                  "no background music, no narrator.")
-    parts.append("No text, no captions, no subtitles, no logos, no watermark.")
-    return "\n".join(parts)
+    parts.append("Wholesome, family-friendly; everyone fully clothed and safe. No text, no captions, no subtitles, "
+                 "no logos, no watermark.")
+    return sanitize("\n".join(parts))
+
+
+class SafePrompt(BaseModel):
+    prompt_en: str = Field(description="Prompt tiếng Anh đã viết lại, giữ đúng cấu trúc, phong cách, nhân vật và câu "
+                                       "chuyện; câu thoại tiếng Việt giữ nguyên nếu không vi phạm")
+    changes_vi: str = Field(description="Đã sửa những gì, 1–2 câu tiếng Việt")
+
+
+def safer_prompt(prompt: str, error: str = "") -> SafePrompt:
+    """Rewrite one clip prompt that Google Flow / Gemini refused for policy reasons."""
+    system = ("Bạn là chuyên gia viết prompt video AI tuân thủ chính sách nội dung của Google (Flow, Veo, Gemini). "
+              "Viết lại prompt để chắc chắn được chấp nhận mà vẫn giữ câu chuyện, cảm xúc, phong cách hình ảnh, "
+              "nhân vật và thoại.\n\n" + RULES_VI)
+    user = (f"Prompt bị từ chối:\n<prompt>\n{prompt}\n</prompt>\n"
+            + (f"Thông báo lỗi: {error}\n" if error else "")
+            + "Tìm mọi chi tiết có thể vi phạm (kể cả gián tiếp: tuổi trẻ em, tiếp xúc cơ thể, nguy hiểm, đồ vật nhạy "
+              "cảm, thương hiệu, phong cách hãng phim, chữ trên hình…) và thay bằng chi tiết an toàn tương đương.")
+    out = _parse(system, user, SafePrompt, effort="low", max_tokens=4000)
+    out.prompt_en = sanitize(out.prompt_en)
+    return out
 
 
 def character_sheet_prompt(bible: dict) -> str:
     """One-time prompt for a reference image of the cast (used as 'ingredients' in Flow for every clip)."""
-    chars = "; ".join(f"{c['name']} ({c['role']}): {c['look_en']}" for c in bible.get("characters", []))
-    return ("Character reference sheet, full body, front view, plain light background, soft even light, "
-            f"{bible.get('style_en', '').rstrip('.')}. Characters standing side by side: {chars}. "
-            "No text.")
+    chars = "; ".join(f"{c['name']}: {c['look_en']}" for c in bible.get("characters", []))
+    return sanitize("Character reference sheet, full body, front view, plain light background, soft even light, "
+                    f"{bible.get('style_en', '').rstrip('.')}. Characters standing side by side: {chars}. "
+                    "Wholesome family portrait, everyone fully clothed. No text.")

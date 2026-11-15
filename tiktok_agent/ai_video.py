@@ -46,6 +46,13 @@ class AIQuotaError(RuntimeError):
     """The provider refused for quota / billing / credit reasons — the owner has to decide (pay or go manual)."""
 
 
+class AIPolicyError(RuntimeError):
+    """The provider refused the prompt for content-policy reasons (scene index in .scene)."""
+    def __init__(self, msg: str, scene: int):
+        super().__init__(msg)
+        self.scene = scene
+
+
 QUOTA_HINTS = ("resource_exhausted", "quota", "429", "billing", "credit", "insufficient", "payment", "exceeded")
 
 
@@ -199,7 +206,12 @@ class AIVideoSource:
                 iid, in_tok, out_tok = self._generate_shot(scene["prompt_full"], sec, out)
             except Exception as e:
                 self._record(scene_index, 0, 0, 0, 0, 0.0, "failed", None)
-                raise (AIQuotaError if _quota_like(e) else RuntimeError)(str(e)[:500]) from None
+                from .policy import policy_like
+                if _quota_like(e):
+                    raise AIQuotaError(str(e)[:500]) from None
+                if policy_like(e):
+                    raise AIPolicyError(str(e)[:500], scene_index) from None
+                raise RuntimeError(str(e)[:500]) from None
             cost, in_tok, out_tok = self._cost(sec, in_tok, out_tok)
             self._record(scene_index, 0, sec, in_tok, out_tok, cost, "ok", iid)
             if self.run is not None:

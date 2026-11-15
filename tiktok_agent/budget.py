@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import math
+import sqlite3
 import time
 from zoneinfo import ZoneInfo
 
@@ -40,6 +42,11 @@ class Budget:
         self.cfg = cfg or {}
         self.tz = ZoneInfo(timezone)
         db.conn.executescript(SCHEMA)
+        try:  # older databases: remember the minimum amount each request needs
+            db.conn.execute("ALTER TABLE budget_requests ADD COLUMN need_usd REAL")
+            db.conn.commit()
+        except sqlite3.OperationalError:
+            pass
 
     def month(self) -> str:
         return dt.datetime.now(self.tz).strftime("%Y-%m")
@@ -83,10 +90,10 @@ class Budget:
         need = self.spent(service) + est_usd - self.allowance(service)
         amount = max(float(self._svc(service).get("suggest_monthly_usd", 0)), round(need + 0.005, 2))
         cur = self.db.conn.execute(
-            "INSERT INTO budget_requests (ts, month, service, amount_usd, reason, resume, status) "
-            "VALUES (?,?,?,?,?,?, 'pending')",
+            "INSERT INTO budget_requests (ts, month, service, amount_usd, reason, resume, status, need_usd) "
+            "VALUES (?,?,?,?,?,?, 'pending', ?)",
             (int(time.time()), self.month(), service, round(amount, 2), reason,
-             json.dumps(resume) if resume else None))
+             json.dumps(resume) if resume else None, round(need, 2)))
         self.db.conn.commit()
         raise BudgetNeeded(self.get(cur.lastrowid))
 
@@ -94,10 +101,21 @@ class Budget:
         r = self.db.conn.execute("SELECT * FROM budget_requests WHERE id=?", (rid,)).fetchone()
         return dict(r) if r else None
 
-    def decide(self, rid: int, approve: bool) -> dict | None:
+    def options(self, req: dict) -> list[float]:
+        """Amounts the owner can pick (config `options_usd`), all big enough for the pending request."""
+        need = float(req.get("need_usd") or 0)
+        svc = self._svc(req["service"])
+        opts = [float(o) for o in (svc.get("options_usd") or [req["amount_usd"]]) if float(o) >= need - 1e-9]
+        if not opts or min(opts) > max(1.0, math.ceil(need)):
+            opts.append(float(max(1, math.ceil(need))))
+        return sorted(set(opts))[:4]
+
+    def decide(self, rid: int, approve: bool, amount: float | None = None) -> dict | None:
         req = self.get(rid)
         if not req or req["status"] != "pending":
             return req
+        if approve and amount:
+            self.db.conn.execute("UPDATE budget_requests SET amount_usd=? WHERE id=?", (round(amount, 2), rid))
         self.db.conn.execute("UPDATE budget_requests SET status=? WHERE id=?",
                              ("approved" if approve else "rejected", rid))
         self.db.conn.commit()

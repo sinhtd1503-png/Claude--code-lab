@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import time
+from pathlib import Path
 
 import httpx
 
@@ -24,6 +25,7 @@ UPLOAD = "https://www.googleapis.com/upload/drive/v3"
 KEY = "gdrive"
 FOLDER_NAME = "TikTok Agent"
 DOC_NAME = "Kịch bản đã duyệt – TikTok Agent"
+VIDEO_FOLDER = "Video"
 
 
 class DriveError(RuntimeError):
@@ -129,6 +131,39 @@ class GDrive:
                       json={"name": FOLDER_NAME, "mimeType": "application/vnd.google-apps.folder"})
         self._save(folder_id=f["id"], doc_id=None)
         return f["id"]
+
+    def _subfolder(self, name: str) -> str:
+        key = f"sub_{name}"
+        parent = self._folder()
+        fid = self._state().get(key)
+        if fid:
+            try:
+                f = self._req("GET", f"{API}/files/{fid}", params={"fields": "id,trashed"})
+                if not f.get("trashed"):
+                    return fid
+            except FileNotFoundError:
+                pass
+        f = self._req("POST", f"{API}/files", params={"fields": "id"},
+                      json={"name": name, "mimeType": "application/vnd.google-apps.folder", "parents": [parent]})
+        self._save(**{key: f["id"]})
+        return f["id"]
+
+    def upload_video(self, path: Path, name: str) -> str:
+        """Upload a rendered video into TikTok Agent/Video (resumable upload); returns its link."""
+        size = path.stat().st_size
+        meta = {"name": name, "mimeType": "video/mp4", "parents": [self._subfolder(VIDEO_FOLDER)]}
+        with _http() as c:
+            r = c.post(f"{UPLOAD}/files", params={"uploadType": "resumable", "fields": "id,webViewLink"},
+                       headers={"Authorization": f"Bearer {self._token()}", "X-Upload-Content-Type": "video/mp4",
+                                "X-Upload-Content-Length": str(size)}, json=meta)
+            if r.status_code >= 400 or not r.headers.get("location"):
+                raise DriveError(f"Google Drive lỗi {r.status_code}: {r.text[:300]}")
+            with path.open("rb") as fh:
+                r2 = c.put(r.headers["location"], content=fh.read(),
+                           headers={"Content-Type": "video/mp4", "Content-Length": str(size)}, timeout=600)
+        if r2.status_code >= 400:
+            raise DriveError(f"Tải video lên Drive lỗi {r2.status_code}: {r2.text[:300]}")
+        return r2.json().get("webViewLink", "")
 
     @staticmethod
     def _multipart(meta: dict, html: str) -> tuple[bytes, str]:
