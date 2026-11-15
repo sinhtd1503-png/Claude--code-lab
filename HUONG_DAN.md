@@ -253,6 +253,10 @@ Mỗi lần bạn bấm **Duyệt kịch bản**, hệ thống cập nhật mộ
      theo ảnh và lưu ảnh làm mẫu.
    - **Sửa mô tả:** **Trả lời** thẻ nhân vật, gõ từng dòng `Tên: …`, `Vai: …`, `Ngoại hình: …`, `Giọng: …`,
      `Cách nói: …`. Ngoại hình và Giọng nên viết tiếng Anh.
+   - **Thay ảnh:** bấm **📷 Thay ảnh** dưới thẻ nhân vật rồi gửi ảnh mới (không cần chú thích).
+   - **Thêm nhân vật** (hàng xóm, thầy cô…): gửi ảnh với chú thích `Tên - vai` → bấm **➕ Nhân vật mới**, hoặc gõ
+     `/themnv Cô Lan - cô giáo chủ nhiệm` (bot tự viết mô tả và gửi prompt tạo ảnh). Nhân vật thêm có nút xoá;
+     6 nhân vật chính chỉ sửa được, không xoá.
    - **Giọng:** gửi `/giong` → bấm 🔊 để nghe giọng từng người, **🎙 Đổi giọng** để chọn giọng khác.
      Mặc định dùng **Giọng cố định**: khi ghép video, bot thay tiếng trong clip bằng giọng riêng của từng nhân vật
      nên mọi clip đều cùng giọng, kể cả clip tạo tay. Bản nghe thử lúc duyệt kịch bản chính là âm thanh thành phẩm.
@@ -315,9 +319,10 @@ Mỗi lần bạn bấm **Duyệt kịch bản**, hệ thống cập nhật mộ
 |---|---|
 | `/kehoach` | Lập kế hoạch 30 ngày mới (tự chạy khi kế hoạch cũ còn ≤ 2 ngày) |
 | `/kichban` | Viết ngay kịch bản tiếp theo (bình thường bot tự gửi 07:00) |
-| `/clip` | Gửi lại prompt của video đang chờ clip |
+| `/clip` | Gửi lại tất cả prompt clip; `/clip 2` gửi riêng cảnh 2 (khi thiếu tin) |
 | `/nhanvat` | 6 nhân vật cố định: ảnh mẫu, ngoại hình, cách nói (Trả lời thẻ để sửa) |
 | `/giong` | Nghe/đổi giọng từng nhân vật; chọn giọng cố định hay giọng trong clip |
+| `/themnv Tên - vai` | Thêm nhân vật mới (vd `/themnv Cô Lan - cô giáo`); hoặc gửi ảnh chú thích `Tên - vai` → ➕ Nhân vật mới |
 | 📷 Gửi ảnh + chú thích | Ảnh mẫu cho một nhân vật, chú thích là tên, vd `Ông`, `Bé Na` |
 | `/nhac` | Thư viện nhạc nền; gửi file mp3/m4a vào chat để thêm |
 | `/drive` | Kết nối Google Drive / xem link file kịch bản đã duyệt / đồng bộ lại |

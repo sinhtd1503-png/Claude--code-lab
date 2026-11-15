@@ -283,19 +283,18 @@
         },
         "options": {
           "timeout": 600000,
-          "response": {
-            "response": {
-              "neverError": true
-            }
-          },
           "batching": {
             "batch": {
               "batchSize": 1,
-              "batchInterval": 500
+              "batchInterval": 1100
             }
           }
         }
-      }
+      },
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 5000,
+      "onError": "continueErrorOutput"
     },
     {
       "id": "8773203f-5020-509f-9717-a17a8a820256",
@@ -314,15 +313,52 @@
         "jsonBody": "={{ JSON.stringify($json.payload) }}",
         "options": {
           "timeout": 60000,
-          "response": {
-            "response": {
-              "neverError": true
-            }
-          },
           "batching": {
             "batch": {
               "batchSize": 1,
-              "batchInterval": 300
+              "batchInterval": 1100
+            }
+          }
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 5000,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "675fbd8e-c84f-5933-850d-588d4e978110",
+      "name": "Báo tin Telegram lỗi",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1980,
+        200
+      ],
+      "parameters": {
+        "jsCode": "const out = [];\nfor (const it of $input.all()) {\n  const e = it.json.error || {};\n  const why = String(e.description || e.message || JSON.stringify(it.json)).slice(0, 300);\n  if (/message is not modified|message to edit not found|query is too old/i.test(why)) continue;\n  out.push({ json: { chat_id: $env.TELEGRAM_CHAT_ID,\n    text: '⚠️ Telegram không nhận 1 tin của bot: ' + why + '\\nGõ /clip để gửi lại prompt (hoặc /clip 2 cho riêng cảnh 2).' } });\n}\nreturn out;"
+      }
+    },
+    {
+      "id": "e0c96821-e0d8-5502-a228-21c9b150a240",
+      "name": "Gửi báo lỗi",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2200,
+        200
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.TELEGRAM_API }}/bot{{ $env.TELEGRAM_BOT_TOKEN }}/sendMessage",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "neverError": true
             }
           }
         }
@@ -542,6 +578,41 @@
         [
           {
             "node": "Chuẩn bị bước tiếp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram API": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Báo tin Telegram lỗi",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram gửi ảnh/video": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Báo tin Telegram lỗi",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Báo tin Telegram lỗi": {
+      "main": [
+        [
+          {
+            "node": "Gửi báo lỗi",
             "type": "main",
             "index": 0
           }

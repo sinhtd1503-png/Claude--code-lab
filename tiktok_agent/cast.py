@@ -160,6 +160,24 @@ class Cast:
                     return items[i]
         return None
 
+    def add(self, item: dict) -> dict:
+        """Add a new character (key nv7, nv8, …) at the end of the cast."""
+        with self._lock:
+            items = self.load()
+            n = max([int(c["key"][2:]) for c in items if re.fullmatch(r"nv\d+", c["key"])] + [len(KEYS)]) + 1
+            new = self._clean({**item, "key": f"nv{n}"}, len(items))
+            items.append(new)
+            self.save(items)
+            return new
+
+    def remove(self, key: str) -> dict | None:
+        with self._lock:
+            items = self.load()
+            gone = next((c for c in items if c["key"] == key), None)
+            if gone:
+                self.save([c for c in items if c["key"] != key])
+            return gone
+
     # ---------- for prompts ----------
     def by_name(self) -> dict[str, dict]:
         return {c["name"]: c for c in self.load()}

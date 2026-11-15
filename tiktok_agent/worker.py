@@ -122,8 +122,16 @@ def long_msg(text: str, buttons: dict | None = None) -> list[dict]:
     return out
 
 
+def safe_caption(caption: str, limit: int = 1024) -> str:
+    """Telegram captions max 1024 chars; cutting HTML mid-tag makes Telegram refuse the whole message."""
+    plain = html.unescape(re.sub(r"<[^>]+>", "", caption))
+    if len(plain) <= limit:
+        return caption
+    return esc(plain[:limit - 30].rstrip() + "…")
+
+
 def media(kind: str, path: Path, caption: str, buttons: dict | None = None) -> dict:
-    payload = {"chat_id": str(CHAT), "caption": caption[:1024], "parse_mode": "HTML",
+    payload = {"chat_id": str(CHAT), "caption": safe_caption(caption), "parse_mode": "HTML",
                "reply_markup": json.dumps(buttons or {"inline_keyboard": []}, ensure_ascii=False)}
     if kind == "video":
         payload["supports_streaming"] = "true"
@@ -167,11 +175,12 @@ def budget_msg(req: dict) -> dict:
 HELP = ("🤖 <b>Trợ lý kênh TikTok</b>\n\n"
         "/kehoach – lập kế hoạch 30 ngày mới\n"
         "/kichban – viết ngay kịch bản tiếp theo\n"
-        "/clip – gửi lại prompt clip đang chờ\n"
+        "/clip – gửi lại prompt clip đang chờ (/clip 2 = riêng cảnh 2)\n"
         "/trangthai – xem tình trạng hệ thống\n"
         "/ngansach – chi phí tháng này\n"
         "/nhanvat – 6 nhân vật cố định (ảnh mẫu, ngoại hình, cách nói)\n"
         "/giong – nghe/chọn giọng cố định của từng nhân vật\n"
+        "/themnv Tên - vai – thêm nhân vật mới (vd /themnv Cô Lan - cô giáo)\n"
         "📷 Gửi ảnh + chú thích tên nhân vật (vd 'Ông', 'Bé Na') – ảnh mẫu (gửi 1 lần, dùng mãi)\n"
         "/nhac – thư viện nhạc nền (gửi file mp3 để thêm)\n"
         "/phongcach – xem/sửa mô tả phong cách kênh mẫu\n"
@@ -626,7 +635,9 @@ def rewrite_script(cid: int, feedback: str | None, message_id: int | None = None
 def prompt_messages(cid: int) -> list[dict]:
     m = manual().load(cid)
     n = len(m["shots"])
-    out = [msg(f"🎥 <b>#{cid} – Tạo {n} clip miễn phí</b>\n\n"
+    out = [msg(f"🎥 <b>#{cid} – Tạo {n} clip miễn phí</b> — bot gửi lần lượt {n} tin <b>Cảnh 1…{n}</b> bên dưới "
+               f"(mỗi tin cách nhau ~1 giây). Thiếu cảnh nào: gõ <code>/clip 2</code> (số cảnh) hoặc <code>/clip</code> "
+               "để gửi lại tất cả.\n\n"
                "1) Mở <b>labs.google/flow</b> trên Safari (tài khoản Google miễn phí).\n"
                "2) Chạm vào khung prompt của từng cảnh bên dưới để <b>sao chép</b> → dán vào Flow → chọn "
                "khung <b>dọc 9:16</b>, 8 giây → tạo → tải clip về.\n"
@@ -881,6 +892,8 @@ def style_cmd(text: str) -> dict:
 # ---------------------------------------------------------------- the 6 fixed characters (look + photo + voice)
 
 OLD_CAST_KEY = "character_refs"
+CORE_KEYS = ("ong", "ba", "bo", "me", "be_trai", "be_gai")
+PENDING_SLOT = "pending_photo_slot"
 IMG_TYPES = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp"}
 PENDING_PHOTO = "pending_photo"
 
@@ -918,16 +931,23 @@ def card_text(c: dict) -> str:
 
 
 def card_buttons(i: int, c: dict) -> dict:
-    rows = [[("🔊 Nghe giọng", f"gp:{i}"), ("🎙 Đổi giọng", f"gv:{i}")]]
+    rows = [[("🔊 Nghe giọng", f"gp:{i}"), ("🎙 Đổi giọng", f"gv:{i}")],
+            [("📷 Thay ảnh" if c.get("image") else "📷 Thêm ảnh", f"cp:{i}")]]
     if c.get("image"):
-        rows.append([("🗑 Xoá ảnh mẫu", f"cx:{i}")])
+        rows[1].append(("🗑 Xoá ảnh mẫu", f"cx:{i}"))
+    if c["key"] not in CORE_KEYS:
+        rows.append([("❌ Xoá nhân vật này", f"cd:{i}")])
     return kb(*rows)
 
 
-def card_msg(i: int, c: dict, bible: dict, extra: str = "") -> dict:
+def card_msg(i: int, c: dict, bible: dict, extra: str = "") -> dict | list[dict]:
     img = CAST.image_path(c)
     if img:
-        return media("photo", img, (card_text(c) + extra)[:1000], card_buttons(i, c))
+        text = card_text(c) + extra
+        if len(html.unescape(re.sub(r"<[^>]+>", "", text))) <= 1000:
+            return media("photo", img, text, card_buttons(i, c))
+        return [media("photo", img, f"🧑 <b>{esc(c['name'])}</b> – ảnh mẫu [NV:{esc(c['key'])}]"),
+                msg(text, card_buttons(i, c))]
     tip = ("\n\n⚠️ <b>Chưa có ảnh mẫu</b> → clip dễ lệch mặt. Tạo ảnh: dán prompt dưới vào Google Flow (chế độ "
            f"<i>ảnh</i>) hoặc Gemini, lưu ảnh đẹp nhất, rồi gửi vào đây với chú thích <code>{esc(c['name'])}</code>:\n"
            f"<code>{esc(series.portrait_prompt(bible, c))}</code>")
@@ -946,14 +966,106 @@ def receive_photo(body: dict) -> dict:
     tag = re.search(r"\[NV:([\w-]+)\]", str(body.get("reply_to_text") or ""))
     c = CAST.get(tag.group(1)) if tag else None
     c = c or CAST.find(caption)
+    if not c:  # "📷 Thay ảnh" pressed in the last 15 minutes
+        with LOCK:
+            slot = DB_.kv_get(PENDING_SLOT) or {}
+            if slot.get("key") and now_ts() - int(slot.get("ts", 0)) < 900:
+                c = CAST.get(slot["key"])
+                DB_.kv_set(PENDING_SLOT, {})
     if not c:
         with LOCK:
             DB_.kv_set(PENDING_PHOTO, {"path": rel(dst), "caption": caption, "ts": now_ts()})
         items = cast_items()
         rows = [[(items[k]["name"], f"cs:{k}") for k in range(j, min(j + 3, len(items)))] for j in range(0, len(items), 3)]
-        return reply(msg("🧑‍🎨 Ảnh này là của nhân vật nào?", kb(*rows)))
+        new_name = _split_name(caption)[0]
+        rows.append([(f"➕ Nhân vật mới: {new_name}" if new_name else "➕ Nhân vật mới", "cn:0")])
+        return reply(msg("🧑‍🎨 Ảnh này là của nhân vật nào? Hoặc thêm thành <b>nhân vật mới</b>"
+                         + ("" if new_name else " (gửi lại ảnh kèm chú thích <code>Tên - vai</code>, vd "
+                            "<code>Cô Lan - cô giáo chủ nhiệm</code>)") + ".", kb(*rows)))
     return reply(msg(f"⏳ Đang đọc ảnh mẫu của <b>{esc(c['name'])}</b> (khoảng 30 giây)…"),
                  next_step={"action": "photo", "path": rel(dst), "caption": caption, "key": c["key"]})
+
+
+def _split_name(caption: str) -> tuple[str, str]:
+    """'Cô Lan - cô giáo chủ nhiệm' → ('Cô Lan', 'cô giáo chủ nhiệm')"""
+    parts = re.split(r"\s*[-–:]\s*", (caption or "").strip(), maxsplit=1)
+    name = parts[0].strip()[:40]
+    role = parts[1].strip()[:200] if len(parts) > 1 else ""
+    return name, role
+
+
+def ask_photo_for(i: int, mid: int | None) -> dict:
+    items = cast_items()
+    if not 0 <= i < len(items):
+        return reply()
+    with LOCK:
+        DB_.kv_set(PENDING_SLOT, {"key": items[i]["key"], "ts": now_ts()})
+    return reply(msg(f"📷 Gửi ảnh mới cho <b>{esc(items[i]['name'])}</b> ngay bây giờ (trong 15 phút, không cần chú "
+                     "thích). Bot sẽ thay ảnh mẫu và mô tả lại ngoại hình theo ảnh."))
+
+
+def new_from_photo(mid: int | None) -> dict:
+    with LOCK:
+        pend = DB_.kv_get(PENDING_PHOTO) or {}
+    name, _ = _split_name(pend.get("caption", ""))
+    if not pend.get("path"):
+        return reply(clear_buttons(mid), msg("Không còn ảnh chờ. Gửi lại ảnh kèm chú thích <code>Tên - vai</code>."))
+    if not name:
+        return reply(clear_buttons(mid), msg("Để thêm nhân vật mới, gửi lại ảnh kèm chú thích <code>Tên - vai</code>, "
+                                             "vd <code>Cô Lan - cô giáo chủ nhiệm</code>."))
+    with LOCK:
+        DB_.kv_set(PENDING_PHOTO, {})
+    return reply(clear_buttons(mid), msg(f"⏳ Đang tạo nhân vật mới <b>{esc(name)}</b> từ ảnh…"),
+                 next_step={"action": "photo", "path": pend["path"], "caption": pend.get("caption", ""), "key": "new"})
+
+
+def add_cast_cmd(text: str) -> dict:
+    arg = text.partition(" ")[2].strip()
+    name, role = _split_name(arg)
+    if not name:
+        return reply(msg("➕ <b>Thêm nhân vật mới</b>\n\n• Có ảnh: gửi ảnh vào đây, chú thích <code>Tên - vai</code>, vd "
+                         "<code>Cô Lan - cô giáo chủ nhiệm, hiền</code> → bấm <b>➕ Nhân vật mới</b>.\n"
+                         "• Chưa có ảnh: gõ <code>/themnv Cô Lan - cô giáo chủ nhiệm, hiền</code> → bot viết mô tả "
+                         "ngoại hình + giọng, kèm prompt để bạn tạo ảnh rồi gửi lại."))
+    if CAST.find(name) and norm_name(CAST.find(name)["name"]) == norm_name(name):
+        return reply(msg(f"Đã có nhân vật tên {esc(name)}. Gõ /nhanvat để sửa."))
+    return reply(msg(f"⏳ Đang tạo nhân vật <b>{esc(name)}</b>…"),
+                 next_step={"action": "newcast", "name": name, "role": role})
+
+
+def norm_name(s: str) -> str:
+    return " ".join(str(s or "").lower().split())
+
+
+def _new_cast_item(name: str, role: str, ch) -> dict:
+    fb = (S.raw.get("voice") or {}).get("fallback") or {}
+    vt = ch.voice_type if ch.voice_type in fb else "female"
+    return {"name": name, "role": role or ch.role, "aliases": [], "look_en": ch.look_en, "voice_en": ch.voice_en,
+            "speech_vi": "", "voice_type": vt, "tts": dict(fb.get(vt) or {})}
+
+
+def create_cast(name: str, role: str) -> dict:
+    est = float(((S.raw.get("budget") or {}).get("services", {}).get("claude", {})).get("est_fix_usd", 0.03))
+    with LOCK:
+        BUDGET.ensure("claude", est, "Viết mô tả cố định cho nhân vật mới.",
+                      resume={"action": "newcast", "name": name, "role": role})
+    b = fix_bible({})
+    ch = series.invent_character(name, role, b.get("era") or "Việt Nam thập niên 1990", b.get("style_en", ""))
+    c = CAST.add(_new_cast_item(name, role, ch))
+    return reply(msg(f"✅ Đã thêm <b>{esc(c['name'])}</b>. Kịch bản từ giờ có thể dùng nhân vật này (kế hoạch mới "
+                     "/kehoach sẽ đưa vào lịch)."), card_msg(_cast_index(c["key"]), c, b))
+
+
+def delete_cast_char(i: int, mid: int | None, confirm: bool) -> dict:
+    items = cast_items()
+    if not 0 <= i < len(items) or items[i]["key"] in CORE_KEYS:
+        return reply(clear_buttons(mid), msg("Không xoá được (6 nhân vật chính luôn giữ lại; chỉ sửa được)."))
+    c = items[i]
+    if not confirm:
+        return reply(msg(f"Xoá hẳn nhân vật <b>{esc(c['name'])}</b>? Kịch bản đã viết vẫn giữ nguyên.",
+                         kb([("❌ Xoá", f"cy:{i}"), ("Giữ lại", "nop:0")])))
+    CAST.remove(c["key"])
+    return reply(clear_buttons(mid), msg(f"🗑 Đã xoá nhân vật {esc(c['name'])}."))
 
 
 def choose_photo_slot(i: int, mid: int | None) -> dict:
@@ -973,14 +1085,22 @@ def describe_photo(path: str, caption: str, key: str = "") -> dict:
     p = (DATA / str(path)).resolve()
     if not p.is_relative_to(DATA) or not p.is_file():
         return reply(msg("⚠️ Không tìm thấy ảnh vừa gửi, hãy gửi lại."))
-    c = CAST.get(key) or CAST.find(caption)
-    if not c:
+    new = key == "new"
+    c = None if new else (CAST.get(key) or CAST.find(caption))
+    if not c and not new:
         return reply(msg("⚠️ Không rõ ảnh của nhân vật nào. Gửi lại ảnh kèm chú thích tên, vd <code>Ông</code>."))
     est = float(((S.raw.get("budget") or {}).get("services", {}).get("claude", {})).get("est_image_usd", 0.05))
     with LOCK:
         BUDGET.ensure("claude", est, "Đọc ảnh nhân vật để viết mô tả cố định.",
-                      resume={"action": "photo", "path": path, "caption": caption, "key": c["key"]})
+                      resume={"action": "photo", "path": path, "caption": caption, "key": key if new else c["key"]})
     era = fix_bible({}).get("era") or "Việt Nam thập niên 1990"
+    if new:
+        name, role = _split_name(caption)
+        ch = series.describe_character(p.read_bytes(), IMG_TYPES.get(p.suffix.lower(), "image/jpeg"), caption, era,
+                                       who=f"{name} – {role or 'nhân vật mới'}")
+        c = CAST.add({**_new_cast_item(name, role, ch), "image": rel(p)})
+        return reply(card_msg(_cast_index(c["key"]), c, fix_bible({}),
+                              "\n\n✅ Đã thêm nhân vật mới. Kịch bản từ giờ có thể dùng nhân vật này."))
     ch = series.describe_character(p.read_bytes(), IMG_TYPES.get(p.suffix.lower(), "image/jpeg"), caption, era,
                                    who=f"{c['name']} – {c['role']}")
     had = bool(c.get("image"))
@@ -1516,6 +1636,9 @@ def characters() -> dict:
             "<code>Bé Na</code>) — hoặc <b>Trả lời</b> thẻ nhân vật bằng ảnh.",
             "✏️ <b>Sửa mô tả:</b> <b>Trả lời</b> thẻ nhân vật, gõ <code>Tên: …</code> / <code>Ngoại hình: …</code> / "
             "<code>Giọng: …</code> / <code>Cách nói: …</code>",
+            "🔄 <b>Thay ảnh:</b> bấm <b>📷 Thay ảnh</b> dưới thẻ rồi gửi ảnh mới.",
+            "➕ <b>Thêm nhân vật:</b> gửi ảnh, chú thích <code>Tên - vai</code> → bấm <b>➕ Nhân vật mới</b>; hoặc gõ "
+            "<code>/themnv Cô Lan - cô giáo chủ nhiệm</code>. Nhân vật thêm có nút xoá.",
             "🎙 <b>Giọng:</b> /giong để nghe và chọn giọng từng người.",
             "🗂 Hoặc sửa file <code>/opt/tiktok-agent/data/nhan_vat.yaml</code> bằng nano."]
     if err:
@@ -1523,10 +1646,21 @@ def characters() -> dict:
     return reply(msg("\n".join(head)), *[card_msg(i, c, bible) for i, c in enumerate(cast)])
 
 
-def resend_prompts() -> dict:
+def resend_prompts(text: str = "") -> dict:
+    """/clip → every prompt of the video waiting for clips; /clip 2 → only scene 2 (also /clip 2 3)."""
     with LOCK:
         r = DB_.conn.execute("SELECT id FROM content WHERE status='awaiting_clips' ORDER BY id DESC LIMIT 1").fetchone()
-    return reply(prompt_messages(r["id"])) if r else reply(msg("Không có video nào đang chờ clip."))
+    if not r:
+        return reply(msg("Không có video nào đang chờ clip."))
+    want = [int(x) for x in re.findall(r"\d+", text.partition(" ")[2])]
+    if not want:
+        return reply(prompt_messages(r["id"]))
+    cid = r["id"]
+    item, m = DB_.get_content(cid), manual().load(cid)
+    bible, n = content_bible(item), len(m["shots"])
+    out = [scene_prompt_msg(cid, k - 1, n, item["script"]["scenes"][k - 1], m["shots"][k - 1]["prompt"],
+                            ingredients_note(bible, item["script"]["scenes"][k - 1])) for k in want if 1 <= k <= n]
+    return reply(*out) if out else reply(msg(f"Video #{cid} chỉ có cảnh 1–{n}."))
 
 
 # ====================================================================== HTTP layer
@@ -1590,11 +1724,12 @@ def tg_command(body: dict = BODY, x_worker_token: str = TOKEN) -> dict:
     cmd = str(body.get("text", "")).split()[0].split("@")[0].lower()
     table = {"/kehoach": plan_cmd,
              "/kichban": lambda: reply(msg("⏳ Đang viết kịch bản (khoảng 1 phút)…"), next_step={"action": "script"}),
-             "/clip": resend_prompts,
-             "/trangthai": lambda: reply(msg(status_text())), "/ngansach": lambda: reply(msg(budget_text())),
+              "/trangthai": lambda: reply(msg(status_text())), "/ngansach": lambda: reply(msg(budget_text())),
              "/nhanvat": characters, "/tiktok": tiktok_links, "/nhac": lambda: reply(music_list()),
              "/phongcach": lambda: style_cmd(str(body.get("text", ""))),
-             "/drive": drive_cmd, "/giong": voice_cmd}
+             "/drive": drive_cmd, "/giong": voice_cmd,
+             "/themnv": lambda: add_cast_cmd(str(body.get("text", ""))),
+             "/clip": lambda: resend_prompts(str(body.get("text", "")))}
     return _safe(table.get(cmd, lambda: reply(msg(HELP))))
 
 
@@ -1634,6 +1769,11 @@ def tg_button(body: dict = BODY, x_worker_token: str = TOKEN) -> dict:
         "bx": lambda: _budget_decision(n, False, mid),
         "mx": lambda: delete_music(n, mid),
         "cs": lambda: choose_photo_slot(n, mid),
+        "cp": lambda: ask_photo_for(n, mid),
+        "cn": lambda: new_from_photo(mid),
+        "cd": lambda: delete_cast_char(n, mid, False),
+        "cy": lambda: delete_cast_char(n, mid, True),
+        "nop": lambda: reply(clear_buttons(mid)),
         "gm": lambda: set_voice_mode(n, mid),
         "gp": lambda: voice_sample(n),
         "gv": lambda: cycle_voice(n, mid),
@@ -1794,6 +1934,8 @@ def cont(body: dict = BODY, x_worker_token: str = TOKEN) -> dict:
         return _safe(describe_photo, body.get("path") or "", body.get("caption") or "", body.get("key") or "")
     if action == "paid":
         return _safe(request_paid, int(n), None)
+    if action == "newcast":
+        return _safe(create_cast, str(body.get("name") or "")[:40], str(body.get("role") or "")[:200])
     return reply()
 
 
