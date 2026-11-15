@@ -126,7 +126,42 @@ Xây agent tự động cho kênh TikTok ngách **tuổi thơ, kỷ niệm gia �
 - **`/kehoach` hỏi chọn nhân vật bằng ảnh trước:** chưa có ảnh nhân vật → bot hướng dẫn gửi ảnh (chú thích tên – vai) hoặc bấm "✨ Để AI tự tạo nhân vật"; đã có ảnh → lập kế hoạch với đúng các nhân vật đó
 - Đã kiểm thử trong Docker (căn thời gian, phụ đề, bản nghe thử, đổi nhạc/giọng, dùng lại giọng đã duyệt khi ghép) và thử edge-tts thật với giọng tiếng Việt
 
-### 📌 Tóm tắt thay đổi hôm nay (15/11/2026)
+### 📌 Tóm tắt thay đổi hôm nay (15/11/2026, chiều) — Sửa lỗi Gemini key; 6 nhân vật cố định, ảnh mẫu, giọng cố định
+- **Yêu cầu của chủ kênh:**
+  - Bước ghép video báo lỗi `API key not valid … API_KEY_INVALID`
+  - Hình ảnh và giọng nói không nhất quán giữa các clip, cả khi tạo tự động lẫn khi dán prompt tay trên Flow
+  - Muốn 6 tuyến nhân vật (Ông, Bà, Bố, Mẹ, bé trai, bé gái) cấu hình từ đầu, gồm cả hình ảnh
+- **Sửa lỗi Gemini key (PR #23, đã merge):**
+  - Nguyên nhân: `GEMINI_API_KEY` trong `.env` trên VPS không hợp lệ.
+  - Giờ bot báo rõ "Gemini API key không hợp lệ" kèm 3 bước sửa, không tính phí. Bot gửi luôn prompt để tạo tay trên Flow và nút **🔁 Thử tạo tự động lại**.
+  - Mọi lỗi tạo clip tự động khác cũng quay về bước chờ clip, không còn dừng hẳn ở "Ghép video lỗi".
+- **6 nhân vật cố định (PR #24, đã merge):**
+  - **Cấu hình:** mục `cast:` trong `config.yaml` là giá trị ban đầu.
+    - 6 nhân vật: Ông, Bà, Bố, Mẹ, Cu Tí (bé trai), Bé Na (bé gái).
+    - Mỗi người có: ngoại hình và trang phục cố định, giọng cho clip AI, cách xưng hô, giọng ghép cố định.
+    - Lần chạy đầu, hệ thống chép sang `/opt/tiktok-agent/data/nhan_vat.yaml`. Sửa ở file đó; cập nhật code không ghi đè.
+  - **Telegram:**
+    - `/nhanvat`: 6 thẻ nhân vật. Thẻ chưa có ảnh kèm prompt tạo ảnh chân dung.
+    - Gửi ảnh, chú thích là tên (vd `Ông`): bot lưu ảnh mẫu và tự mô tả ngoại hình theo ảnh. Không ghi chú thích thì bot hỏi ảnh đó là của ai.
+    - Trả lời thẻ bằng các dòng `Tên:` / `Ngoại hình:` / `Giọng:` / `Cách nói:` để sửa.
+    - `/giong`: nghe và đổi giọng từng người, chọn **giọng cố định** hay **giọng trong clip**.
+  - **Kịch bản:** chỉ dùng đúng 6 nhân vật, xưng hô theo từng người, mỗi cảnh tối đa 3 người. Tên người nói tự chuẩn hoá.
+  - **Prompt clip:** nhắc lại nguyên văn ngoại hình và giọng của nhân vật trong cảnh.
+    - Tạo tay: bot gửi ảnh mẫu và ghi **🧩 Ingredients: …** dưới mỗi cảnh để thêm ảnh vào Flow.
+    - Gemini: gửi kèm ảnh mẫu. Model không nhận ảnh thì bot tự tạo lại chỉ với prompt.
+  - **Giọng cố định (mặc định):**
+    - Khi ghép, mỗi nhân vật luôn một giọng riêng ở mọi clip, kể cả clip tạo tay.
+    - Thoại xếp lần lượt, không chồng nhau; câu dài được đọc nhanh hơn một chút cho vừa cảnh; cảm xúc chỉnh nhẹ tốc độ và âm lượng.
+    - Bản nghe thử lúc duyệt kịch bản chính là âm thanh thành phẩm, được dùng lại khi ghép. Phụ đề khớp theo.
+  - Ảnh nhân vật gửi trước đây tự gắn vào nhân vật cùng tên.
+  - Kiểm thử trong Docker (Claude, Gemini và giọng đọc giả lập): bộ test nhân vật 51/51 đạt, bộ test cũ vẫn đạt.
+- **Hạn chế đã biết:**
+  - Giọng miễn phí chỉ có 2 giọng tiếng Việt (Hoài My, Nam Minh). 6 nhân vật phân biệt bằng cao độ và tốc độ, nên giọng trẻ con hơi "máy".
+  - Chế độ giọng cố định có thể lệch khẩu hình nhẹ.
+  - Gemini nhận ảnh mẫu hay không: chưa thử với tài khoản thật.
+- **PR #22** (tóm tắt buổi sáng) cũng đã merge.
+
+### 📌 Tóm tắt thay đổi hôm nay (15/11/2026, sáng)
 - **Yêu cầu của chủ kênh:** thêm mức ngân sách nhỏ ($5, $10) thay vì chỉ $25; prompt hay bị Google Flow chặn vì chính sách; gửi nhạc qua Telegram nhưng bot báo thư viện trống; muốn video ghép xong lưu lên Google Drive
 - **Đã làm (PR #21, đã merge vào `main`; chủ kênh đã cập nhật VPS):**
   - Duyệt ngân sách bằng nút chọn mức: Gemini $1/$5/$10/$25, Claude $2/$5/$10, Apify $1/$2/$5
@@ -201,13 +236,26 @@ Xây agent tự động cho kênh TikTok ngách **tuổi thơ, kỷ niệm gia �
 2. **Vẫn còn bước làm tay mỗi ngày:** tạo 3–4 clip trên Google Flow (~5 phút). Tự động hoàn toàn chỉ có qua Gemini API trả phí (key hiện chưa có quyền model video).
 3. **Đăng TikTok chưa chạy thật:** cần tạo app, thêm tài khoản vào Sandbox, kết nối bằng `/tiktok`. `direct` chỉ đăng riêng tư tới khi app qua audit.
 4. **edge-tts lỗi theo đợt** ("No audio was received") — đã có thử lại + nút 🔁 Thử lại trên Telegram.
-5. **Hạn chế đã biết:** độ nhất quán nhân vật phụ thuộc Flow (prompt cố định + ảnh nhân vật + khung cuối); Telegram chỉ cho bot tải file ≤ 20 MB; chưa hỗ trợ upload TikTok > 64 MB; phụ đề căn thời gian theo ước lượng; số lượt Flow miễn phí do Google quyết định và có thể thay đổi.
+5. **Hạn chế đã biết:**
+   - Độ nhất quán khuôn mặt vẫn phụ thuộc model video (đã có mô tả cố định, ảnh mẫu, khung cuối).
+   - Giọng cố định chỉ dựa trên 2 giọng edge-tts tiếng Việt và có thể lệch khẩu hình nhẹ.
+   - Còn lại: Telegram chỉ cho bot tải file ≤ 20 MB; chưa hỗ trợ upload TikTok > 64 MB; phụ đề căn thời gian theo ước lượng; số lượt Flow miễn phí do Google quyết định và có thể thay đổi.
 
 ## 📋 Các bước cần cấu hình tiếp
 
-1. **Cập nhật VPS** bằng lệnh ở mục "🔄 Lệnh cập nhật VPS" đầu file (lệnh cài tự nạp lại workflow n8n mới).
-2. **Gửi lại các file nhạc nền** vào bot; mỗi file bot phải trả lời "🎵 Đã thêm nhạc nền"; kiểm tra `/nhac`.
-3. Nếu chưa: bật Google Drive (`HUONG_DAN.md` Bước 8b) → `/drive`.
-4. `/kichban` → duyệt → khi bot xin ngân sách Gemini, chọn mức **$1 hoặc $5** để thử; hoặc tạo tay trên Flow, cảnh nào Flow báo vi phạm thì bấm **🛡** dưới prompt cảnh đó.
-5. Kiểm tra video trên Telegram và trong thư mục *TikTok Agent/Video* trên Drive.
-6. Huỷ hoặc gia hạn Contabo trước ngày hết kỳ 1 tháng.
+1. **Cập nhật VPS** bằng lệnh ở mục "🔄 Lệnh cập nhật VPS" đầu file.
+2. **Sửa Gemini key** (nếu muốn tạo clip tự động):
+   - Vào **aistudio.google.com/apikey** → **Create API key** (khoá bắt đầu bằng `AIza`).
+   - Chạy `cd /opt/tiktok-agent && nano .env`, dán vào dòng `GEMINI_API_KEY=`.
+   - Chạy lại lệnh cập nhật VPS.
+3. **Cài 6 nhân vật:**
+   - `/nhanvat` → tạo ảnh chân dung theo prompt trên thẻ → gửi ảnh vào bot, chú thích là tên nhân vật.
+   - Sai chỗ nào thì Trả lời thẻ để sửa.
+4. `/giong` → nghe giọng 6 người, đổi giọng nếu chưa hợp.
+5. `/kehoach` → lập lại kế hoạch với gia đình cố định → duyệt.
+6. `/kichban` → nghe bản thử thoại + nhạc → duyệt. Sau đó:
+   - Tạo tự động: bấm **🔁 Thử tạo tự động lại** nếu có, chọn ngân sách Gemini $1 hoặc $5.
+   - Hoặc tạo tay trên Flow, thêm đúng ảnh ở dòng **🧩 Ingredients** của từng cảnh.
+7. Kiểm tra video: mặt, quần áo và giọng có giống nhau giữa 3 clip không. Nếu muốn giọng khớp miệng hơn, thử `/giong` → **Giọng trong clip**.
+8. Nhạc nền: kiểm tra `/nhac` còn bài. Google Drive: `/drive` nếu chưa kết nối.
+9. Huỷ hoặc gia hạn Contabo trước ngày hết kỳ 1 tháng.
