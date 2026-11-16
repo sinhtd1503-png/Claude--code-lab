@@ -25,7 +25,7 @@ from pathlib import Path
 import edge_tts
 
 from . import audio
-from .video import FPS, H, TTS_BACKOFF_SEC, W, _duration, _run, _srt_time, fetch_clip
+from .video import FPS, H, TTS_BACKOFF_SEC, W, _duration, _run, _srt_time, fetch_clip, final_mix, make_outro
 
 log = logging.getLogger(__name__)
 
@@ -247,6 +247,7 @@ def render_dialogue(script: dict, workdir: Path, cfg: dict, stock_key: str, ai, 
         fixed = voice_tracks(script["scenes"], characters, cfg, clip_sec, voice_dir or workdir / "voices")
     used: set[str] = set()
     segments, srt, t0, idx = [], [], 0.0, 1
+    spans: list[tuple[float, float]] = []  # where someone speaks (global timeline) → the only thing that ducks music
     vf = (f"scale={W}:{H}:force_original_aspect_ratio=increase:flags=lanczos,crop={W}:{H},setsar=1,fps={FPS},"
           "format=yuv420p")
 
@@ -298,47 +299,46 @@ def render_dialogue(script: dict, workdir: Path, cfg: dict, stock_key: str, ai, 
         segments.append(seg)
 
         for ln, (s, e) in zip(lines, times):
+            spans.append((round(t0 + s, 3), round(t0 + e, 3)))
             srt += [str(idx), f"{_srt_time(t0 + s)} --> {_srt_time(t0 + e)}", ln["text"], ""]
             idx += 1
         t0 += dur
 
+    outro = make_outro(segments[-1], workdir, cfg)
+    if outro:
+        segments.append(outro)
     (workdir / "subs.srt").write_text("\n".join(srt), encoding="utf-8")
     (workdir / "list.txt").write_text("".join(f"file '{s.name}'\n" for s in segments))
     _run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", "list.txt", "-c", "copy", "joined.mkv"], cwd=workdir)
 
-    total = t0
-    style = (f"FontName={vid['font']},FontSize=13,PrimaryColour=&H00FFFFFF,OutlineColour=&H80000000,"
-             "BorderStyle=1,Outline=2,Shadow=0,Bold=1,Alignment=2,MarginV=70")
+    total = t0 + (_duration(outro) if outro else 0.0)
     music = vid.get("background_music")
-    inputs = ["-i", "joined.mkv"]
-    if music and Path(music).exists():
-        inputs += ["-stream_loop", "-1", "-i", str(Path(music).resolve())]
-        # voices pass through at their original level; only the music is faded and dipped under them
-        afilter = audio.music_filter(total, float(vid.get("music_volume", 0.15)), bool(vid.get("music_duck", True)),
-                                     voice="[0:a]", music="[1:a]", rate=SR)
-    else:
-        afilter = f"[0:a]anull[a]"
-    _run(["ffmpeg", "-y", *inputs, "-filter_complex", f"[0:v]subtitles=subs.srt:force_style='{style}'[v];{afilter}",
-          "-map", "[v]", "-map", "[a]", "-t", f"{total:.3f}", "-c:v", "libx264", "-preset", "medium", "-crf", "20",
-          "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", "-ar", str(SR), "-movflags", "+faststart", "final.mp4"],
-         cwd=workdir)
+    # the clips' own sound (voices + rain/wind) is the voice bus, untouched; the music bed is ducked only by `spans`
+    final_mix(workdir, cfg, total, "joined.mkv", None,
+              str(Path(music).resolve()) if music and Path(music).exists() else None, spans,
+              ambient_from_joined=False, voice_from_joined=True)
     final = workdir / "final.mp4"
     log.info("Rendered dialogue video %s (%.1fs)", final, _duration(final))
     return final
 
 
 def dialogue_preview(tracks: list[dict], music: str | None, total: float, cfg: dict, out: Path) -> Path:
-    """Fixed voices of every scene + background music, exactly as in the final video."""
+    """Fixed voices of every scene + background music, mixed exactly like the final video (same ducking, outro)."""
     joined = join_tracks(tracks, out.with_name("voices_joined.wav"))
-    return audio.preview(joined, music, total, cfg, out)
+    per = total / max(1, len(tracks))
+    spans = [(k * per + a, k * per + b) for k, t in enumerate(tracks) for a, b in t["times"]]
+    return audio.preview(joined, music, total, cfg, out, spans=spans)
 
 
 def music_preview(music: str | None, total: float, cfg: dict, out: Path) -> Path | None:
-    """The background track as it will sit in the video (length, volume up for listening, fades)."""
+    """The background track as it will sit under the video (continuous bed, crossfaded loops, outro fade-out),
+    played at full level so it can be judged on Telegram."""
     if not music or not Path(music).exists():
         return None
-    fade = min(2.0, total / 4)
-    _run(["ffmpeg", "-y", "-stream_loop", "-1", "-i", str(music), "-af",
-          f"afade=t=in:d=0.8,afade=t=out:st={max(0.0, total - fade):.2f}:d={fade:.2f}",
-          "-t", f"{total:.3f}", "-c:a", "libmp3lame", "-b:a", "160k", str(out)])
+    st = audio.music_settings(cfg)
+    full = total + st["outro"]
+    bed = audio.music_bed(music, full, out.with_name("music_bed.wav"), st["xfade"])
+    fo = min(st["fade_out"], max(0.5, st["outro"] - 0.3)) if st["outro"] > 0 else min(2.0, full / 4)
+    _run(["ffmpeg", "-y", "-i", str(bed), "-af", f"afade=t=in:d=0.4,afade=t=out:st={max(0.0, full - fo):.2f}:d={fo:.2f}",
+          "-t", f"{full:.3f}", "-c:a", "libmp3lame", "-b:a", "160k", str(out)])
     return out

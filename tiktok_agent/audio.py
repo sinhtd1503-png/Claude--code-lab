@@ -12,6 +12,7 @@ import asyncio
 import json
 import logging
 import re
+import subprocess
 import time
 import unicodedata
 from pathlib import Path
@@ -154,30 +155,178 @@ def scene_durations(meta: dict) -> list[float]:
     return [max(1.0, e - s) for s, e in zip(starts, ends)]
 
 
-def music_filter(total: float, volume: float, duck: bool, voice: str = "[voice]", music: str = "[1:a]",
-                 rate: int = 44100) -> str:
-    """ffmpeg filter graph: music looped/faded, ducked under the voice; output label [a]. The voice itself is
-    never changed (amix normalize=0 keeps its level; only the music is compressed by the voice)."""
-    fade = min(2.0, total / 4)
-    mus = (f"{music}aresample={rate},aformat=channel_layouts=stereo,volume={volume},"
-           f"afade=t=in:d=0.8,afade=t=out:st={max(0.0, total - fade):.2f}:d={fade:.2f}[m0];")
-    v = f"{voice}aresample={rate},aformat=channel_layouts=stereo,apad,atrim=0:{total:.3f}"
-    if duck:
-        return (mus + f"{v},asplit=2[vo][key];"
-                "[m0][key]sidechaincompress=threshold=0.03:ratio=5:attack=30:release=500[m];"
-                "[vo][m]amix=inputs=2:duration=first:normalize=0[a]")
-    return mus + f"{v}[vo];[vo][m0]amix=inputs=2:duration=first:normalize=0[a]"
+# ---------------------------------------------------------------- the soundtrack mix (video AND previews)
+
+SR = 48000
 
 
-def preview(narration: Path, music: str | None, total: float, cfg: dict, out: Path) -> Path:
-    """MP3 of exactly what the video will sound like (voice + music), for approval on Telegram."""
-    vid = cfg.get("video", {})
-    if music and Path(music).exists():
-        _run(["ffmpeg", "-y", "-i", str(narration), "-stream_loop", "-1", "-i", str(music),
-              "-filter_complex", music_filter(total, float(vid.get("music_volume", 0.18)),
-                                              bool(vid.get("music_duck", True)), voice="[0:a]"),
-              "-map", "[a]", "-t", f"{total:.3f}", "-c:a", "libmp3lame", "-b:a", "160k", str(out)])
+def music_settings(cfg: dict) -> dict:
+    v = (cfg or {}).get("video", {}) or {}
+    return {"volume": float(v.get("music_volume", 0.22)), "duck": bool(v.get("music_duck", True)),
+            "floor": float(v.get("music_floor", 0.5)), "xfade": float(v.get("music_crossfade", 1.5)),
+            "fade_out": float(v.get("music_fade_out", 2.5)), "outro": float(v.get("outro_sec", 3.5)),
+            "min_dbfs": float(v.get("music_min_dbfs", -35)),
+            "ambient": float(v.get("clip_ambient_volume", 0.35))}
+
+
+def stereo_prefix(path: str | Path | None) -> str:
+    """Mono → stereo by copying the channel (ffmpeg's default conversion would make it 3 dB quieter)."""
+    if not path:
+        return ""
+    out = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "a:0", "-show_entries", "stream=channels",
+                          "-of", "csv=p=0", str(path)], capture_output=True, text=True).stdout.strip()
+    return "pan=stereo|c0=c0|c1=c0," if out == "1" else ""
+
+
+def music_bed(music: str, total: float, out: Path, xfade: float = 1.5) -> Path:
+    """One continuous music track exactly `total` seconds long. A track shorter than the video is repeated with a
+    `xfade`-second crossfade at every join (never a hard loop)."""
+    d = _duration(Path(music))
+    norm = f"{stereo_prefix(music)}aresample={SR},aformat=sample_fmts=fltp:channel_layouts=stereo"
+    if d >= total + 1.0 or d <= 2 * xfade + 0.5:
+        loop = ["-stream_loop", "-1"] if d < total else []
+        _run(["ffmpeg", "-y", *loop, "-i", str(music), "-af", f"{norm},atrim=0:{total:.3f}", "-t", f"{total:.3f}",
+              "-c:a", "pcm_s16le", str(out)])
+        return out
+    n = 1
+    while n * d - (n - 1) * xfade < total + 2.0:  # margin: decoded mp3s are often a little shorter than reported
+        n += 1
+    ins = [x for _ in range(n) for x in ("-i", str(music))]
+    chain = ";".join(f"[{k}:a]{norm}[i{k}]" for k in range(n))
+    prev = "i0"
+    for k in range(1, n):
+        chain += f";[{prev}][i{k}]acrossfade=d={xfade}:c1=qsin:c2=qsin[x{k}]"
+        prev = f"x{k}"
+    _run(["ffmpeg", "-y", *ins, "-filter_complex", f"{chain};[{prev}]atrim=0:{total:.3f}[m]", "-map", "[m]",
+          "-c:a", "pcm_s16le", str(out)])
+    return out
+
+
+def merge_spans(spans: list[tuple[float, float]], pre: float = 0.1, post: float = 0.3) -> list[tuple[float, float]]:
+    out: list[list[float]] = []
+    for a, b in sorted((max(0.0, a - pre), b + post) for a, b in spans if b > a):
+        if out and a <= out[-1][1]:
+            out[-1][1] = max(out[-1][1], b)
+        else:
+            out.append([a, b])
+    return [(round(a, 3), round(b, 3)) for a, b in out]
+
+
+def mix_graph(total: float, cfg: dict, voice: str | None, music: str | None, spans: list[tuple[float, float]],
+              ambient: str | None = None, voice_pre: str = "", ambient_pre: str = "", stems: bool = True) -> str:
+    """ffmpeg filter graph → [a] (final mix), [vst] (voice stem), [mst] (music stem).
+
+    • voice  : passed through untouched (only resampled to a common format) — volume and speed never change
+    • music  : the continuous bed at `music_volume`; ducked ONLY while someone speaks (key = speech spans, so rain or
+               wind in a clip never pushes it down), ratio 2, and never below `music_floor` (50%) of its level;
+               full level in the outro, fading out only in the last `music_fade_out` seconds (after the last line)
+    • ambient: clip sound under a narration at `clip_ambient_volume`
+    """
+    st = music_settings(cfg)
+    fmt = f"aresample={SR},aformat=sample_fmts=fltp:channel_layouts=stereo"
+    parts, mix = [], []
+    vsplit = ",asplit=2[v1][vst]" if stems else "[v1]"
+    if voice:
+        parts.append(f"{voice}{voice_pre}{fmt},apad,atrim=0:{total:.3f}{vsplit}")
+        mix.append("[v1]")
     else:
-        _run(["ffmpeg", "-y", "-i", str(narration), "-af", f"apad,atrim=0:{total:.3f}",
-              "-c:a", "libmp3lame", "-b:a", "160k", str(out)])
+        parts.append(f"anullsrc=r={SR}:cl=stereo,atrim=0:{total:.3f}{vsplit}")
+        mix.append("[v1]")
+    if music:
+        fo = min(st["fade_out"], max(0.5, st["outro"] - 0.3)) if st["outro"] > 0 else min(st["fade_out"], total / 4)
+        parts.append(f"{music}{fmt},apad,atrim=0:{total:.3f},volume={st['volume']},afade=t=in:d=0.4,"
+                     f"afade=t=out:st={max(0.0, total - fo):.3f}:d={fo:.3f}[m0]")
+        sp = merge_spans(spans)
+        if st["duck"] and sp:
+            gate = "+".join(f"between(t,{a},{b})" for a, b in sp)
+            key = f"0.5*sin(2*PI*997*t)*min(1,{gate})"
+            floor = max(0.0, min(1.0, st["floor"]))
+            parts.append(f"aevalsrc=exprs='{key}|{key}':s={SR}:d={total:.3f}[key]")
+            parts.append("[m0]asplit=2[mfix][mduck]")
+            parts.append("[mduck][key]sidechaincompress=threshold=0.02:ratio=2:attack=40:release=600[mcomp]")
+            parts.append(f"[mfix]volume={floor}[mf];[mcomp]volume={1 - floor}[mc];"
+                         "[mf][mc]amix=inputs=2:normalize=0" + (",asplit=2[m1][mst]" if stems else "[m1]"))
+        else:
+            parts.append("[m0]asplit=2[m1][mst]" if stems else "[m0]anull[m1]")
+        mix.append("[m1]")
+    elif stems:
+        parts.append(f"anullsrc=r={SR}:cl=stereo,atrim=0:{total:.3f}[mst]")
+    if ambient:
+        parts.append(f"{ambient}{ambient_pre}{fmt},apad,atrim=0:{total:.3f},volume={st['ambient']}[amb]")
+        mix.append("[amb]")
+    parts.append(f"{''.join(mix)}amix=inputs={len(mix)}:normalize=0:duration=first[a]" if len(mix) > 1
+                 else f"{mix[0]}anull[a]")
+    return ";".join(parts)
+
+
+def write_stems(ins: list[str], graph: str, total: float, workdir: Path, cwd: Path | None = None) -> None:
+    """Voice and music stems from the same graph (built with stems=True), in their own audio-only pass (sharing the
+    command with the video would stop them when the video ends and lose the last second)."""
+    _run(["ffmpeg", "-y", *ins, "-filter_complex", graph,
+          "-map", "[a]", "-t", f"{total:.3f}", "-f", "null", "-",
+          "-map", "[vst]", "-t", f"{total:.3f}", "-c:a", "pcm_s16le", str(workdir / "stem_voice.wav"),
+          "-map", "[mst]", "-t", f"{total:.3f}", "-c:a", "pcm_s16le", str(workdir / "stem_music.wav")], cwd=cwd)
+
+
+def window_levels(stem: Path, total: float, win: float = 8.0) -> list[dict]:
+    """RMS (dBFS) of a stem in consecutive windows; a short last piece (< win/2) joins the previous window."""
+    edges, t = [], 0.0
+    while t < total - 1e-6:
+        edges.append([t, min(total, t + win)])
+        t += win
+    if len(edges) > 1 and edges[-1][1] - edges[-1][0] < win / 2:
+        edges[-2][1] = edges.pop()[1]
+    out = []
+    for a, b in edges:
+        p = subprocess.run(["ffmpeg", "-v", "info", "-ss", f"{a:.3f}", "-t", f"{b - a:.3f}", "-i", str(stem),
+                            "-af", "volumedetect", "-f", "null", "-"], capture_output=True, text=True)
+        m = re.search(r"mean_volume: (-?[\d.]+|-inf) dB", p.stderr)
+        db = float(m.group(1)) if m and m.group(1) != "-inf" else -120.0
+        out.append({"start": round(a, 2), "end": round(b, 2), "rms_db": db})
+    return out
+
+
+def check_music(stem: Path, total: float, cfg: dict) -> list[str]:
+    """Warnings for 8-second windows where the music is too quiet (or missing)."""
+    lim = music_settings(cfg)["min_dbfs"]
+    warn = []
+    for w in window_levels(stem, total):
+        if w["rms_db"] < lim:
+            warn.append(f"nhạc nền quá nhỏ ở giây {w['start']:.0f}–{w['end']:.0f} ({w['rms_db']:.1f} dBFS < {lim:.0f})")
+    for x in warn:
+        log.warning("Kiểm tra nhạc: %s", x)
+    return warn
+
+
+def soundtrack(out: Path, total: float, cfg: dict, voice_file: str | None, music: str | None,
+               spans: list[tuple[float, float]], workdir: Path, ambient_file: str | None = None,
+               codec: list[str] | None = None) -> dict:
+    """Render the mixed soundtrack + stems to files (used by previews; videos use mix_graph in their final pass)."""
+    bed = music_bed(music, total, workdir / "music_bed.wav", music_settings(cfg)["xfade"]) if music else None
+    ins, k = [], 0
+    vl = ml = al = None
+    for f, tag in ((voice_file, "v"), (str(bed) if bed else None, "m"), (ambient_file, "a")):
+        if f:
+            ins += ["-i", f]
+            if tag == "v":
+                vl = f"[{k}:a]"
+            elif tag == "m":
+                ml = f"[{k}:a]"
+            else:
+                al = f"[{k}:a]"
+            k += 1
+    kw = dict(voice_pre=stereo_prefix(voice_file), ambient_pre=stereo_prefix(ambient_file))
+    ms = workdir / "stem_music.wav"
+    _run(["ffmpeg", "-y", *ins, "-filter_complex", mix_graph(total, cfg, vl, ml, spans, al, stems=False, **kw),
+          "-map", "[a]", "-t", f"{total:.3f}", *(codec or ["-c:a", "libmp3lame", "-b:a", "160k"]), str(out)])
+    write_stems(ins, mix_graph(total, cfg, vl, ml, spans, al, **kw), total, workdir)
+    return {"out": out, "music_stem": ms, "voice_stem": workdir / "stem_voice.wav"}
+
+
+def preview(narration: Path, music: str | None, total: float, cfg: dict, out: Path,
+            spans: list[tuple[float, float]] | None = None) -> Path:
+    """MP3 of what the video will sound like (voice + music bed + the same ducking, outro and fade-out)."""
+    outro = music_settings(cfg)["outro"]
+    soundtrack(out, total + outro, cfg, str(narration), music if music and Path(music).exists() else None,
+               spans or [], out.parent)
     return out

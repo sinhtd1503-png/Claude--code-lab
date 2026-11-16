@@ -432,7 +432,7 @@ def prepare_audio(cid: int, voice: str | None = None, music: str | None = None) 
         meta = audio.narration_track(narrations, voice, rate, d)
     total = sum(audio.scene_durations(meta))
     prev = audio.preview(d / "narration.mp3", str(DATA / music) if music else None, total, S.raw,
-                         d / f"preview_{now_ts()}.mp3")
+                         d / f"preview_{now_ts()}.mp3", spans=[(x["start"], x["end"]) for x in meta["scenes"]])
     for old in d.glob("preview_*.mp3"):
         if old != prev:
             old.unlink(missing_ok=True)
@@ -530,15 +530,15 @@ def change_audio(cid: int, what: str) -> dict:
         return reply(msg(f"Kịch bản #{cid} không còn ở bước duyệt."))
     a = item["script"].get("audio") or {}
     if is_dialogue(item["script"]):
-        opts = [rel(t) for t in music_tracks()] + [""]
-        if len(opts) == 1:
+        opts = [rel(t) for t in music_tracks()]  # every video has music: no "no music" option
+        if not opts:
             return reply(msg("🎵 Thư viện nhạc đang trống. Gửi file mp3/m4a vào đây để thêm nhạc, rồi bấm Đổi nhạc."))
         cur = a.get("music", "")
         prepare_music(cid, opts[(opts.index(cur) + 1) % len(opts)] if cur in opts else opts[0])
         return reply(audio_message(cid))
     if what == "music":
-        opts = [rel(t) for t in music_tracks()] + [""]
-        if len(opts) == 1:
+        opts = [rel(t) for t in music_tracks()]
+        if not opts:
             return reply(msg("🎵 Thư viện nhạc đang trống. Gửi file mp3/m4a vào đây để thêm nhạc, rồi bấm Đổi nhạc."))
         cur = a.get("music", "")
         nxt = opts[(opts.index(cur) + 1) % len(opts)] if cur in opts else opts[0]
@@ -1645,9 +1645,12 @@ def approved_narration(item: dict) -> dict | None:
 
 
 def approved_music(item: dict) -> str:
+    """The track approved with the script; if none (or it was deleted) a library track — every video has music.
+    Returns "" only when the library is empty (the render then warns on Telegram)."""
     a = (item["script"] or {}).get("audio") or {}
-    if "music" in a:
-        return str(DATA / a["music"]) if a["music"] and (DATA / a["music"]).is_file() else ""
+    m = a.get("music") or ""
+    if m and (DATA / m).is_file():
+        return str(DATA / m)
     return pick_music(item["id"])
 
 
@@ -1737,6 +1740,12 @@ def do_render(cid: int, paid: bool = False) -> dict:
         if fallbacks:
             out.append(msg("⚠️ Một số cảnh thiếu clip AI nên dùng video stock: "
                            + ", ".join(str(f["scene"]) for f in fallbacks)))
+        rep_file = Path(path).parent / "mix_report.json"
+        warns = json.loads(rep_file.read_text(encoding="utf-8")).get("warnings", []) if rep_file.is_file() else []
+        if warns:
+            out.append(msg(f"🎵 <b>Kiểm tra âm thanh #{cid}:</b>\n" + "\n".join(f"• {esc(w)}" for w in warns)
+                           + "\n\nVẫn duyệt được; muốn sửa: đổi bài nhạc to hơn (/nhac) hoặc tăng "
+                           "<code>music_volume</code> trong config.yaml, rồi bấm 🔁 Thay clip để ghép lại."))
         return reply(out)
     except Exception as e:
         log.exception("render #%s failed", cid)

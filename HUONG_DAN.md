@@ -294,6 +294,22 @@ Mỗi lần bạn bấm **Duyệt kịch bản**, hệ thống cập nhật mộ
 
 ---
 
+### 🎵 Nhạc nền, độ dài cảnh và đoạn kết (chỉnh trong `config.yaml`, mục `video:`)
+
+- **Không cắt clip 8 giây** (`keep_full_clip: true`): mỗi cảnh dài bằng clip AI thật, hoặc bằng lời đọc nếu lời dài
+  hơn (khi đó clip được làm chậm tối đa `max_stretch`). Lời đọc của mỗi cảnh luôn bắt đầu ngay đầu cảnh đó; phụ đề
+  chạy theo. Tiếng nền của clip (gió, chim…) giữ lại nhỏ dưới lời đọc (`clip_ambient_volume: 0.35`).
+- **Nhạc nền liên tục:** một bài chạy từ giây 0 đến hết video, bài ngắn thì lặp lại có nối mềm
+  (`music_crossfade: 1.5`). Mức nền `music_volume: 0.22`; khi có người nói nhạc chỉ hạ nhẹ, không bao giờ dưới
+  `music_floor: 0.5` (50%); tiếng mưa, gió trong clip không làm nhạc nhỏ đi.
+- **Luôn có nhạc:** nếu thư viện `/nhac` trống, bot báo "chưa có nhạc nền" trong tin duyệt video. Sau khi ghép, bot tự
+  đo nhạc từng đoạn 8 giây; đoạn nào nhỏ hơn `music_min_dbfs: -35` thì bot cảnh báo để bạn đổi bài hoặc tăng
+  `music_volume`.
+- **Đoạn kết** (`outro_sec: 3.5`): giữ khung cuối, zoom-out rất chậm, mờ dần sang tối ấm; nhạc lên đủ mức rồi tắt dần
+  trong `music_fade_out: 2.5` giây cuối (không đè lời thoại). Muốn có chữ giữa màn hình: `outro_text: "Bạn còn nhớ
+  không?"`. Đặt `outro_sec: 0` để bỏ đoạn kết.
+- Giọng thoại / lời đọc **không bị đổi âm lượng hay tốc độ** khi trộn. Bản nghe thử trên Telegram trộn y như video thật.
+
 ## Bước 10. Dùng Claude để sửa/nâng cấp dự án ngay trên iPad
 
 1. Safari → **claude.ai/code** → kết nối GitHub → chọn repo **Claude--code-lab**.
