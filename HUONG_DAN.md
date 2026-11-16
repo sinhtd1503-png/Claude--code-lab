@@ -280,6 +280,9 @@ Mỗi lần bạn bấm **Duyệt kịch bản**, hệ thống cập nhật mộ
    **ảnh mẫu của đúng các nhân vật ghi ở dòng "🧩 Ingredients"** dưới cảnh đó (bot gửi sẵn các ảnh này trước
    các prompt) → **Tạo**.
 4. Clip xong → bấm **Tải xuống** → lưu vào **Ảnh** hoặc **Tệp**.
+   **Để các cảnh nối liền:** tạo đúng thứ tự Cảnh 1 → 2 → 3…; gửi clip cảnh trước cho bot, bot gửi lại **khung cuối**
+   → với cảnh sau, trong Flow chọn *Frames to Video*, đặt ảnh khung cuối làm **khung bắt đầu** (hoặc dùng *Extend*),
+   thêm cùng các ảnh nhân vật ở *Ingredients*, rồi dán prompt. Âm thanh trong clip được **giữ nguyên** khi ghép.
 5. Telegram → **chạm giữ tin "Cảnh 1"** → **Trả lời** → biểu tượng 📎 → chọn clip → Gửi.
 6. Bot trả lời "đã nhận cảnh 1 (1/4)" và gửi **khung hình cuối của cảnh 1**. Với cảnh 2, nếu Flow có chế độ
    *Frames to Video*, dùng ảnh này làm **khung bắt đầu** để hai cảnh nối liền mạch.
@@ -324,6 +327,7 @@ Mỗi lần bạn bấm **Duyệt kịch bản**, hệ thống cập nhật mộ
 | `/kichban` | Viết ngay kịch bản tiếp theo (bình thường bot tự gửi 07:00) |
 | `/clip` | Gửi lại tất cả prompt clip; `/clip 2` gửi riêng cảnh 2 (khi thiếu tin) |
 | `/tansuat N` | Tần suất ra video: N ngày 1 kịch bản (vd `/tansuat 2`), áp dụng từ ngày mai; `/tansuat` xem lịch |
+| `/socanh N` | Số cảnh mỗi video (2–6; mỗi cảnh 8 giây), vd `/socanh 4` ≈ 32 giây; áp dụng từ kịch bản tiếp theo |
 | `/nhanvat` | 6 nhân vật cố định: ảnh mẫu, ngoại hình, cách nói (Trả lời thẻ để sửa) |
 | `/giong` | Nghe/đổi giọng từng nhân vật; `/giong Ông pitch -10 rate -5` hoặc `/giong Bé Na cao hơn` để nhập cao độ/tốc độ |
 | `/themnv Tên - vai` | Thêm nhân vật mới (vd `/themnv Cô Lan - cô giáo`); hoặc gửi ảnh chú thích `Tên - vai` → ➕ Nhân vật mới |

@@ -163,6 +163,7 @@ sau khi TikTok duyệt app (audit).
 | `/phongcach` | Xem/sửa phong cách kênh mẫu |
 | `/clip` | Gửi lại tất cả prompt clip; `/clip 2` gửi riêng cảnh 2 (khi thiếu tin) |
 | `/tansuat N` | Tần suất ra video: N ngày 1 kịch bản (vd `/tansuat 2`), áp dụng từ ngày mai; `/tansuat` xem lịch |
+| `/socanh N` | Số cảnh mỗi video (2–6; mỗi cảnh 8 giây), vd `/socanh 4` ≈ 32 giây; áp dụng từ kịch bản tiếp theo |
 
 ## Khi gặp lỗi
 

@@ -154,12 +154,14 @@ def scene_durations(meta: dict) -> list[float]:
     return [max(1.0, e - s) for s, e in zip(starts, ends)]
 
 
-def music_filter(total: float, volume: float, duck: bool, voice: str = "[voice]", music: str = "[1:a]") -> str:
-    """ffmpeg filter graph: music looped/faded, ducked under the voice; output label [a]."""
+def music_filter(total: float, volume: float, duck: bool, voice: str = "[voice]", music: str = "[1:a]",
+                 rate: int = 44100) -> str:
+    """ffmpeg filter graph: music looped/faded, ducked under the voice; output label [a]. The voice itself is
+    never changed (amix normalize=0 keeps its level; only the music is compressed by the voice)."""
     fade = min(2.0, total / 4)
-    mus = (f"{music}aresample=44100,aformat=channel_layouts=stereo,volume={volume},"
+    mus = (f"{music}aresample={rate},aformat=channel_layouts=stereo,volume={volume},"
            f"afade=t=in:d=0.8,afade=t=out:st={max(0.0, total - fade):.2f}:d={fade:.2f}[m0];")
-    v = f"{voice}aresample=44100,aformat=channel_layouts=stereo,apad,atrim=0:{total:.3f}"
+    v = f"{voice}aresample={rate},aformat=channel_layouts=stereo,apad,atrim=0:{total:.3f}"
     if duck:
         return (mus + f"{v},asplit=2[vo][key];"
                 "[m0][key]sidechaincompress=threshold=0.03:ratio=5:attack=30:release=500[m];"

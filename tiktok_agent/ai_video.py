@@ -85,6 +85,7 @@ class AIVideoSource:
         self._client = None
         self.run: dict | None = None
         self.strict = False  # True: raise instead of letting the renderer fall back to stock footage
+        self.prev_frame: Path | None = None  # last frame of the previous clip → first frame of the next one
 
     # ---------- config helpers ----------
     @property
@@ -229,9 +230,15 @@ class AIVideoSource:
             imgs = [Path(p) for p in scene.get("ref_images") or [] if Path(p).is_file()]
             if not self.cfg.get("reference_images", True):
                 imgs = []
+            prompt = scene["prompt_full"]
+            if scene_index > 0 and self.prev_frame and self.prev_frame.is_file() and self.cfg.get("chain_frames", True):
+                imgs = [self.prev_frame] + imgs[:2]
+                prompt = ("The FIRST attached image is the last frame of the previous shot: start this shot exactly "
+                          "from that frame (same positions, lighting, clothes, props). Any other images are character "
+                          "references.\n" + prompt)
             try:
                 try:
-                    iid, in_tok, out_tok = (self._generate_shot(scene["prompt_full"], sec, out, images=imgs) if imgs
+                    iid, in_tok, out_tok = (self._generate_shot(prompt, sec, out, images=imgs) if imgs
                                             else self._generate_shot(scene["prompt_full"], sec, out))
                 except Exception as e:
                     from .policy import policy_like
@@ -251,6 +258,7 @@ class AIVideoSource:
                 raise RuntimeError(str(e)[:500]) from None
             cost, in_tok, out_tok = self._cost(sec, in_tok, out_tok)
             self._record(scene_index, 0, sec, in_tok, out_tok, cost, "ok", iid)
+            self.prev_frame = last_frame(out, workdir / f"ai_s{scene_index}_last.jpg")
             if self.run is not None:
                 self.run["shots"].append({"scene": scene_index + 1, "shot": 1, "seconds": sec, "est_cost_usd": cost,
                                           "gen_time_sec": round(time.time() - t0), "prompt": scene["prompt_full"]})
@@ -307,3 +315,10 @@ class AIVideoSource:
             (int(time.time()), self._today(), (self.run or {}).get("content_id"), scene + 1, shot + 1,
              seconds, in_tok, out_tok, cost, status, iid))
         self.db.conn.commit()
+
+
+def last_frame(src: Path, dst: Path) -> Path | None:
+    """Last frame of a clip as JPEG (used as the first frame of the next clip)."""
+    proc = subprocess.run(["ffmpeg", "-y", "-v", "error", "-sseof", "-0.15", "-i", str(src), "-frames:v", "1",
+                           "-q:v", "2", str(dst)], capture_output=True, text=True)
+    return dst if proc.returncode == 0 and dst.is_file() and dst.stat().st_size > 0 else None
