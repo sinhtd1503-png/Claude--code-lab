@@ -1,6 +1,6 @@
 # Tiến độ dự án — TikTok Content Agent
 
-_Cập nhật: 15/11/2026_
+_Cập nhật: 16/11/2026_
 
 ## 🔄 Lệnh cập nhật VPS (sao chép và dán vào Termius)
 
@@ -126,6 +126,46 @@ Xây agent tự động cho kênh TikTok ngách **tuổi thơ, kỷ niệm gia �
 - **`/kehoach` hỏi chọn nhân vật bằng ảnh trước:** chưa có ảnh nhân vật → bot hướng dẫn gửi ảnh (chú thích tên – vai) hoặc bấm "✨ Để AI tự tạo nhân vật"; đã có ảnh → lập kế hoạch với đúng các nhân vật đó
 - Đã kiểm thử trong Docker (căn thời gian, phụ đề, bản nghe thử, đổi nhạc/giọng, dùng lại giọng đã duyệt khi ghép) và thử edge-tts thật với giọng tiếng Việt
 
+### 📌 Tóm tắt thay đổi hôm nay (16/11/2026) — Sửa lỗi prompt dài làm hỏng tin Telegram; tần suất ra video
+- **Yêu cầu của chủ kênh:**
+  - Bot báo `can't parse entities: Can't find end tag … "code"` khi gửi prompt của kịch bản mới.
+  - Muốn đổi tần suất ra video (ví dụ 2 ngày 1 video) bất kỳ lúc nào, hiệu lực từ ngày hôm sau.
+- **Nguyên nhân lỗi:** bot cắt mỗi tin ở 4096 ký tự sau khi đã mã hoá HTML. Mỗi dấu `"` trong thoại thành `&quot;` (6 ký tự), nên prompt dài bị cắt mất thẻ đóng `</code>`.
+- **Đã sửa (PR #28, đã merge; chủ kênh đã cập nhật VPS):**
+  - Prompt được chia thành các đoạn dưới 3500 ký tự **trước** (cắt ở chỗ xuống dòng, rồi cuối câu), sau đó mới bọc `<code>` cho từng đoạn.
+    - Mỗi phần giữ tiêu đề "Cảnh N". Prompt nhiều phần kèm dòng nhắc chép lần lượt, dán nối tiếp vào cùng một ô prompt trong Flow.
+    - Dấu `"` không còn bị mã hoá.
+  - Tin quá dài được gửi dạng chữ thường, không bao giờ cắt giữa thẻ HTML.
+  - n8n: Telegram vẫn báo `can't parse entities` → tự gửi lại đúng tin đó dạng chữ thường.
+  - Áp dụng cho lúc duyệt kịch bản, `/clip`, `/clip N` và prompt viết lại bằng 🛡.
+  - **`/tansuat N`** (hoặc nút chọn nhanh): N ngày ra 1 kịch bản (1–30), hiệu lực từ ngày mai.
+    - Job 07:00 bỏ qua những ngày không đến lượt.
+    - `/tansuat` và `/trangthai` hiện các ngày sẽ gửi kịch bản; mặc định trong `config.yaml` (`content.every_days`).
+    - Kế hoạch 30 ý tưởng giãn ra theo tần suất; `/kichban` vẫn dùng được bất kỳ lúc nào.
+- **Kiểm thử:**
+  - Prompt 10.000 ký tự có `"`, `<`, `>`, `&`: mọi tin là HTML hợp lệ và ghép lại khớp từng chữ với prompt gốc.
+  - Kịch bản dài giả lập chạy qua duyệt, `/clip`, `/clip 2`, 🛡.
+  - Tần suất và job 07:00; phần gửi lại dạng chữ thường của n8n.
+  - Bộ test cũ vẫn đạt.
+  - Chưa thử được với kịch bản dài nhất thật trên VPS.
+- **Đang chờ kiểm tra thật:** `/clip` nhận đủ Cảnh 1–3 không lỗi; đặt `/tansuat`; làm trọn 1 video để đánh giá mặt, giọng, phụ đề, nhạc.
+
+### 📌 Tóm tắt thay đổi 15/11/2026 (tối) — Gửi đủ prompt các cảnh, thay ảnh/thêm nhân vật, nhập giọng theo ý
+- **Yêu cầu của chủ kênh:**
+  - Khi chuyển sang tạo clip tay, bot chỉ gửi prompt cảnh 1.
+  - Muốn thay ảnh đại diện, thêm nhân vật mới.
+  - Muốn nhập cao độ (pitch) và tốc độ (rate) giọng trực tiếp thay vì chỉ chọn vài giọng gợi ý.
+- **PR #26 (đã merge):**
+  - n8n gửi mỗi tin cách nhau 1,1 giây (Telegram giới hạn khoảng 1 tin/giây), tự thử lại tối đa 5 lần. Tin vẫn lỗi thì bot báo cho chủ kênh.
+  - Chú thích ảnh quá 1024 ký tự được rút gọn an toàn; thẻ nhân vật dài gửi thành ảnh + tin chữ.
+  - `/clip 2` gửi lại riêng cảnh 2.
+  - Nút **📷 Thay ảnh** trên thẻ nhân vật.
+  - Thêm nhân vật mới: gửi ảnh chú thích `Tên - vai` → **➕ Nhân vật mới**, hoặc `/themnv Tên - vai`. Nhân vật thêm xoá được; 6 nhân vật chính chỉ sửa.
+- **PR #27 (đã merge):**
+  - Nhập giọng bằng `/giong Ông pitch -10 rate -5`, nút **✏️ Nhập giọng**, hoặc Trả lời bản nghe thử.
+  - Hiểu cả yêu cầu bằng lời: `trầm hơn`, `nhanh hơn nhiều`, `giọng nam`.
+  - Giá trị tự chuẩn hoá theo định dạng edge-tts (`+5Hz`, `+0%`), nên giá trị như `0%` không còn làm hỏng giọng.
+
 ### 📌 Tóm tắt thay đổi hôm nay (15/11/2026, chiều) — Sửa lỗi Gemini key; 6 nhân vật cố định, ảnh mẫu, giọng cố định
 - **Yêu cầu của chủ kênh:**
   - Bước ghép video báo lỗi `API key not valid … API_KEY_INVALID`
@@ -235,27 +275,25 @@ Xây agent tự động cho kênh TikTok ngách **tuổi thơ, kỷ niệm gia �
 1. **Phong cách kênh mẫu mới dựa trên mô tả**, chưa đối chiếu trực tiếp với video mẫu; cần chủ kênh xem kết quả và chỉnh bằng `/phongcach`.
 2. **Vẫn còn bước làm tay mỗi ngày:** tạo 3–4 clip trên Google Flow (~5 phút). Tự động hoàn toàn chỉ có qua Gemini API trả phí (key hiện chưa có quyền model video).
 3. **Đăng TikTok chưa chạy thật:** cần tạo app, thêm tài khoản vào Sandbox, kết nối bằng `/tiktok`. `direct` chỉ đăng riêng tư tới khi app qua audit.
-4. **edge-tts lỗi theo đợt** ("No audio was received") — đã có thử lại + nút 🔁 Thử lại trên Telegram.
-5. **Hạn chế đã biết:**
+4. **Prompt rất dài** được chia thành nhiều phần; chủ kênh phải chép lần lượt và dán nối tiếp vào cùng một ô prompt trong Flow.
+5. **edge-tts lỗi theo đợt** ("No audio was received") — đã có thử lại + nút 🔁 Thử lại trên Telegram.
+6. **Hạn chế đã biết:**
    - Độ nhất quán khuôn mặt vẫn phụ thuộc model video (đã có mô tả cố định, ảnh mẫu, khung cuối).
    - Giọng cố định chỉ dựa trên 2 giọng edge-tts tiếng Việt và có thể lệch khẩu hình nhẹ.
    - Còn lại: Telegram chỉ cho bot tải file ≤ 20 MB; chưa hỗ trợ upload TikTok > 64 MB; phụ đề căn thời gian theo ước lượng; số lượt Flow miễn phí do Google quyết định và có thể thay đổi.
 
 ## 📋 Các bước cần cấu hình tiếp
 
-1. **Cập nhật VPS** bằng lệnh ở mục "🔄 Lệnh cập nhật VPS" đầu file.
-2. **Sửa Gemini key** (nếu muốn tạo clip tự động):
-   - Vào **aistudio.google.com/apikey** → **Create API key** (khoá bắt đầu bằng `AIza`).
-   - Chạy `cd /opt/tiktok-agent && nano .env`, dán vào dòng `GEMINI_API_KEY=`.
-   - Chạy lại lệnh cập nhật VPS.
-3. **Cài 6 nhân vật:**
-   - `/nhanvat` → tạo ảnh chân dung theo prompt trên thẻ → gửi ảnh vào bot, chú thích là tên nhân vật.
-   - Sai chỗ nào thì Trả lời thẻ để sửa.
-4. `/giong` → nghe giọng 6 người, đổi giọng nếu chưa hợp.
-5. `/kehoach` → lập lại kế hoạch với gia đình cố định → duyệt.
-6. `/kichban` → nghe bản thử thoại + nhạc → duyệt. Sau đó:
-   - Tạo tự động: bấm **🔁 Thử tạo tự động lại** nếu có, chọn ngân sách Gemini $1 hoặc $5.
-   - Hoặc tạo tay trên Flow, thêm đúng ảnh ở dòng **🧩 Ingredients** của từng cảnh.
-7. Kiểm tra video: mặt, quần áo và giọng có giống nhau giữa 3 clip không. Nếu muốn giọng khớp miệng hơn, thử `/giong` → **Giọng trong clip**.
-8. Nhạc nền: kiểm tra `/nhac` còn bài. Google Drive: `/drive` nếu chưa kết nối.
-9. Huỷ hoặc gia hạn Contabo trước ngày hết kỳ 1 tháng.
+1. **Kiểm tra bản sửa ngày 16/11:**
+   - `/trangthai` có dòng tần suất.
+   - `/tansuat 2` (hoặc số ngày mong muốn).
+   - `/clip` nhận đủ prompt Cảnh 1–3, không có tin báo lỗi.
+2. **Giọng:** đặt lại giọng theo ý bằng `/giong <tên> pitch … rate …`. Giá trị mới trong `config.yaml` không tự áp dụng vì VPS đã có `data/nhan_vat.yaml`.
+3. **Nhân vật:** `/nhanvat` → đủ ảnh mẫu cho 6 nhân vật (📷 Thay ảnh nếu chưa ưng); thêm nhân vật phụ nếu cần (`/themnv`).
+4. **Làm trọn 1 video:** `/kichban` → nghe bản thử → duyệt → tạo clip.
+   - Tạo tay trên Flow, thêm đúng ảnh ở dòng **🧩 Ingredients**.
+   - Hoặc Gemini với ngân sách $1 (cần Gemini key hợp lệ trong `.env`).
+5. **Đánh giá video:** mặt và quần áo giữa 3 cảnh, giọng từng người, phụ đề, độ to của nhạc → gửi nhận xét cho Claude để chỉnh.
+6. **Kết nối TikTok** (`CAI_DAT_CONTABO.md` Bước 7) → `/tiktok` → thử **Duyệt & đăng** (video vào hộp nháp TikTok).
+7. Nhạc nền: kiểm tra `/nhac` còn bài. Google Drive: `/drive` nếu chưa kết nối.
+8. Huỷ hoặc gia hạn Contabo trước ngày hết kỳ 1 tháng.
