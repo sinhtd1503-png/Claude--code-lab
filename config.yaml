@@ -120,7 +120,7 @@ scraper:
 
 content:
   target_duration_sec: 24     # độ dài video mong muốn (kênh mẫu: 15–30 giây)
-  scenes: 3                   # số cảnh cố định: 3 cảnh × 1 clip AI 8 giây ≈ 22–26 giây (đặt 4 nếu muốn ~30 giây)
+  scenes: 3                   # số cảnh mỗi video (2–6), mỗi cảnh = 1 clip 8 giây: 3 ≈ 24s, 4 ≈ 32s, 5 ≈ 40s. Đổi nhanh: /socanh 4
   videos_per_day: 1
   every_days: 1               # tần suất mặc định: N ngày ra 1 kịch bản/video (đổi nhanh trên Telegram: /tansuat 2)
   plan_days: 30               # số ngày mỗi kế hoạch (n8n + worker)
@@ -132,10 +132,11 @@ voice:
     - "vi-VN-NamMinhNeural"   # nam
   rate: "-8%"                 # chậm hơn một chút cho cảm xúc
   # Giọng thoại khi ghép video (đổi nhanh bằng lệnh /giong trên Telegram):
-  #   "fixed" = mỗi nhân vật LUÔN một giọng cố định (tts trong nhân vật) → giống hệt nhau giữa mọi clip, kể cả clip
-  #             tạo tay trên Flow; bản nghe thử lúc duyệt kịch bản chính là âm thanh thành phẩm. Tiếng trong clip bị thay.
-  #   "clip"  = giữ giọng do Flow/Gemini tạo trong clip (khớp khẩu hình hơn, nhưng giọng có thể lệch giữa các clip)
-  dialogue_voice: "fixed"
+  #   "clip"  = GIỮ NGUYÊN âm thanh từng clip Flow/Gemini (giọng, âm lượng, tốc độ y như clip), chỉ thêm nhạc nền
+  #             nhỏ phía dưới + phụ đề; clip không có tiếng thì dùng giọng cố định (tts) của nhân vật. (khuyên dùng)
+  #   "fixed" = THAY tiếng trong clip bằng giọng cố định (tts) của từng nhân vật → giọng giống nhau giữa mọi clip,
+  #             nhưng khác âm lượng/tốc độ so với clip gốc
+  dialogue_voice: "clip"
   # Các giọng để chọn trong /giong (nút "Đổi giọng" của từng nhân vật xoay vòng danh sách này);
   # cũng là giọng DỰ PHÒNG khi clip không có tiếng
   fallback:
@@ -171,6 +172,7 @@ ai_video:
   scenes: "all"
   max_shot_sec: 8             # mỗi shot AI tối đa 8 giây (cảnh dài hơn sẽ tách nhiều shot)
   reference_images: true      # gửi kèm ảnh mẫu nhân vật (data/nhan_vat.yaml) cho Gemini để giữ đúng khuôn mặt
+  chain_frames: true          # cảnh sau bắt đầu từ khung hình cuối của cảnh trước (liền mạch)
 
   manual:                     # dùng khi provider = manual_flow
     max_shots_per_day: 4      # 50 credit/ngày ÷ ~12 credit/clip 8s (Omni Flash 720p) ≈ 4 clip

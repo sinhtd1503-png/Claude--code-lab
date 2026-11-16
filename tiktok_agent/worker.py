@@ -63,7 +63,7 @@ WEBHOOK_SECRET = os.getenv("TELEGRAM_WEBHOOK_SECRET", "")
 TG_API = os.getenv("TELEGRAM_API", "https://api.telegram.org").rstrip("/")
 CHAT = S.telegram_chat_id
 AI_CFG = {**(S.raw.get("ai_video") or {}), "enabled": True, "scenes": "all"}
-SCENES = int(S["content"].get("scenes", 4))
+SCENES = int(S["content"].get("scenes", 3))  # default; /socanh overrides (see scenes_count)
 CLIP_SEC = int(AI_CFG.get("max_shot_sec", 8))
 PLAN_DAYS = int(S["content"].get("plan_days", 30))
 
@@ -189,6 +189,7 @@ HELP = ("🤖 <b>Trợ lý kênh TikTok</b>\n\n"
         "/kichban – viết ngay kịch bản tiếp theo\n"
         "/clip – gửi lại prompt clip đang chờ (/clip 2 = riêng cảnh 2)\n"
         "/tansuat – tần suất ra video (vd /tansuat 2 = 2 ngày 1 video, áp dụng từ ngày mai)\n"
+        "/socanh – số cảnh mỗi video (vd /socanh 4 ≈ 32 giây)\n"
         "/trangthai – xem tình trạng hệ thống\n"
         "/ngansach – chi phí tháng này\n"
         "/nhanvat – 6 nhân vật cố định (ảnh mẫu, ngoại hình, cách nói)\n"
@@ -550,12 +551,53 @@ def change_audio(cid: int, what: str) -> dict:
 
 
 def _write(idea: dict, bible: dict, patterns: list[str], feedback=None, previous=None) -> tuple[dict, str]:
-    script = series.write_script(niche(), bible, idea, patterns, SCENES, CLIP_SEC, owner_notes(),
+    n = scenes_count()
+    script = series.write_script(niche(), bible, idea, patterns, n, CLIP_SEC, owner_notes(),
                                  feedback=feedback, previous=previous).model_dump()
-    script["scenes"] = script["scenes"][:SCENES]
+    script["scenes"] = script["scenes"][:n]
+    link_scenes(script)
     normalize_speakers(script, bible)
     caption = script["caption"] + "\n\n" + " ".join(f"#{h.lstrip('#')}" for h in script["hashtags"])
     return script, caption
+
+
+def scenes_count() -> int:
+    with LOCK:
+        kv = DB_.kv_get("scene_count") or {}
+    return max(2, min(6, int(kv.get("n") or SCENES)))
+
+
+def scenes_cmd(text: str) -> dict:
+    arg = text.partition(" ")[2].strip()
+    m = re.search(r"\d+", arg)
+    if not m:
+        n = scenes_count()
+        return reply(msg(f"🎬 <b>Số cảnh mỗi video:</b> {n} cảnh × {CLIP_SEC} giây ≈ {n * CLIP_SEC} giây.\n\n"
+                         "Đổi: gõ <code>/socanh N</code> (2–6) hoặc bấm nút. Áp dụng cho kịch bản viết tiếp theo "
+                         "(kịch bản, thoại, prompt và số clip tự điều chỉnh).",
+                         kb([(f"{k} cảnh (~{k * CLIP_SEC}s)", f"sn:{k}") for k in (3, 4, 5)])))
+    return set_scenes(int(m.group()))
+
+
+def set_scenes(n: int, mid: int | None = None) -> dict:
+    if not 2 <= n <= 6:
+        return reply(msg("Số cảnh phải từ 2 đến 6 (mỗi cảnh là 1 clip 8 giây)."))
+    with LOCK:
+        DB_.kv_set("scene_count", {"n": n, "ts": now_ts()})
+    usd = float((S.raw.get("budget") or {}).get("services", {}).get("gemini_video", {}).get("usd_per_clip", 0.19))
+    return reply(clear_buttons(mid), msg(
+        f"✅ Mỗi video giờ gồm <b>{n} cảnh</b> (≈ {n * CLIP_SEC} giây). Áp dụng từ kịch bản viết tiếp theo; kịch bản "
+        f"đang làm giữ nguyên.\nTạo tay: {n} clip trên Flow mỗi video. Tự động (Gemini): ≈ ${usd * n:.2f}/video."))
+
+
+def link_scenes(script: dict) -> dict:
+    """Make every scene start where the previous one ended (the writer is asked to; this enforces it)."""
+    prev = None
+    for sc in script.get("scenes", []):
+        if prev is not None and prev.get("end_en"):
+            sc["start_en"] = prev["end_en"]
+        prev = sc
+    return script
 
 
 def normalize_speakers(script: dict, bible: dict) -> dict:
@@ -729,11 +771,15 @@ def prompt_messages(cid: int) -> list[dict]:
                "3) Quay lại Telegram, <b>Trả lời (Reply)</b> đúng tin nhắn \"Cảnh N\" và gửi clip đó "
                "(<b>giữ nguyên âm thanh</b> — Flow tạo luôn giọng thoại của nhân vật). "
                f"Hoặc gửi cả {n} clip một lượt theo đúng thứ tự cảnh.\n\n"
-               "🧩 <b>Để nhân vật giống nhau giữa các clip:</b> lưu các ảnh mẫu bên dưới vào Ảnh của iPad; ở mỗi cảnh, "
-               "trong Flow bấm <b>+ Ingredients</b> và thêm đúng ảnh của những nhân vật ghi dưới cảnh đó. Sau mỗi clip "
-               "bot gửi khung hình cuối để làm khung bắt đầu cho cảnh sau."
-               + ("\n🎙 Giọng: khi ghép, bot thay bằng <b>giọng cố định</b> của từng nhân vật nên các clip luôn cùng "
-                  "giọng (giọng trong clip Flow không quan trọng)." if voice_mode() == "fixed" else ""))]
+               "🧩 <b>Nhân vật giống nhau:</b> lưu các ảnh mẫu bên dưới; ở MỌI cảnh, trong Flow bấm <b>+ Ingredients</b> "
+               "và thêm đúng các ảnh ghi dưới cảnh đó (cùng ảnh cho cả video).\n"
+               "🔗 <b>Liền mạch:</b> tạo <b>theo thứ tự</b> Cảnh 1 → 2 → 3…, gửi clip cảnh trước cho bot rồi mới tạo cảnh "
+               "sau. Bot gửi lại <b>khung hình cuối</b> của cảnh trước → trong Flow chọn <i>Frames to Video</i>, đặt ảnh đó "
+               "làm <b>khung bắt đầu</b> (hoặc dùng <i>Extend</i> nối tiếp clip trước), rồi dán prompt cảnh sau."
+               + ("\n🎙 Giọng: khi ghép, bot thay bằng <b>giọng cố định</b> của từng nhân vật (/giong)."
+                  if voice_mode() == "fixed" else
+                  "\n🎙 Âm thanh: <b>giữ nguyên</b> như clip bạn gửi (giọng, âm lượng, tốc độ); bot chỉ thêm nhạc nhỏ "
+                  "phía dưới và phụ đề."))]
     item = DB_.get_content(cid)
     bible = content_bible(item)
     used = []
@@ -752,7 +798,7 @@ def prompt_messages(cid: int) -> list[dict]:
                        "dung và gửi lại cho bot — từ lần sau các clip sẽ giống mặt hơn."))
     for i, s in enumerate(m["shots"]):
         scene = item["script"]["scenes"][i]
-        out.extend(scene_prompt_msg(cid, i, n, scene, s["prompt"], ingredients_note(bible, scene)))
+        out.extend(scene_prompt_msg(cid, i, n, scene, s["prompt"], ingredients_note(bible, scene, i)))
     if os.getenv("GEMINI_API_KEY"):
         usd = float((S.raw.get("budget") or {}).get("services", {}).get("gemini_video", {}).get("usd_per_clip", 0.19))
         out.append(msg("Không muốn tạo tay?",
@@ -760,9 +806,12 @@ def prompt_messages(cid: int) -> list[dict]:
     return out
 
 
-def ingredients_note(bible: dict, scene: dict) -> str:
+def ingredients_note(bible: dict, scene: dict, i: int = 0) -> str:
     names = [c["name"] for c in series.scene_cast(bible, scene)]
-    return f"\n🧩 Ingredients: {esc(', '.join(names))}" if names else ""
+    note = f"\n🧩 Ingredients: {esc(', '.join(names))}" if names else ""
+    if i > 0:
+        note += f"\n🔗 Khung bắt đầu: khung cuối của cảnh {i} (bot gửi sau khi nhận clip cảnh {i})"
+    return note
 
 
 PROMPT_CHUNK = 3500
@@ -825,7 +874,7 @@ def fix_prompt(n: int) -> dict:
         m = manual().load(cid)
         m["shots"][i]["prompt"] = out.prompt_en
         manual().save(cid, m)
-    note = (ingredients_note(content_bible(item), item["script"]["scenes"][i])
+    note = (ingredients_note(content_bible(item), item["script"]["scenes"][i], i)
             + f"\n🛡 <i>Đã viết lại an toàn hơn: {esc(out.changes_vi)}</i>")
     return reply(scene_prompt_msg(cid, i, len(m["shots"]), item["script"]["scenes"][i], out.prompt_en, note))
 
@@ -838,7 +887,7 @@ def approve_script(cid: int, message_id: int | None) -> dict:
         bible = content_bible(item)
         scenes = item["script"]["scenes"]
         shots = [{"scene": i + 1, "shot": 1, "seconds": CLIP_SEC,
-                  "prompt": series.clip_prompt(bible, sc, i, len(scenes)),
+                  "prompt": series.clip_prompt(bible, sc, i, len(scenes), item["script"]),
                   "file": None, "tg_message_id": None} for i, sc in enumerate(scenes)]
         manual().save(cid, {"content_id": cid, "day": dt.datetime.now(TZ).date().isoformat(),
                             "shots": shots, "unassigned": []})
@@ -1266,8 +1315,9 @@ def delete_cast_image(i: int, mid: int | None) -> dict:
 def voice_mode() -> str:
     with LOCK:
         kv = DB_.kv_get("dialogue_voice") or {}
-    m = kv.get("mode") or (S.raw.get("voice") or {}).get("dialogue_voice") or "fixed"
-    return m if m in ("fixed", "clip") else "fixed"
+    saved = kv.get("mode") if kv.get("v") == 2 else None  # choices saved before 16/11 are ignored
+    m = saved or (S.raw.get("voice") or {}).get("dialogue_voice") or "clip"
+    return m if m in ("fixed", "clip") else "clip"
 
 
 def voice_presets() -> list[dict]:
@@ -1279,16 +1329,17 @@ def voice_presets() -> list[dict]:
 def voice_cmd() -> dict:
     mode = voice_mode()
     lines = ["🎙 <b>Giọng thoại khi ghép video</b>", "",
-             ("✅ <b>Giọng cố định</b> (đang dùng): mỗi nhân vật luôn đúng một giọng ở mọi clip, kể cả clip tạo tay "
-              "trên Flow. Bản nghe thử lúc duyệt kịch bản chính là âm thanh thành phẩm." if mode == "fixed" else
-              "✅ <b>Giọng trong clip</b> (đang dùng): giữ giọng Flow/Gemini tạo, khớp khẩu hình hơn nhưng có thể "
-              "khác nhau giữa các clip."), "",
+             ("✅ <b>Giọng cố định</b> (đang dùng): bot THAY tiếng trong clip bằng giọng máy riêng của từng nhân vật "
+              "(giống nhau ở mọi clip, nhưng âm lượng/tốc độ khác clip gốc)." if mode == "fixed" else
+              "✅ <b>Giữ nguyên âm thanh clip</b> (đang dùng, khuyên dùng): giọng, âm lượng, tốc độ y như từng clip "
+              "Flow/Gemini; bot chỉ thêm nhạc nền nhỏ phía dưới và phụ đề. Giọng máy chỉ dùng cho clip không có tiếng."),
+             "",
              "Giọng từng nhân vật (bấm để nghe; dưới bản nghe có nút ✏️ để <b>nhập cao độ/tốc độ</b>). Nhập nhanh: "
              "<code>/giong Ông pitch -10 rate -5</code> hoặc <code>/giong Bé Na cao hơn</code>:"]
     lines += [f"• <b>{esc(c['name'])}</b>: {esc(VOICE_LABELS.get(c['tts']['voice'], c['tts']['voice']))} "
               f"{esc(c['tts']['pitch'])} {esc(c['tts']['rate'])}" for c in cast_items()]
-    rows = [[(("🔘 " if mode == "fixed" else "") + "Giọng cố định", "gm:1"),
-             (("🔘 " if mode == "clip" else "") + "Giọng trong clip", "gm:2")]]
+    rows = [[(("🔘 " if mode == "clip" else "") + "Giữ âm thanh clip", "gm:2"),
+             (("🔘 " if mode == "fixed" else "") + "Giọng cố định (máy)", "gm:1")]]
     items = cast_items()
     rows += [[(f"🔊 {items[k]['name']}", f"gp:{k}") for k in range(j, min(j + 3, len(items)))]
              for j in range(0, len(items), 3)]
@@ -1364,7 +1415,7 @@ def pending_voice_text(text: str) -> dict | None:
 
 def set_voice_mode(n: int, mid: int | None) -> dict:
     with LOCK:
-        DB_.kv_set("dialogue_voice", {"mode": "fixed" if n == 1 else "clip"})
+        DB_.kv_set("dialogue_voice", {"mode": "fixed" if n == 1 else "clip", "v": 2})
     return reply(clear_buttons(mid), *voice_cmd()["messages"])
 
 
@@ -1536,8 +1587,10 @@ def receive_clip(body: dict) -> dict:
     if scene and scene < n:
         frame = last_frame(dst, folder / f"last_{scene}.jpg")
         if frame:
-            out.append(media("photo", frame, f"🖼 Khung cuối cảnh {scene} → dùng làm <b>khung bắt đầu</b> "
-                                             f"(Frames to Video) cho cảnh {scene + 1} để nối liền mạch."))
+            out.append(media("photo", frame, f"🔗 <b>Khung cuối cảnh {scene}</b> → lưu ảnh này, trong Flow chọn "
+                                             f"<i>Frames to Video</i> và đặt làm <b>khung bắt đầu</b> cho cảnh "
+                                             f"{scene + 1} (cùng ảnh nhân vật ở Ingredients), rồi dán prompt cảnh "
+                                             f"{scene + 1}. Hai cảnh sẽ nối liền."))
     return reply(out)
 
 
@@ -1774,6 +1827,7 @@ def status_text() -> str:
     lines = ["📊 <b>Tình trạng</b>", ""]
     lines.append(f"Kế hoạch: #KH{lp['id']} ({lp['status']}), còn {rem} ý tưởng chưa viết" if lp else "Kế hoạch: chưa có")
     today = dt.datetime.now(TZ).date()
+    lines.append(f"Mỗi video: {scenes_count()} cảnh (≈ {scenes_count() * CLIP_SEC}s, /socanh để đổi)")
     lines.append(f"Tần suất: {freq_label(freq_on(today)['days'])} · kịch bản tới: "
                  + ", ".join(d.strftime("%d/%m") for d in next_due_days(today, 3)) + " (/tansuat để đổi)")
     names = {"script_review": "chờ duyệt kịch bản", "awaiting_clips": "chờ clip", "rendering": "đang ghép",
@@ -1860,7 +1914,7 @@ def resend_prompts(text: str = "") -> dict:
     item, m = DB_.get_content(cid), manual().load(cid)
     bible, n = content_bible(item), len(m["shots"])
     out = [scene_prompt_msg(cid, k - 1, n, item["script"]["scenes"][k - 1], m["shots"][k - 1]["prompt"],
-                            ingredients_note(bible, item["script"]["scenes"][k - 1])) for k in want if 1 <= k <= n]
+                            ingredients_note(bible, item["script"]["scenes"][k - 1], k - 1)) for k in want if 1 <= k <= n]
     return reply(*out) if out else reply(msg(f"Video #{cid} chỉ có cảnh 1–{n}."))
 
 
@@ -1931,7 +1985,8 @@ def tg_command(body: dict = BODY, x_worker_token: str = TOKEN) -> dict:
              "/drive": drive_cmd, "/giong": lambda: voice_cmd_text(str(body.get("text", ""))),
              "/themnv": lambda: add_cast_cmd(str(body.get("text", ""))),
              "/clip": lambda: resend_prompts(str(body.get("text", ""))),
-             "/tansuat": lambda: frequency_cmd(str(body.get("text", "")))}
+             "/tansuat": lambda: frequency_cmd(str(body.get("text", ""))),
+             "/socanh": lambda: scenes_cmd(str(body.get("text", "")))}
     return _safe(table.get(cmd, lambda: reply(msg(HELP))))
 
 
@@ -1981,6 +2036,7 @@ def tg_button(body: dict = BODY, x_worker_token: str = TOKEN) -> dict:
         "gv": lambda: cycle_voice(n, mid),
         "ge": lambda: ask_voice_edit(n),
         "tf": lambda: set_frequency(n, mid),
+        "sn": lambda: set_scenes(n, mid),
         "am": lambda: reply(msg("⏳ Đang đổi nhạc…"), next_step={"action": "audio", "id": n, "what": "music"}),
         "av": lambda: reply(msg("⏳ Đang đổi giọng đọc…"), next_step={"action": "audio", "id": n, "what": "voice"}),
         "dc": lambda: drive_check(mid),

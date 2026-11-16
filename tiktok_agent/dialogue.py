@@ -17,6 +17,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import re
 import subprocess
 import time
 from pathlib import Path
@@ -28,14 +29,56 @@ from .video import FPS, H, TTS_BACKOFF_SEC, W, _duration, _run, _srt_time, fetch
 
 log = logging.getLogger(__name__)
 
+SR = 48000      # common sample rate of all segments (AI clips are 48 kHz)
 LEAD_SEC = 0.5   # first line starts a little after the cut
 GAP_SEC = 0.3    # pause between lines
+
+
+def channels(path: Path) -> int:
+    out = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "a:0", "-show_entries", "stream=channels",
+                          "-of", "csv=p=0", str(path)], capture_output=True, text=True).stdout.strip()
+    return int(out) if out.isdigit() else 2
+
+
+def to_stereo(path: Path) -> str:
+    """Filter prefix that makes stereo WITHOUT changing loudness (ffmpeg's default mono→stereo lowers it 3 dB)."""
+    return "pan=stereo|c0=c0|c1=c0," if channels(path) == 1 else ""
 
 
 def has_audio(path: Path) -> bool:
     out = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "a", "-show_entries", "stream=index",
                           "-of", "json", str(path)], capture_output=True, text=True).stdout or "{}"
     return bool(json.loads(out).get("streams"))
+
+
+def speech_times(clip: Path, lines: list[dict], dur: float) -> list[tuple[float, float]] | None:
+    """Subtitle times from where the voices really are in a clip (silence detection); None if it can't tell."""
+    if not lines:
+        return []
+    proc = subprocess.run(["ffmpeg", "-v", "info", "-i", str(clip), "-af", "silencedetect=noise=-30dB:d=0.25",
+                           "-vn", "-f", "null", "-"], capture_output=True, text=True)
+    starts = [float(x) for x in re.findall(r"silence_start: ([\d.]+)", proc.stderr)]
+    ends = [float(x) for x in re.findall(r"silence_end: ([\d.]+)", proc.stderr)]
+    silent = list(zip(starts, ends + [dur] * (len(starts) - len(ends))))
+    spans, t = [], 0.0
+    for a, b in silent:
+        if a - t > 0.15:
+            spans.append((t, a))
+        t = b
+    if dur - t > 0.15:
+        spans.append((t, dur))
+    if not spans or sum(b - a for a, b in spans) > 0.95 * dur:  # no pauses found (music/ambience): can't tell
+        return None
+    if len(spans) == len(lines):
+        return [(round(a, 3), round(b, 3)) for a, b in spans]
+    a0, b0 = spans[0][0], spans[-1][1]  # spread the lines over the spoken window, by length
+    words = [max(1, len(ln["text"].split())) for ln in lines]
+    out, t = [], a0
+    for w in words:
+        d = (b0 - a0) * w / sum(words)
+        out.append((round(t, 3), round(t + d, 3)))
+        t += d
+    return out
 
 
 def line_times(lines: list[dict], dur: float) -> list[tuple[float, float]]:
@@ -225,24 +268,33 @@ def render_dialogue(script: dict, workdir: Path, cfg: dict, stock_key: str, ai, 
                                   workdir / f"c{i}.mp4", used)
             except Exception as e:
                 log.warning("Pixabay lỗi cảnh %d: %s", i + 1, type(e).__name__)
-        dur = min(_duration(clip), clip_sec + 0.5) if (clip and own_voice) else clip_sec
+        # A clip with its own voices is used whole and untouched: full length, original speed, original audio.
+        dur = _duration(clip) if (clip and own_voice) else clip_sec
 
-        seg = workdir / f"seg{i}.mp4"
-        v_in = ["-stream_loop", "-1", "-i", str(clip)] if clip else \
-            ["-f", "lavfi", "-i", f"color=c=0x3b2f2a:s={W}x{H}:r={FPS}"]
+        seg = workdir / f"seg{i}.mkv"
+        if clip and own_voice:
+            v_in = ["-i", str(clip)]
+        elif clip:
+            v_in = ["-stream_loop", "-1", "-i", str(clip)]
+        else:
+            v_in = ["-f", "lavfi", "-i", f"color=c=0x3b2f2a:s={W}x{H}:r={FPS}"]
         times = line_times(lines, dur)
+        up = ""
         if own_voice:
-            a_in, a_map = [], "0:a"
+            a_in, a_map, up = [], "0:a", to_stereo(clip)
+            times = speech_times(clip, lines, dur) or times
         elif fixed is not None:
             a_in, a_map, times = ["-i", fixed[i]["path"]], "1:a", [tuple(t) for t in fixed[i]["times"]]
         else:
             fb = scene_voice(lines, characters, cfg, dur, workdir, f"fb{i}")
             a_in, a_map, times = ["-i", fb["path"]], "1:a", fb["times"]
+        fade = ",fade=t=in:st=0:d=0.25" if i == 0 else ""  # no dip to black between scenes: they must flow
+        # audio: only resampled/converted to a common format (no volume, speed or EQ change), kept as lossless PCM
         _run(["ffmpeg", "-y", *v_in, *a_in, "-filter_complex",
-              f"[0:v]{vf},fade=t=in:st=0:d=0.25[v];[{a_map}]aresample=44100,aformat=channel_layouts=stereo,"
+              f"[0:v]{vf}{fade}[v];[{a_map}]{up}aresample={SR},aformat=sample_fmts=s16:channel_layouts=stereo,"
               f"apad,atrim=0:{dur:.3f}[a]",
               "-map", "[v]", "-map", "[a]", "-t", f"{dur:.3f}", "-c:v", "libx264", "-preset", "veryfast",
-              "-crf", "20", "-c:a", "aac", "-b:a", "160k", str(seg)])
+              "-crf", "18", "-c:a", "pcm_s16le", str(seg)])
         segments.append(seg)
 
         for ln, (s, e) in zip(lines, times):
@@ -252,22 +304,24 @@ def render_dialogue(script: dict, workdir: Path, cfg: dict, stock_key: str, ai, 
 
     (workdir / "subs.srt").write_text("\n".join(srt), encoding="utf-8")
     (workdir / "list.txt").write_text("".join(f"file '{s.name}'\n" for s in segments))
-    _run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", "list.txt", "-c", "copy", "joined.mp4"], cwd=workdir)
+    _run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", "list.txt", "-c", "copy", "joined.mkv"], cwd=workdir)
 
     total = t0
     style = (f"FontName={vid['font']},FontSize=13,PrimaryColour=&H00FFFFFF,OutlineColour=&H80000000,"
              "BorderStyle=1,Outline=2,Shadow=0,Bold=1,Alignment=2,MarginV=70")
     music = vid.get("background_music")
-    inputs = ["-i", "joined.mp4"]
+    inputs = ["-i", "joined.mkv"]
     if music and Path(music).exists():
         inputs += ["-stream_loop", "-1", "-i", str(Path(music).resolve())]
+        # voices pass through at their original level; only the music is faded and dipped under them
         afilter = audio.music_filter(total, float(vid.get("music_volume", 0.15)), bool(vid.get("music_duck", True)),
-                                     voice="[0:a]", music="[1:a]")
+                                     voice="[0:a]", music="[1:a]", rate=SR)
     else:
-        afilter = f"[0:a]aresample=44100,aformat=channel_layouts=stereo,apad,atrim=0:{total:.3f}[a]"
+        afilter = f"[0:a]anull[a]"
     _run(["ffmpeg", "-y", *inputs, "-filter_complex", f"[0:v]subtitles=subs.srt:force_style='{style}'[v];{afilter}",
           "-map", "[v]", "-map", "[a]", "-t", f"{total:.3f}", "-c:v", "libx264", "-preset", "medium", "-crf", "20",
-          "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", "final.mp4"], cwd=workdir)
+          "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", "-ar", str(SR), "-movflags", "+faststart", "final.mp4"],
+         cwd=workdir)
     final = workdir / "final.mp4"
     log.info("Rendered dialogue video %s (%.1fs)", final, _duration(final))
     return final

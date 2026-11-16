@@ -91,6 +91,11 @@ class SeriesScene(BaseModel):
     action_en: str = Field(description="TIẾNG ANH. MỘT hành động liền mạch, cụ thể trong 8 giây: ai làm gì, ở đâu "
                                        "trong bối cảnh, biểu cảm, ai nói với ai; không mô tả lại ngoại hình nhân vật")
     camera_en: str = Field(description="TIẾNG ANH. Góc máy và chuyển động máy, vd 'slow push-in, eye level'")
+    start_en: str = Field(default="", description="TIẾNG ANH. KHUNG HÌNH ĐẦU của cảnh: ai đứng/ngồi ở đâu, tư thế, "
+                                                  "đang cầm gì, góc máy. Từ cảnh 2 trở đi PHẢI trùng với end_en của "
+                                                  "cảnh trước (cùng vị trí, tư thế, đồ vật, ánh sáng)")
+    end_en: str = Field(default="", description="TIẾNG ANH. KHUNG HÌNH CUỐI của cảnh: vị trí, tư thế, biểu cảm, đồ vật "
+                                                "trong tay, góc máy — để cảnh sau bắt đầu đúng từ đây")
     ambient_en: str = Field(default="", description="TIẾNG ANH. Âm thanh môi trường, vd 'cicadas, distant rooster, "
                                                     "wind in bamboo'")
     visual_query: str = Field(description="TIẾNG ANH, 2–4 từ để tìm video stock dự phòng trên Pixabay")
@@ -101,6 +106,11 @@ class SeriesScript(BaseModel):
     hook: str = Field(description="Câu thoại mở đầu gây tò mò/gợi nhớ (chính là câu thoại đầu tiên)")
     scenes: list[SeriesScene]
     music_mood: str = Field(default="", description="Kiểu nhạc nền hợp video, tiếng Việt, vd 'piano nhẹ, hoài niệm'")
+    continuity_en: str = Field(default="", description="TIẾNG ANH, 1–2 câu. Điều KHÔNG ĐỔI suốt video: đúng một chỗ cụ "
+                                                       "thể trong bối cảnh, thời điểm trong ngày, thời tiết, ánh sáng, "
+                                                       "đồ vật chính, ai có mặt — vd 'Late afternoon in the brick yard "
+                                                       "under the guava tree, golden low sun from the left, a woven "
+                                                       "bamboo tray of rice cakes on a low wooden table'")
     lesson: str = Field(description="Thông điệp của video, 1 câu")
     caption: str = Field(description="Caption TikTok tiếng Việt, ấm áp, có câu hỏi gợi bình luận")
     hashtags: list[str] = Field(description="5–8 hashtag, không có dấu #")
@@ -210,10 +220,13 @@ def write_script(niche: dict, bible: dict, idea: dict, patterns: list[str], scen
         "từng người, nhất quán từ cảnh đầu đến cảnh cuối. Không mô tả lại ngoại hình hay đổi trang phục.",
         f"Kịch bản gồm ĐÚNG {scenes} cảnh. Mỗi cảnh là MỘT clip video AI {clip_sec} giây, trong đó các nhân vật NÓI "
         f"VỚI NHAU: 1–3 câu thoại ngắn, TỔNG tối đa 16 từ mỗi cảnh (để kịp nói tự nhiên trong {clip_sec} giây, có "
-        "khoảng lặng). KHÔNG có người dẫn chuyện. Các cảnh nối tiếp liền mạch về thời gian và không gian (cùng buổi, "
-        "cùng nơi, trang phục không đổi): cảnh 1 = câu thoại mở đầu gây tò mò/gợi nhớ, giữa = cùng nhau sống lại ký ức "
-        "(chi tiết giác quan qua lời thoại và hành động), cảnh cuối = khoảnh khắc chạm lòng, câu thoại đọng lại. "
-        "Hành động cuối của cảnh trước nối được với đầu cảnh sau. Chọn music_mood hợp cảm xúc.",
+        "khoảng lặng). KHÔNG có người dẫn chuyện. " + beats(scenes) + " Chọn music_mood hợp cảm xúc.",
+        "LIỀN MẠCH (rất quan trọng — mỗi cảnh được tạo thành một clip RIÊNG rồi mới ghép): cả video là MỘT khoảnh khắc "
+        "liên tục, như một cảnh quay dài bị cắt thành từng đoạn. Ghi continuity_en (nơi chốn cụ thể, giờ, ánh sáng, "
+        "đồ vật, ai có mặt) và giữ nguyên trong mọi cảnh: không đổi chỗ, không nhảy thời gian, không đổi trang phục, "
+        "không thêm/bớt đồ vật chính. Mỗi cảnh có start_en và end_en; start_en của cảnh sau = end_en của cảnh trước "
+        "(cùng vị trí, tư thế, đồ vật trong tay, hướng nhìn). Hành động trong cảnh bắt đầu từ start_en và kết thúc "
+        "đúng ở end_en; câu thoại cuối của cảnh trước được đáp lại ở đầu cảnh sau.",
     ]
     if patterns:
         parts.append(f"Pattern hiệu quả từ đối thủ:\n<patterns>\n{json.dumps(patterns, ensure_ascii=False)}\n</patterns>")
@@ -231,6 +244,19 @@ def write_script(niche: dict, bible: dict, idea: dict, patterns: list[str], scen
                  "(vd 'Bạn còn nhớ không?').")
     log.info("Claude: viết kịch bản '%s'", idea.get("title"))
     return _parse(system_prompt(niche), "\n\n".join(parts), SeriesScript, effort="high")
+
+
+def beats(n: int) -> str:
+    """Story beats for n scenes (works for 3, 4, 5, 6…)."""
+    if n <= 1:
+        return "Một cảnh duy nhất: mở bằng câu gợi nhớ, kết bằng khoảnh khắc ấm áp."
+    if n == 2:
+        return "Cảnh 1 = câu thoại mở đầu gây tò mò/gợi nhớ; cảnh 2 = khoảnh khắc chạm lòng, câu thoại đọng lại."
+    mid = "cảnh 2" if n == 3 else f"cảnh 2–{n - 1}"
+    extra = (" Với nhiều cảnh: các cảnh giữa đi từng bước (nhớ lại → cùng làm/chơi → một chi tiết bất ngờ nhỏ, vui "
+             "hoặc xúc động), mỗi cảnh thêm MỘT chi tiết mới, không lặp ý.") if n >= 4 else ""
+    return (f"Cấu trúc: cảnh 1 = câu thoại mở đầu gây tò mò/gợi nhớ; {mid} = cùng nhau sống lại ký ức (chi tiết giác "
+            f"quan qua lời thoại và hành động); cảnh {n} = khoảnh khắc chạm lòng, câu thoại đọng lại.{extra}")
 
 
 def describe_character(image: bytes, media_type: str, caption: str, era: str = "", who: str = "") -> CharacterFromImage:
@@ -278,8 +304,24 @@ def character_block(bible: dict, names: list[str]) -> str:
     return "; ".join(f"{c['name']}: {c['look_en']}" for c in picked)
 
 
-def clip_prompt(bible: dict, scene: dict, index: int, total: int) -> str:
+def film_cast(bible: dict, scenes: list[dict]) -> list[dict]:
+    """Everyone who appears anywhere in the video, in bible order (same block in every scene prompt)."""
+    seen: list[dict] = []
+    for sc in scenes:
+        for c in scene_cast(bible, sc):
+            if c not in seen:
+                seen.append(c)
+    order = {c["name"]: i for i, c in enumerate(bible.get("characters", []))}
+    return sorted(seen, key=lambda c: order.get(c["name"], 99))
+
+
+def clip_prompt(bible: dict, scene: dict, index: int, total: int, script: dict | None = None) -> str:
+    """Prompt for one 8-second clip. With `script`, every clip of the video shares the same cast block, the same
+    continuity line and starts exactly where the previous clip ended — so separately made clips join seamlessly."""
     on_screen = scene_cast(bible, scene)
+    scenes = (script or {}).get("scenes") or [scene]
+    cast_all = film_cast(bible, scenes) if script else on_screen
+    prev = scenes[index - 1] if script and 0 < index <= len(scenes) else None
     chars = {c["name"].strip().lower(): c for c in bible.get("characters", [])}
     lines = scene.get("lines") or []
     parts = [
@@ -288,15 +330,28 @@ def clip_prompt(bible: dict, scene: dict, index: int, total: int) -> str:
         f"Visual style (identical in every shot): {bible.get('style_en', '').rstrip('.')}.",
         f"Era and place: {bible.get('era', '')}.",
         f"Setting (same place in every shot): {bible.get('setting_en', '').rstrip('.')}.",
-        "Characters — keep exactly the same face, hairstyle, outfit, colors and body proportions as described (and as "
-        "in the character reference images, if provided); do not add any other people: "
-        + " | ".join(f"{c['name']}: {c['look_en'].rstrip('.')}" for c in on_screen) + ".",
-        f"Action: {scene['action_en'].rstrip('.')}.",
-        f"Camera: {scene.get('camera_en', 'slow gentle movement').rstrip('.')}.",
+        "Characters of this film — exactly the same face, hairstyle, outfit, colors and body proportions in every shot "
+        "(match the character reference images, if provided): "
+        + " | ".join(f"{c['name']}: {c['look_en'].rstrip('.')}" for c in cast_all) + ".",
+        f"In this shot: {', '.join(c['name'] for c in on_screen)} only; no other people.",
     ]
+    cont = ((script or {}).get("continuity_en") or "").strip().rstrip(".")
+    if cont:
+        parts.append(f"Same continuous moment in every shot (do not change): {cont}.")
+    if script and total > 1:
+        parts.append(f"This is shot {index + 1} of {total} of one continuous scene, cut into separate clips.")
+    start = ((prev or {}).get("end_en") or scene.get("start_en") or "").strip().rstrip(".")
+    if start:
+        parts.append(f"Opening frame{' (exactly where the previous shot ended)' if prev else ''}: {start}.")
+    elif index > 0:
+        parts.append("Opening frame: continues directly from the previous shot, same positions and lighting.")
+    parts.append(f"Action: {scene['action_en'].rstrip('.')}.")
+    end = (scene.get("end_en") or "").strip().rstrip(".")
+    if end:
+        parts.append(f"Final frame (hold it still for the last half second): {end}.")
+    parts.append(f"Camera: {scene.get('camera_en', 'slow gentle movement').rstrip('.')}.")
     if index > 0:
-        parts.append("Continuity: continues directly from the previous shot, same moment of the day, same lighting, "
-                     "same clothes.")
+        parts.append("Continuity: same lighting, color grade, clothes and props as the previous shot; no time jump.")
     if lines:
         speakers = []
         for ln in lines:
