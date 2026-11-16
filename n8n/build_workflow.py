@@ -166,11 +166,32 @@ send = node("Telegram API", "n8n-nodes-base.httpRequest", 4.2, {
 # Telegram cho bot gửi ~1 tin/giây mỗi cuộc trò chuyện; quá nhanh sẽ bị từ chối (429). Mỗi tin gửi cách nhau 1,1 giây
 # và tự thử lại tối đa 5 lần (chờ 5 giây). Tin vẫn lỗi → báo bằng chữ thường để chủ kênh biết thiếu tin nào.
 tg_err = code("Báo tin Telegram lỗi", r"""
+// Tin bị Telegram từ chối. Lỗi định dạng HTML ("can't parse entities") → gửi lại đúng tin đó dạng chữ thường
+// (bỏ thẻ, không parse_mode), chia nhỏ nếu dài. Lỗi khác → báo cho chủ kênh biết thiếu tin nào.
+const plain = (t) => String(t || '').replace(/<[^>]+>/g, '')
+  .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#x27;/g, "'").replace(/&amp;/g, '&');
 const out = [];
-for (const it of $input.all()) {
+const items = $input.all();
+for (let i = 0; i < items.length; i++) {
+  const it = items[i];
   const e = it.json.error || {};
   const why = String(e.description || e.message || JSON.stringify(it.json)).slice(0, 300);
   if (/message is not modified|message to edit not found|query is too old/i.test(why)) continue;
+  let src = null;
+  try { src = $('Tách tin nhắn').itemMatching(i).json; } catch (err) { src = null; }
+  const p = (src && src.payload) || {};
+  const text = plain(p.text || p.caption || '');
+  if (/can't parse entities/i.test(why) && text) {
+    const markup = p.reply_markup ? (typeof p.reply_markup === 'string' ? JSON.parse(p.reply_markup) : p.reply_markup) : undefined;
+    const chunks = [];
+    for (let k = 0; k < text.length; k += 4000) chunks.push(text.slice(k, k + 4000));
+    chunks.forEach((c, k) => {
+      const m = { chat_id: p.chat_id || $env.TELEGRAM_CHAT_ID, text: c, disable_web_page_preview: true };
+      if (markup && k === chunks.length - 1 && !p.caption) m.reply_markup = markup;
+      out.push({ json: m });
+    });
+    continue;
+  }
   out.push({ json: { chat_id: $env.TELEGRAM_CHAT_ID,
     text: '⚠️ Telegram không nhận 1 tin của bot: ' + why + '\nGõ /clip để gửi lại prompt (hoặc /clip 2 cho riêng cảnh 2).' } });
 }

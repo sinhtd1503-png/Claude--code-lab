@@ -162,6 +162,7 @@ sau khi TikTok duyệt app (audit).
 | `/drive` | Kết nối Google Drive (lưu kịch bản đã duyệt) |
 | `/phongcach` | Xem/sửa phong cách kênh mẫu |
 | `/clip` | Gửi lại tất cả prompt clip; `/clip 2` gửi riêng cảnh 2 (khi thiếu tin) |
+| `/tansuat N` | Tần suất ra video: N ngày 1 kịch bản (vd `/tansuat 2`), áp dụng từ ngày mai; `/tansuat` xem lịch |
 
 ## Khi gặp lỗi
 

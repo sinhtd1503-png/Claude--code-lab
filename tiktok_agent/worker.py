@@ -100,8 +100,20 @@ def kb(*rows) -> dict:
     return {"inline_keyboard": [[{"text": t, "callback_data": d} for t, d in row] for row in rows if row]}
 
 
+TG_LIMIT = 4096
+
+
+def visible_len(text: str) -> int:
+    """Length Telegram counts for an HTML message (tags removed, entities decoded)."""
+    return len(html.unescape(re.sub(r"<[^>]+>", "", text)))
+
+
 def msg(text: str, buttons: dict | None = None, chat: int | None = None) -> dict:
-    p = {"chat_id": chat or CHAT, "text": text[:4096], "parse_mode": "HTML", "disable_web_page_preview": True}
+    p = {"chat_id": chat or CHAT, "text": text, "parse_mode": "HTML", "disable_web_page_preview": True}
+    if visible_len(text) > TG_LIMIT or len(text) > 3 * TG_LIMIT:
+        # never cut HTML (a cut tag makes Telegram refuse the whole message): send it as plain text instead
+        p["text"] = html.unescape(re.sub(r"<[^>]+>", "", text))[:TG_LIMIT - 1]
+        p.pop("parse_mode")
     if buttons:
         p["reply_markup"] = buttons
     return {"method": "sendMessage", "payload": p}
@@ -176,6 +188,7 @@ HELP = ("🤖 <b>Trợ lý kênh TikTok</b>\n\n"
         "/kehoach – lập kế hoạch 30 ngày mới\n"
         "/kichban – viết ngay kịch bản tiếp theo\n"
         "/clip – gửi lại prompt clip đang chờ (/clip 2 = riêng cảnh 2)\n"
+        "/tansuat – tần suất ra video (vd /tansuat 2 = 2 ngày 1 video, áp dụng từ ngày mai)\n"
         "/trangthai – xem tình trạng hệ thống\n"
         "/ngansach – chi phí tháng này\n"
         "/nhanvat – 6 nhân vật cố định (ảnh mẫu, ngoại hình, cách nói)\n"
@@ -339,7 +352,8 @@ def approve_plan(pid: int, message_id: int | None) -> dict:
         DB_.conn.execute("UPDATE plans SET status='approved' WHERE id=?", (pid,))
         DB_.conn.commit()
     return reply(clear_buttons(message_id),
-                 msg(f"✅ Đã duyệt kế hoạch #KH{pid}. Mỗi sáng (07:00) bot sẽ gửi 1 kịch bản.\n"
+                 msg(f"✅ Đã duyệt kế hoạch #KH{pid}. Bot gửi kịch bản lúc 07:00 theo tần suất "
+                     f"{freq_label(freq_on(dt.datetime.now(TZ).date())['days'])} (/tansuat để đổi).\n"
                      "Muốn làm ngay kịch bản đầu tiên: gõ /kichban\n\n"
                      "💡 Bước nên làm 1 lần: gõ /nhanvat — gửi ảnh mẫu cho 6 nhân vật để mọi clip giống nhau, "
                      "và /giong để nghe/chọn giọng từng người."))
@@ -565,6 +579,75 @@ def normalize_speakers(script: dict, bible: dict) -> dict:
     return script
 
 
+# ---------------------------------------------------------------- posting frequency (/tansuat)
+
+FREQ_KEY = "frequency"
+
+
+def freq_periods() -> list[dict]:
+    """[{from: 'YYYY-MM-DD', days: N}] oldest first; the first period comes from config (default every day)."""
+    base = max(1, int(S["content"].get("every_days", 1) or 1))
+    with LOCK:
+        saved = (DB_.kv_get(FREQ_KEY) or {}).get("periods") or []
+    return [{"from": "2000-01-01", "days": base}] + saved
+
+
+def freq_on(day: dt.date) -> dict:
+    return [p for p in freq_periods() if dt.date.fromisoformat(p["from"]) <= day][-1]
+
+
+def is_due(day: dt.date) -> bool:
+    p = freq_on(day)
+    return (day - dt.date.fromisoformat(p["from"])).days % int(p["days"]) == 0
+
+
+def next_due_days(start: dt.date, count: int = 5) -> list[dt.date]:
+    out, d = [], start
+    while len(out) < count and (d - start).days < 400:
+        if is_due(d):
+            out.append(d)
+        d += dt.timedelta(days=1)
+    return out
+
+
+def freq_label(n: int) -> str:
+    return "mỗi ngày 1 video" if n == 1 else f"{n} ngày 1 video"
+
+
+def set_frequency(n: int, mid: int | None = None) -> dict:
+    if not 1 <= n <= 30:
+        return reply(msg("Tần suất phải từ 1 đến 30 ngày. Ví dụ <code>/tansuat 2</code> = 2 ngày ra 1 video."))
+    tomorrow = dt.datetime.now(TZ).date() + dt.timedelta(days=1)
+    with LOCK:
+        saved = [p for p in (DB_.kv_get(FREQ_KEY) or {}).get("periods") or [] if p["from"] < tomorrow.isoformat()]
+        saved.append({"from": tomorrow.isoformat(), "days": n, "set_at": now_ts()})
+        DB_.kv_set(FREQ_KEY, {"periods": saved[-20:]})
+    dates = ", ".join(d.strftime("%d/%m") for d in next_due_days(tomorrow))
+    return reply(clear_buttons(mid), msg(
+        f"✅ Đã đặt tần suất: <b>{freq_label(n)}</b>, áp dụng từ ngày mai ({tomorrow.strftime('%d/%m')}). "
+        f"Hôm nay giữ như cũ.\n📅 Các ngày bot gửi kịch bản (07:00): {dates}\n\n"
+        "Kế hoạch 30 ý tưởng vẫn dùng lần lượt, chỉ giãn ra theo tần suất mới. Cần video gấp: gõ /kichban bất kỳ lúc nào."))
+
+
+def frequency_cmd(text: str) -> dict:
+    arg = text.partition(" ")[2].strip()
+    if arg:
+        m = re.search(r"\d+", arg)
+        return set_frequency(int(m.group())) if m else reply(msg("Gõ số ngày, ví dụ <code>/tansuat 2</code>."))
+    today = dt.datetime.now(TZ).date()
+    cur = freq_on(today)["days"]
+    tomorrow = today + dt.timedelta(days=1)
+    nxt = freq_on(tomorrow)["days"]
+    dates = ", ".join(d.strftime("%d/%m") for d in next_due_days(today))
+    lines = [f"🗓 <b>Tần suất ra video:</b> {freq_label(cur)}"
+             + (f" (từ ngày mai: {freq_label(nxt)})" if nxt != cur else ""),
+             f"📅 Các ngày gửi kịch bản sắp tới (07:00): {dates}", "",
+             "Đổi tần suất: gõ <code>/tansuat N</code> (N = số ngày ra 1 video, 1–30) hoặc bấm nút. "
+             "Áp dụng từ ngày mai."]
+    return reply(msg("\n".join(lines), kb([("Mỗi ngày", "tf:1"), ("2 ngày/lần", "tf:2"), ("3 ngày/lần", "tf:3")],
+                                          [("4 ngày/lần", "tf:4"), ("Mỗi tuần", "tf:7")])))
+
+
 def next_script(scheduled: bool = False) -> dict:
     with LOCK:
         plan = active_plan()
@@ -579,6 +662,8 @@ def next_script(scheduled: bool = False) -> dict:
             today = dt.datetime.now(TZ).date().isoformat()
             if (DB_.kv_get("last_daily") or {}).get("date") == today:
                 return reply()
+            if not is_due(dt.datetime.now(TZ).date()):
+                return reply()  # not a video day under the current frequency (/tansuat)
             DB_.kv_set("last_daily", {"date": today})
         row = DB_.conn.execute("SELECT * FROM plan_days WHERE plan_id=? AND status='planned' ORDER BY day_no LIMIT 1",
                                (plan["id"],)).fetchone()
@@ -667,7 +752,7 @@ def prompt_messages(cid: int) -> list[dict]:
                        "dung và gửi lại cho bot — từ lần sau các clip sẽ giống mặt hơn."))
     for i, s in enumerate(m["shots"]):
         scene = item["script"]["scenes"][i]
-        out.append(scene_prompt_msg(cid, i, n, scene, s["prompt"], ingredients_note(bible, scene)))
+        out.extend(scene_prompt_msg(cid, i, n, scene, s["prompt"], ingredients_note(bible, scene)))
     if os.getenv("GEMINI_API_KEY"):
         usd = float((S.raw.get("budget") or {}).get("services", {}).get("gemini_video", {}).get("usd_per_clip", 0.19))
         out.append(msg("Không muốn tạo tay?",
@@ -680,9 +765,49 @@ def ingredients_note(bible: dict, scene: dict) -> str:
     return f"\n🧩 Ingredients: {esc(', '.join(names))}" if names else ""
 
 
-def scene_prompt_msg(cid: int, i: int, n: int, scene: dict, prompt: str, note: str = "") -> dict:
-    return msg(f"🎬 <b>#{cid} · Cảnh {i + 1}/{n}</b> – {esc(scene['visual_vi'])}{note}\n\n<code>{esc(prompt)}</code>",
-               kb([("🛡 Flow báo vi phạm chính sách → viết lại", f"fp:{cid * 100 + i}")]))
+PROMPT_CHUNK = 3500
+
+
+def split_text(text: str, limit: int = PROMPT_CHUNK) -> list[str]:
+    """Split RAW text into pieces <= limit chars: at line breaks first, then at sentence ends, hard cut last."""
+    pieces: list[str] = []
+    for line in text.split("\n"):
+        while len(line) > limit:
+            cut = max(line.rfind(". ", 0, limit), line.rfind("; ", 0, limit), line.rfind(", ", 0, limit))
+            cut = cut + 1 if cut > limit // 3 else (line.rfind(" ", 0, limit) if line.rfind(" ", 0, limit) > 0 else limit)
+            pieces.append(line[:cut].rstrip())
+            line = line[cut:].lstrip()
+        pieces.append(line)
+    chunks, cur = [], ""
+    for p in pieces:
+        add = p if not cur else cur + "\n" + p
+        if len(add) > limit and cur:
+            chunks.append(cur)
+            cur = p
+        else:
+            cur = add
+    if cur.strip():
+        chunks.append(cur)
+    return chunks or [""]
+
+
+def code_esc(text: str) -> str:
+    return html.escape(text, quote=False)  # quotes need no escaping inside <code> (and &quot; wastes 5 chars)
+
+
+def scene_prompt_msg(cid: int, i: int, n: int, scene: dict, prompt: str, note: str = "") -> list[dict]:
+    """One scene prompt; split into several messages (each its own complete <code> block) if it is long."""
+    head = f"🎬 <b>#{cid} · Cảnh {i + 1}/{n}</b>"
+    parts = split_text(prompt)
+    out = []
+    for k, part in enumerate(parts):
+        label = f" · phần {k + 1}/{len(parts)}" if len(parts) > 1 else ""
+        top = (f"{head}{label} – {esc(scene['visual_vi'])}{note}" if k == 0 else f"{head}{label}")
+        if k == 0 and len(parts) > 1:
+            top += f"\n⚠️ Prompt dài: chép lần lượt {len(parts)} phần, dán nối tiếp vào cùng một ô prompt trong Flow."
+        out.append(msg(f"{top}\n\n<code>{code_esc(part)}</code>"))
+    out[-1]["payload"]["reply_markup"] = kb([("🛡 Flow báo vi phạm chính sách → viết lại", f"fp:{cid * 100 + i}")])
+    return out
 
 
 def fix_prompt(n: int) -> dict:
@@ -1647,7 +1772,10 @@ def status_text() -> str:
                                    "('script_review','awaiting_clips','rendering','video_review') ORDER BY id").fetchall()
         rem = remaining_days()
     lines = ["📊 <b>Tình trạng</b>", ""]
-    lines.append(f"Kế hoạch: #KH{lp['id']} ({lp['status']}), còn {rem} ngày chưa viết" if lp else "Kế hoạch: chưa có")
+    lines.append(f"Kế hoạch: #KH{lp['id']} ({lp['status']}), còn {rem} ý tưởng chưa viết" if lp else "Kế hoạch: chưa có")
+    today = dt.datetime.now(TZ).date()
+    lines.append(f"Tần suất: {freq_label(freq_on(today)['days'])} · kịch bản tới: "
+                 + ", ".join(d.strftime("%d/%m") for d in next_due_days(today, 3)) + " (/tansuat để đổi)")
     names = {"script_review": "chờ duyệt kịch bản", "awaiting_clips": "chờ clip", "rendering": "đang ghép",
              "video_review": "chờ duyệt video"}
     for w in waiting:
@@ -1802,7 +1930,8 @@ def tg_command(body: dict = BODY, x_worker_token: str = TOKEN) -> dict:
              "/phongcach": lambda: style_cmd(str(body.get("text", ""))),
              "/drive": drive_cmd, "/giong": lambda: voice_cmd_text(str(body.get("text", ""))),
              "/themnv": lambda: add_cast_cmd(str(body.get("text", ""))),
-             "/clip": lambda: resend_prompts(str(body.get("text", "")))}
+             "/clip": lambda: resend_prompts(str(body.get("text", ""))),
+             "/tansuat": lambda: frequency_cmd(str(body.get("text", "")))}
     return _safe(table.get(cmd, lambda: reply(msg(HELP))))
 
 
@@ -1851,6 +1980,7 @@ def tg_button(body: dict = BODY, x_worker_token: str = TOKEN) -> dict:
         "gp": lambda: voice_sample(n),
         "gv": lambda: cycle_voice(n, mid),
         "ge": lambda: ask_voice_edit(n),
+        "tf": lambda: set_frequency(n, mid),
         "am": lambda: reply(msg("⏳ Đang đổi nhạc…"), next_step={"action": "audio", "id": n, "what": "music"}),
         "av": lambda: reply(msg("⏳ Đang đổi giọng đọc…"), next_step={"action": "audio", "id": n, "what": "voice"}),
         "dc": lambda: drive_check(mid),
