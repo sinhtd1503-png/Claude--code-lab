@@ -40,6 +40,7 @@ class ManualClipSource:
         self.log_path.parent.mkdir(parents=True, exist_ok=True)
         self.content_id: int | None = None
         self.run: dict | None = None
+        self.keep_full = True  # never cut a clip (video.keep_full_clip); render sets it from config
 
     # ---------- shared helpers ----------
     wants_ai = AIVideoSource.wants_ai
@@ -151,9 +152,42 @@ class ManualClipSource:
                 self.run["shots"].append({"scene": s["scene"], "shot": 1, "seconds": round(clip_len, 2)})
                 self.run["ai_seconds"] += clip_len
             return out
+        if not self.keep_full:
+            return self._cut_to(shots, duration, scene_index, base_vf, workdir)
+        # keep_full_clip: every clip is used whole (with its ambient sound); a narration longer than the clip(s)
+        # slows them down up to max_stretch, and anything still missing holds the last frame
+        stretch = float(self.manual.get("max_stretch", 1.25))
+        raw = sum(_probe_duration(Path(s["file"])) for s in shots)
+        factor = min(max(1.0, duration / raw), stretch) if raw > 0 else 1.0
+        for s in shots:
+            out = workdir / f"flow_s{s['scene']}_{s['shot']}.mkv"
+            _normalize(Path(s["file"]), out, base_vf, factor)
+            parts.append(out)
+            if self.run is not None:
+                self.run["shots"].append({"scene": s["scene"], "shot": s["shot"], "seconds": round(_probe_duration(out), 2),
+                                          "slowdown": round(factor, 3)})
+        if len(parts) == 1:
+            joined = parts[0]
+        else:
+            lst = workdir / f"flow_s{scene_index}.txt"
+            lst.write_text("".join(f"file '{p.name}'\n" for p in parts))
+            joined = workdir / f"flow_s{scene_index}.mkv"
+            _ffmpeg(["-f", "concat", "-safe", "0", "-i", lst.name, "-c", "copy", joined.name], cwd=workdir)
+        got = _probe_duration(joined)
+        if self.run is not None:
+            self.run["ai_seconds"] += got
+        if got + 0.05 < duration:  # still shorter than the narration: hold the last frame (never loop the clip)
+            held = workdir / f"flow_s{scene_index}_held.mkv"
+            _ffmpeg(["-i", str(joined), "-vf", f"tpad=stop_mode=clone:stop_duration={duration - got + 0.05:.3f}",
+                     "-af", f"apad,atrim=0:{duration:.3f}", "-t", f"{duration:.3f}", "-c:v", "libx264",
+                     "-preset", "veryfast", "-crf", "18", "-c:a", "pcm_s16le", str(held)])
+            return held
+        return joined
+
+    def _cut_to(self, shots: list[dict], duration: float, scene_index: int, base_vf: str, workdir: Path) -> Path:
+        """Old behaviour (keep_full_clip: false): fit the clip(s) to the narration length, video only."""
+        parts = []
         if len(shots) == 1:
-            # One clip for the whole scene: if the voice-over is longer, slow the clip down slightly
-            # (up to max_stretch) instead of visibly looping it; if shorter, just cut it.
             s = shots[0]
             clip_len = _probe_duration(Path(s["file"]))
             factor = min(max(1.0, duration / clip_len), self.manual.get("max_stretch", 1.25))
@@ -165,7 +199,7 @@ class ManualClipSource:
                                           "clip_sec": round(clip_len, 2), "slowdown": round(factor, 3)})
                 self.run["ai_seconds"] += duration
             return out
-        for s in shots:  # several clips: trim each to its planned length and normalize format
+        for s in shots:
             out = workdir / f"flow_s{s['scene']}_{s['shot']}.mp4"
             _ffmpeg(["-i", s["file"], "-t", str(s["seconds"]), "-an", "-vf", base_vf,
                      "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", str(out)])
@@ -206,3 +240,24 @@ def _ffmpeg(args: list[str], cwd: Path | None = None) -> None:
     proc = subprocess.run(["ffmpeg", "-y", "-v", "error", *args], cwd=cwd, capture_output=True, text=True)
     if proc.returncode != 0:
         raise RuntimeError(f"ffmpeg lỗi khi xử lý clip Flow: {proc.stderr[-600:]}")
+
+
+def _has_audio(path: Path) -> bool:
+    out = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "a", "-show_entries", "stream=index",
+                          "-of", "json", str(path)], capture_output=True, text=True).stdout or "{}"
+    return bool(json.loads(out).get("streams"))
+
+
+def _normalize(src: Path, out: Path, base_vf: str, factor: float = 1.0) -> None:
+    """Whole clip → common format (H.264 + 48 kHz stereo PCM). Slowed by `factor` if > 1 (ambient sound follows
+    with atempo); a clip without sound gets silence so every part has the same streams."""
+    vf = (f"setpts={factor:.4f}*PTS," if factor > 1.0005 else "") + base_vf
+    if _has_audio(src):
+        a_in, af = [], (f"atempo={1 / factor:.5f}," if factor > 1.0005 else "") + \
+            "aresample=48000,aformat=sample_fmts=s16:channel_layouts=stereo"
+        amap = ["-map", "0:v", "-map", "0:a", "-af", af]
+    else:
+        a_in = ["-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo"]
+        amap = ["-map", "0:v", "-map", "1:a", "-shortest"]
+    _ffmpeg(["-i", str(src), *a_in, *amap, "-vf", vf, "-c:v", "libx264", "-preset", "veryfast", "-crf", "18",
+             "-c:a", "pcm_s16le", str(out)])

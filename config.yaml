@@ -153,8 +153,16 @@ video:
   # Chỉ dùng nhạc KHÔNG BẢN QUYỀN (YouTube Audio Library, Pixabay Music…). Xem danh sách: /nhac
   background_music: ""        # (tuỳ chọn) cố định 1 file nhạc cho mọi video; để trống = xoay vòng thư viện
   music_dir: "music"          # thư mục nhạc trong data/
-  music_volume: 0.15          # âm lượng nhạc nền (nhẹ, nằm dưới lời thoại)
-  music_duck: true            # tự hạ nhỏ nhạc khi có giọng đọc
+  music_volume: 0.22          # mức nền của nhạc (một bài chạy liền từ đầu đến hết video, kể cả đoạn kết)
+  music_duck: true            # hạ nhạc NHẸ chỉ khi có người nói (không bị tiếng mưa/gió kéo xuống)
+  music_floor: 0.5            # khi hạ, nhạc không bao giờ dưới 50% mức nền
+  music_crossfade: 1.5        # bài ngắn hơn video thì lặp lại, nối mềm (crossfade) N giây
+  music_fade_out: 2.5         # nhạc tắt dần N giây cuối (chỉ trong đoạn kết, không đè lời thoại)
+  music_min_dbfs: -35         # sau khi ghép: đoạn 8 giây nào nhạc nhỏ hơn mức này thì bot cảnh báo
+  keep_full_clip: true        # KHÔNG cắt clip AI 8 giây: mỗi cảnh dài = max(clip, lời đọc); chỉ làm chậm khi lời dài hơn
+  clip_ambient_volume: 0.35   # tiếng nền của clip (gió, chim…) giữ lại nhỏ dưới lời đọc (chế độ lời dẫn)
+  outro_sec: 3.5              # đoạn kết: giữ khung cuối, zoom-out rất chậm, mờ dần sang tối ấm; 0 = không có
+  outro_text: ""              # chữ hiện giữa đoạn kết (để trống = không có), vd "Bạn còn nhớ không?"
   fallback_query: "family warm sunset"
 
 ai_video:
