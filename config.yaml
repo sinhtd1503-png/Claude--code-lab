@@ -122,6 +122,7 @@ content:
   target_duration_sec: 24     # độ dài video mong muốn (kênh mẫu: 15–30 giây)
   scenes: 3                   # số cảnh cố định: 3 cảnh × 1 clip AI 8 giây ≈ 22–26 giây (đặt 4 nếu muốn ~30 giây)
   videos_per_day: 1
+  every_days: 1               # tần suất mặc định: N ngày ra 1 kịch bản/video (đổi nhanh trên Telegram: /tansuat 2)
   plan_days: 30               # số ngày mỗi kế hoạch (n8n + worker)
 
 voice:
