@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import math
 import re
 import subprocess
 import time
@@ -166,6 +167,7 @@ def music_settings(cfg: dict) -> dict:
             "floor": float(v.get("music_floor", 0.5)), "xfade": float(v.get("music_crossfade", 1.5)),
             "fade_out": float(v.get("music_fade_out", 2.5)), "outro": float(v.get("outro_sec", 3.5)),
             "min_dbfs": float(v.get("music_min_dbfs", -35)),
+            "level": str(v.get("music_level", "auto")), "below": float(v.get("music_below_voice_db", 12)),
             "ambient": float(v.get("clip_ambient_volume", 0.35))}
 
 
@@ -202,6 +204,32 @@ def music_bed(music: str, total: float, out: Path, xfade: float = 1.5) -> Path:
     return out
 
 
+def rms_db(path: str | Path, ss: float | None = None, t: float | None = None) -> float:
+    a = ["ffmpeg", "-v", "info"] + (["-ss", f"{ss:.3f}"] if ss is not None else []) + \
+        (["-t", f"{t:.3f}"] if t else []) + ["-i", str(path), "-vn", "-af", "volumedetect", "-f", "null", "-"]
+    m = re.search(r"mean_volume: (-?[\d.]+|-inf) dB", subprocess.run(a, capture_output=True, text=True).stderr)
+    return float(m.group(1)) if m and m.group(1) != "-inf" else -120.0
+
+
+def auto_music_volume(cfg: dict, voice: str | Path | None, bed: str | Path,
+                      spans: list[tuple[float, float]]) -> float:
+    """Music gain so the bed sits `music_below_voice_db` under the voices — whatever the clips' or the track's own
+    loudness — so it is always audible but never covers the dialogue. music_level: fixed → music_volume as is."""
+    st = music_settings(cfg)
+    if st["level"] != "auto" or not voice:
+        return st["volume"]
+    sp = [(a, b) for a, b in merge_spans(spans, 0, 0) if b - a > 0.3][:12]
+    levels = [rms_db(voice, a, b - a) for a, b in sp] if sp else [rms_db(voice)]
+    levels = [x for x in levels if x > -90]
+    m = rms_db(bed)
+    if not levels or m < -90:
+        return st["volume"]
+    voice_db = 10 * math.log10(sum(10 ** (x / 10) for x in levels) / len(levels))
+    target = max(voice_db - st["below"], st["min_dbfs"] + 4)  # never so low that the music seems to vanish
+    gain = 10 ** ((target - m) / 20)
+    return round(max(0.05, min(6.0, gain)), 4)  # up to +15.6 dB for very quiet tracks
+
+
 def merge_spans(spans: list[tuple[float, float]], pre: float = 0.1, post: float = 0.3) -> list[tuple[float, float]]:
     out: list[list[float]] = []
     for a, b in sorted((max(0.0, a - pre), b + post) for a, b in spans if b > a):
@@ -213,7 +241,8 @@ def merge_spans(spans: list[tuple[float, float]], pre: float = 0.1, post: float 
 
 
 def mix_graph(total: float, cfg: dict, voice: str | None, music: str | None, spans: list[tuple[float, float]],
-              ambient: str | None = None, voice_pre: str = "", ambient_pre: str = "", stems: bool = True) -> str:
+              ambient: str | None = None, voice_pre: str = "", ambient_pre: str = "", stems: bool = True,
+              volume: float | None = None) -> str:
     """ffmpeg filter graph → [a] (final mix), [vst] (voice stem), [mst] (music stem).
 
     • voice  : passed through untouched (only resampled to a common format) — volume and speed never change
@@ -234,7 +263,8 @@ def mix_graph(total: float, cfg: dict, voice: str | None, music: str | None, spa
         mix.append("[v1]")
     if music:
         fo = min(st["fade_out"], max(0.5, st["outro"] - 0.3)) if st["outro"] > 0 else min(st["fade_out"], total / 4)
-        parts.append(f"{music}{fmt},apad,atrim=0:{total:.3f},volume={st['volume']},afade=t=in:d=0.4,"
+        parts.append(f"{music}{fmt},apad,atrim=0:{total:.3f},volume={st['volume'] if volume is None else volume},"
+                     "afade=t=in:d=0.4,"
                      f"afade=t=out:st={max(0.0, total - fo):.3f}:d={fo:.3f}[m0]")
         sp = merge_spans(spans)
         if st["duck"] and sp:
@@ -315,7 +345,8 @@ def soundtrack(out: Path, total: float, cfg: dict, voice_file: str | None, music
             else:
                 al = f"[{k}:a]"
             k += 1
-    kw = dict(voice_pre=stereo_prefix(voice_file), ambient_pre=stereo_prefix(ambient_file))
+    kw = dict(voice_pre=stereo_prefix(voice_file), ambient_pre=stereo_prefix(ambient_file),
+              volume=auto_music_volume(cfg, voice_file, bed, spans) if bed else None)
     ms = workdir / "stem_music.wav"
     _run(["ffmpeg", "-y", *ins, "-filter_complex", mix_graph(total, cfg, vl, ml, spans, al, stems=False, **kw),
           "-map", "[a]", "-t", f"{total:.3f}", *(codec or ["-c:a", "libmp3lame", "-b:a", "160k"]), str(out)])

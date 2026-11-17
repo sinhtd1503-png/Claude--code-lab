@@ -324,7 +324,17 @@ def clip_prompt(bible: dict, scene: dict, index: int, total: int, script: dict |
     prev = scenes[index - 1] if script and 0 < index <= len(scenes) else None
     chars = {c["name"].strip().lower(): c for c in bible.get("characters", [])}
     lines = scene.get("lines") or []
-    parts = [
+    parts = []
+    if prev:  # continuation first: video models weigh the start of the prompt most
+        parts += [
+            f"CONTINUATION of the previous clip (clip {index} of {total}) — NO cut, NO new scene: the same place, the "
+            "same moment, the same people with the same faces, hair and clothes, the same camera lens, framing and "
+            "height, the same lighting and color grade. Begin exactly on the previous clip's last frame.",
+            f"Previous clip (already filmed): {prev.get('action_en', '').rstrip('.')}. It ended on: "
+            f"{(prev.get('end_en') or 'the characters in the same positions').rstrip('.')}. "
+            f"Previous camera: {prev.get('camera_en', 'gentle movement').rstrip('.')}.",
+        ]
+    parts += [
         "Vertical 9:16 animated shot, 8 seconds, part of a short nostalgic film about a Vietnamese 1990s childhood "
         "memory. The same family appears in every shot of this film.",
         f"Visual style (identical in every shot): {bible.get('style_en', '').rstrip('.')}.",
@@ -368,10 +378,34 @@ def clip_prompt(bible: dict, scene: dict, index: int, total: int, script: dict |
     else:
         parts.append("No dialogue.")
     amb = (scene.get("ambient_en") or "").rstrip(".")
-    parts.append(f"Sound: {'the dialogue and ' if lines else ''}soft ambient sound{(' (' + amb + ')') if amb else ''}; "
-                 "no background music, no narrator.")
+    parts.append(f"Sound: only {'the dialogue and ' if lines else ''}soft natural ambient sound"
+                 f"{(' (' + amb + ')') if amb else ''}. Absolutely NO music, no soundtrack, no score, no singing, "
+                 "no narrator (music is added later for the whole film).")
     parts.append("Wholesome, family-friendly; everyone fully clothed and safe. No text, no captions, no subtitles, "
                  "no logos, no watermark.")
+    return sanitize("\n".join(parts))
+
+
+def extend_prompt(bible: dict, scene: dict, index: int, total: int, script: dict | None = None) -> str:
+    """Short prompt for Google Flow's "Extend" (continue the previous clip): only what happens next."""
+    chars = {c["name"].strip().lower(): c for c in bible.get("characters", [])}
+    lines = scene.get("lines") or []
+    parts = [f"Continue this exact shot seamlessly for 8 more seconds (clip {index + 1} of {total}): same place, same "
+             "people, same clothes, same lighting, same camera lens; no cut, no new people.",
+             f"Action: {scene['action_en'].rstrip('.')}.",
+             f"Camera: {scene.get('camera_en', 'slow gentle movement').rstrip('.')}."]
+    end = (scene.get("end_en") or "").strip().rstrip(".")
+    if end:
+        parts.append(f"End on: {end}.")
+    if lines:
+        spoken = []
+        for ln in lines:
+            c = chars.get(ln["speaker"].strip().lower()) or {}
+            v = f"; {c['voice_en'].rstrip('.')}" if c.get("voice_en") else ""
+            spoken.append(f'{ln["speaker"]} ({(ln.get("delivery_en") or "natural").rstrip(".")}{v}) says in Vietnamese: '
+                          f'"{ln["text"]}"')
+        parts.append("Dialogue, accurate lip-sync: " + " Then ".join(spoken) + ".")
+    parts.append("Sound: only the dialogue and soft ambient sound; absolutely no music. No text, no captions.")
     return sanitize("\n".join(parts))
 
 

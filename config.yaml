@@ -153,7 +153,11 @@ video:
   # Chỉ dùng nhạc KHÔNG BẢN QUYỀN (YouTube Audio Library, Pixabay Music…). Xem danh sách: /nhac
   background_music: ""        # (tuỳ chọn) cố định 1 file nhạc cho mọi video; để trống = xoay vòng thư viện
   music_dir: "music"          # thư mục nhạc trong data/
-  music_volume: 0.22          # mức nền của nhạc (một bài chạy liền từ đầu đến hết video, kể cả đoạn kết)
+  music_level: "auto"         # auto = tự cân nhạc nằm dưới giọng trong clip N dB (luôn nghe rõ, không lấn thoại);
+                              # "fixed" = dùng đúng music_volume
+  music_below_voice_db: 12    # (auto) nhạc nhỏ hơn giọng bao nhiêu dB: số nhỏ hơn = nhạc to hơn (vd 9)
+  music_volume: 0.22          # mức nhạc khi music_level: fixed (và khi không đo được giọng)
+  clip_edge_fade_ms: 60       # làm mềm tiếng nền ở điểm nối giữa các clip 8 giây (mili giây)
   music_duck: true            # hạ nhạc NHẸ chỉ khi có người nói (không bị tiếng mưa/gió kéo xuống)
   music_floor: 0.5            # khi hạ, nhạc không bao giờ dưới 50% mức nền
   music_crossfade: 1.5        # bài ngắn hơn video thì lặp lại, nối mềm (crossfade) N giây

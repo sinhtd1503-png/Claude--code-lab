@@ -192,26 +192,29 @@ def final_mix(workdir: Path, cfg: dict, total: float, joined: str, voice_file: s
     if voice_file:
         ins += ["-i", voice_file]
         vl, k = f"[{k}:a]", k + 1
-    ml = None
+    ml, vol = None, None
     if music:
         bed = audio.music_bed(music, total, workdir / "music_bed.wav", st["xfade"])
         ins += ["-i", str(bed)]
         ml, k = f"[{k}:a]", k + 1
+        vref = voice_file or (str(workdir / joined) if voice_from_joined else None)
+        vol = audio.auto_music_volume(cfg, vref, bed, spans)
     amb = "[0:a]" if ambient_from_joined else None
     vpre = audio.stereo_prefix(voice_file) if voice_file else ""
-    graph = audio.mix_graph(total, cfg, vl, ml, spans, amb, voice_pre=vpre, stems=False)
+    graph = audio.mix_graph(total, cfg, vl, ml, spans, amb, voice_pre=vpre, stems=False, volume=vol)
     _run(["ffmpeg", "-y", *ins, "-filter_complex",
           f"[0:v]subtitles=subs.srt:force_style='{subtitle_style(cfg['video'])}'[v];{graph}",
           "-map", "[v]", "-map", "[a]", "-t", f"{total:.3f}", "-c:v", "libx264", "-preset", "medium", "-crf", "20",
           "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", "-ar", str(SR), "-movflags", "+faststart",
           "final.mp4"], cwd=workdir)
-    audio.write_stems(ins, audio.mix_graph(total, cfg, vl, ml, spans, amb, voice_pre=vpre), total, workdir, cwd=workdir)
+    audio.write_stems(ins, audio.mix_graph(total, cfg, vl, ml, spans, amb, voice_pre=vpre, volume=vol), total, workdir,
+                      cwd=workdir)
     warnings = []
     if not music:
         warnings.append("chưa có nhạc nền — gửi file mp3 cho bot để thêm vào thư viện (/nhac)")
     else:
         warnings += audio.check_music(workdir / "stem_music.wav", total, cfg)
-    report = {"total": round(total, 3), "warnings": warnings, "spans": spans,
+    report = {"total": round(total, 3), "warnings": warnings, "spans": spans, "music_gain": vol,
               "music_windows": audio.window_levels(workdir / "stem_music.wav", total) if music else []}
     (workdir / "mix_report.json").write_text(json.dumps(report, ensure_ascii=False), encoding="utf-8")
     return report

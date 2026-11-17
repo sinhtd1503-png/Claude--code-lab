@@ -280,9 +280,12 @@ Mỗi lần bạn bấm **Duyệt kịch bản**, hệ thống cập nhật mộ
    **ảnh mẫu của đúng các nhân vật ghi ở dòng "🧩 Ingredients"** dưới cảnh đó (bot gửi sẵn các ảnh này trước
    các prompt) → **Tạo**.
 4. Clip xong → bấm **Tải xuống** → lưu vào **Ảnh** hoặc **Tệp**.
-   **Để các cảnh nối liền:** tạo đúng thứ tự Cảnh 1 → 2 → 3…; gửi clip cảnh trước cho bot, bot gửi lại **khung cuối**
-   → với cảnh sau, trong Flow chọn *Frames to Video*, đặt ảnh khung cuối làm **khung bắt đầu** (hoặc dùng *Extend*),
-   thêm cùng các ảnh nhân vật ở *Ingredients*, rồi dán prompt. Âm thanh trong clip được **giữ nguyên** khi ghép.
+   **Để các cảnh nối liền:** tạo đúng thứ tự Cảnh 1 → 2 → 3…; gửi clip cảnh trước cho bot. Với cảnh 2 trở đi có 2 cách:
+   - **Cách liền nhất – Extend:** trong Flow mở clip cảnh trước → **Extend** → dán **prompt ngắn 🔁** bot gửi riêng
+     cho cảnh đó → tải phần kéo dài về, Trả lời tin 🔁 bằng clip.
+   - **Frames to Video:** đặt **khung cuối** bot gửi làm khung bắt đầu, thêm cùng các ảnh nhân vật ở *Ingredients*,
+     dán prompt dài (prompt từ cảnh 2 mở đầu bằng "CONTINUATION…" để giữ đúng người, chỗ, ánh sáng, góc máy).
+   Prompt yêu cầu clip **không tự có nhạc**; nhạc nền do bot thêm liền một bài cho cả video. Giọng trong clip giữ nguyên.
 5. Telegram → **chạm giữ tin "Cảnh 1"** → **Trả lời** → biểu tượng 📎 → chọn clip → Gửi.
 6. Bot trả lời "đã nhận cảnh 1 (1/4)" và gửi **khung hình cuối của cảnh 1**. Với cảnh 2, nếu Flow có chế độ
    *Frames to Video*, dùng ảnh này làm **khung bắt đầu** để hai cảnh nối liền mạch.
@@ -299,6 +302,9 @@ Mỗi lần bạn bấm **Duyệt kịch bản**, hệ thống cập nhật mộ
 - **Không cắt clip 8 giây** (`keep_full_clip: true`): mỗi cảnh dài bằng clip AI thật, hoặc bằng lời đọc nếu lời dài
   hơn (khi đó clip được làm chậm tối đa `max_stretch`). Lời đọc của mỗi cảnh luôn bắt đầu ngay đầu cảnh đó; phụ đề
   chạy theo. Tiếng nền của clip (gió, chim…) giữ lại nhỏ dưới lời đọc (`clip_ambient_volume: 0.35`).
+- **Mức nhạc tự cân** (`music_level: "auto"`): nhạc luôn nằm dưới giọng trong clip khoảng `music_below_voice_db: 12`
+  dB (muốn nhạc to hơn: giảm số này, vd 9), bài nhạc nhỏ được tự tăng, bài to tự giảm; không bao giờ tụt dưới mức nghe
+  được. Ở điểm nối giữa các clip, tiếng nền được làm mềm (`clip_edge_fade_ms: 60`).
 - **Nhạc nền liên tục:** một bài chạy từ giây 0 đến hết video, bài ngắn thì lặp lại có nối mềm
   (`music_crossfade: 1.5`). Mức nền `music_volume: 0.22`; khi có người nói nhạc chỉ hạ nhẹ, không bao giờ dưới
   `music_floor: 0.5` (50%); tiếng mưa, gió trong clip không làm nhạc nhỏ đi.
@@ -344,6 +350,7 @@ Mỗi lần bạn bấm **Duyệt kịch bản**, hệ thống cập nhật mộ
 | `/clip` | Gửi lại tất cả prompt clip; `/clip 2` gửi riêng cảnh 2 (khi thiếu tin) |
 | `/tansuat N` | Tần suất ra video: N ngày 1 kịch bản (vd `/tansuat 2`), áp dụng từ ngày mai; `/tansuat` xem lịch |
 | `/socanh N` | Số cảnh mỗi video (2–6; mỗi cảnh 8 giây), vd `/socanh 4` ≈ 32 giây; áp dụng từ kịch bản tiếp theo |
+| `/doithu`, `/kenhmau` | Xem/sửa kênh đối thủ và kênh mẫu: `/doithu them @kenh` (hoặc dán link TikTok), `/doithu xoa @kenh`, `/kenhmau dat @kenh` → bấm **🔄 Lập kế hoạch mới** |
 | `/nhanvat` | 6 nhân vật cố định: ảnh mẫu, ngoại hình, cách nói (Trả lời thẻ để sửa) |
 | `/giong` | Nghe/đổi giọng từng nhân vật; `/giong Ông pitch -10 rate -5` hoặc `/giong Bé Na cao hơn` để nhập cao độ/tốc độ |
 | `/themnv Tên - vai` | Thêm nhân vật mới (vd `/themnv Cô Lan - cô giáo`); hoặc gửi ảnh chú thích `Tên - vai` → ➕ Nhân vật mới |

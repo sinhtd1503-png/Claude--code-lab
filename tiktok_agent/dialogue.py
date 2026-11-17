@@ -290,10 +290,12 @@ def render_dialogue(script: dict, workdir: Path, cfg: dict, stock_key: str, ai, 
             fb = scene_voice(lines, characters, cfg, dur, workdir, f"fb{i}")
             a_in, a_map, times = ["-i", fb["path"]], "1:a", fb["times"]
         fade = ",fade=t=in:st=0:d=0.25" if i == 0 else ""  # no dip to black between scenes: they must flow
+        ef = float(vid.get("clip_edge_fade_ms", 60)) / 1000  # soften the jump in background sound at each join
+        edge = (f",afade=t=in:d={ef:.3f},afade=t=out:st={max(0.0, dur - ef):.3f}:d={ef:.3f}" if ef > 0 else "")
         # audio: only resampled/converted to a common format (no volume, speed or EQ change), kept as lossless PCM
         _run(["ffmpeg", "-y", *v_in, *a_in, "-filter_complex",
               f"[0:v]{vf}{fade}[v];[{a_map}]{up}aresample={SR},aformat=sample_fmts=s16:channel_layouts=stereo,"
-              f"apad,atrim=0:{dur:.3f}[a]",
+              f"apad,atrim=0:{dur:.3f}{edge}[a]",
               "-map", "[v]", "-map", "[a]", "-t", f"{dur:.3f}", "-c:v", "libx264", "-preset", "veryfast",
               "-crf", "18", "-c:a", "pcm_s16le", str(seg)])
         segments.append(seg)
