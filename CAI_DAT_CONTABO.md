@@ -164,6 +164,7 @@ sau khi TikTok duyệt app (audit).
 | `/clip` | Gửi lại tất cả prompt clip; `/clip 2` gửi riêng cảnh 2 (khi thiếu tin) |
 | `/tansuat N` | Tần suất ra video: N ngày 1 kịch bản (vd `/tansuat 2`), áp dụng từ ngày mai; `/tansuat` xem lịch |
 | `/socanh N` | Số cảnh mỗi video (2–6; mỗi cảnh 8 giây), vd `/socanh 4` ≈ 32 giây; áp dụng từ kịch bản tiếp theo |
+| `/doithu`, `/kenhmau` | Xem/sửa kênh đối thủ và kênh mẫu: `/doithu them @kenh` (hoặc dán link TikTok), `/doithu xoa @kenh`, `/kenhmau dat @kenh` → bấm **🔄 Lập kế hoạch mới** |
 
 ## Khi gặp lỗi
 

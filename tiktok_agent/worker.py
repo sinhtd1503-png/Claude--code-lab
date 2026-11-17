@@ -35,7 +35,7 @@ import hashlib
 from . import audio, content, dialogue, gdrive, scraper, series, video
 from .ai_video import AIAuthError, AIBudgetExceeded, AIPolicyError, AIQuotaError, AIVideoSource
 from .budget import LABELS, Budget, BudgetNeeded
-from .cast import Cast, bible_characters, parse_edit, parse_voice
+from .cast import Cast, bible_characters, deaccent, parse_edit, parse_voice
 from .config import load_settings
 from .db import DB
 from .manual_clips import ManualClipSource
@@ -190,6 +190,7 @@ HELP = ("🤖 <b>Trợ lý kênh TikTok</b>\n\n"
         "/clip – gửi lại prompt clip đang chờ (/clip 2 = riêng cảnh 2)\n"
         "/tansuat – tần suất ra video (vd /tansuat 2 = 2 ngày 1 video, áp dụng từ ngày mai)\n"
         "/socanh – số cảnh mỗi video (vd /socanh 4 ≈ 32 giây)\n"
+        "/doithu, /kenhmau – xem/sửa kênh đối thủ và kênh mẫu (vd /doithu them @kenh), rồi lập kế hoạch mới\n"
         "/trangthai – xem tình trạng hệ thống\n"
         "/ngansach – chi phí tháng này\n"
         "/nhanvat – 6 nhân vật cố định (ảnh mẫu, ngoại hình, cách nói)\n"
@@ -270,6 +271,91 @@ def rel(p: Path) -> str:
 
 # ====================================================================== plan
 
+# ---------------------------------------------------------------- competitor / reference channels (Telegram)
+
+CHANNELS_KEY = "channels"
+USER_RX = re.compile(r"^[A-Za-z0-9._]{2,24}$")
+
+
+def channels() -> tuple[list[str], list[str]]:
+    """(reference channels, competitors): the owner's Telegram list if set, else config.yaml."""
+    with LOCK:
+        kv = DB_.kv_get(CHANNELS_KEY) or {}
+    refs = kv.get("reference") if "reference" in kv else S.raw.get("reference_channels") or []
+    comps = kv.get("competitors") if "competitors" in kv else S["competitors"] or []
+    clean = lambda xs: list(dict.fromkeys(str(c).lstrip("@").strip() for c in xs if str(c).strip()))
+    return clean(refs), clean(comps)
+
+
+def parse_channel(tok: str) -> str | None:
+    """'@abc', 'abc', 'tiktok.com/@abc/video/1', or a short vt.tiktok.com link (resolved) → 'abc'."""
+    t = tok.strip().strip("<>,;")
+    if re.match(r"https?://(vt|vm)\.tiktok\.com/", t) or re.match(r"https?://(www\.)?tiktok\.com/t/", t):
+        try:
+            t = str(httpx.get(t, follow_redirects=True, timeout=15, headers={"User-Agent": "Mozilla/5.0"}).url)
+        except httpx.HTTPError:
+            return None
+    m = re.search(r"tiktok\.com/@([A-Za-z0-9._]+)", t)
+    name = m.group(1) if m else t.lstrip("@")
+    return name if USER_RX.match(name) else None
+
+
+def channels_text() -> str:
+    refs, comps = channels()
+    return ("📺 <b>Kênh mẫu</b> (học cách trình bày, ưu tiên nhất): "
+            + (", ".join(f"@{esc(c)}" for c in refs) or "<i>chưa có</i>")
+            + "\n🔎 <b>Kênh đối thủ</b> (học chủ đề, hook): " + (", ".join(f"@{esc(c)}" for c in comps) or "<i>chưa có</i>"))
+
+
+CHANNEL_HELP = ("Cách sửa (dán @tên, link kênh hoặc link video TikTok, nhiều kênh cách nhau dấu cách):\n"
+                "<code>/doithu them @kenh1 @kenh2</code> · <code>/doithu xoa @kenh1</code> · "
+                "<code>/doithu dat @a @b</code> (thay cả danh sách)\n"
+                "<code>/kenhmau them @kenh</code> · <code>/kenhmau xoa @kenh</code> · <code>/kenhmau dat @kenh</code>")
+
+
+def channels_cmd(text: str, which: str) -> dict:
+    """/doithu (which=competitors) and /kenhmau (which=reference): show / them / xoa / dat."""
+    args = text.split()[1:]
+    if not args:
+        return reply(msg(f"{channels_text()}\n\n{CHANNEL_HELP}", kb([("🔄 Lập kế hoạch mới theo danh sách này", "pn:0")])))
+    op = deaccent(args[0])
+    names, bad = [], []
+    for tok in args[1:]:
+        n = parse_channel(tok)
+        (names if n else bad).append(n or tok)
+    if op not in ("them", "add", "xoa", "del", "dat", "set") or (not names and op != "dat"):
+        return reply(msg(("⚠️ Không đọc được: " + esc(", ".join(bad)) + "\n\n" if bad else "") + CHANNEL_HELP))
+    refs, comps = channels()
+    cur = refs if which == "reference" else comps
+    if op in ("them", "add"):
+        new = cur + [x for x in names if x not in cur]
+    elif op in ("xoa", "del"):
+        new = [x for x in cur if x.lower() not in {n.lower() for n in names}]
+    else:
+        new = names
+    with LOCK:
+        kv = DB_.kv_get(CHANNELS_KEY) or {}
+        kv.update({"reference": refs, "competitors": comps})
+        kv[which] = new
+        kv["changed_at"] = now_ts()
+        DB_.kv_set(CHANNELS_KEY, kv)
+    warn = ("\n⚠️ Không đọc được: " + esc(", ".join(bad))) if bad else ""
+    return reply(msg(f"✅ Đã cập nhật.{warn}\n\n{channels_text()}\n\n"
+                     "Kế hoạch đang chạy vẫn giữ nguyên. Bấm nút dưới để quét các kênh này và lập <b>kế hoạch mới</b>; "
+                     "duyệt xong, mọi kịch bản sau đó viết theo kế hoạch mới.",
+                     kb([("🔄 Lập kế hoạch mới theo danh sách này", "pn:0")])))
+
+
+def replan_for_channels(mid: int | None) -> dict:
+    refs, comps = channels()
+    fb = ("Danh sách kênh vừa được chủ kênh cập nhật. Kênh mẫu: " + (", ".join("@" + c for c in refs) or "không có")
+          + ". Kênh đối thủ: " + (", ".join("@" + c for c in comps) or "không có")
+          + ". Hãy rút pattern MỚI từ dữ liệu các kênh này (hook, chủ đề, nhịp, caption) và lập kế hoạch theo đó; "
+            "giữ nguyên gia đình nhân vật cố định.")
+    return reply(clear_buttons(mid), msg("⏳ Đang quét các kênh và lập kế hoạch mới (2–5 phút)…"),
+                 next_step={"action": "plan_channels", "feedback": fb})
+
+
 def create_plan(feedback: str | None = None, previous: dict | None = None) -> dict:
     if "plan" in BUSY:
         return reply(msg("⏳ Đang lập kế hoạch, vui lòng chờ…"))
@@ -277,16 +363,18 @@ def create_plan(feedback: str | None = None, previous: dict | None = None) -> di
     with LOCK:
         BUDGET.ensure("claude", float(svc.get("claude", {}).get("est_plan_usd", 0.8)),
                       f"Lập kế hoạch {PLAN_DAYS} ngày (phân tích đối thủ + series bible).",
-                      resume={"action": "plan"})
+                      resume={"action": "plan_channels", "feedback": feedback} if feedback and not previous
+                      else {"action": "plan"})
     BUSY.add("plan")
     try:
-        refs = [c.lstrip("@") for c in (S.raw.get("reference_channels") or []) if c]
-        competitors = list(dict.fromkeys(refs + [c.lstrip("@") for c in (S["competitors"] or []) if c]))
+        refs, comps = channels()
+        competitors = list(dict.fromkeys(refs + comps))
         notes = []
         if S.apify_token and competitors:
             est = float(svc.get("apify", {}).get("est_scrape_usd", 0.5))
             with LOCK:
-                BUDGET.ensure("apify", est, "Quét video mới của các kênh đối thủ.", resume={"action": "plan"})
+                BUDGET.ensure("apify", est, "Quét video mới của các kênh đối thủ.", resume={"action": "plan_channels", "feedback": feedback} if feedback and not previous
+                      else {"action": "plan"})
             try:
                 vids = scraper.scrape_profiles(S.apify_token, competitors, S["scraper"]["videos_per_profile"])
                 with LOCK:
@@ -799,11 +887,22 @@ def prompt_messages(cid: int) -> list[dict]:
     for i, s in enumerate(m["shots"]):
         scene = item["script"]["scenes"][i]
         out.extend(scene_prompt_msg(cid, i, n, scene, s["prompt"], ingredients_note(bible, scene, i)))
+        out.extend(extend_msg(cid, i, n, item["script"], bible))
     if os.getenv("GEMINI_API_KEY"):
         usd = float((S.raw.get("budget") or {}).get("services", {}).get("gemini_video", {}).get("usd_per_clip", 0.19))
         out.append(msg("Không muốn tạo tay?",
                        kb([(f"🤖 Tạo tự động bằng Gemini (≈ ${usd * n:.2f})", f"pg:{cid}")])))
     return out
+
+
+def extend_msg(cid: int, i: int, n: int, script: dict, bible: dict) -> list[dict]:
+    """Scenes 2…n: a short prompt for Flow's "Extend" (continues the previous clip itself — best continuity)."""
+    if i == 0:
+        return []
+    p = series.extend_prompt(bible, script["scenes"][i], i, n, script)
+    return [msg(f"🔁 <b>#{cid} · Cảnh {i + 1}/{n} – cách nối liền nhất:</b> trong Flow mở clip cảnh {i}, bấm "
+                f"<b>Extend</b> (kéo dài) và dán prompt ngắn này thay cho prompt dài ở trên. Tải phần kéo dài về, "
+                f"<b>Trả lời</b> tin này bằng clip đó.\n\n<code>{code_esc(p)}</code>")]
 
 
 def ingredients_note(bible: dict, scene: dict, i: int = 0) -> str:
@@ -1923,7 +2022,8 @@ def resend_prompts(text: str = "") -> dict:
     item, m = DB_.get_content(cid), manual().load(cid)
     bible, n = content_bible(item), len(m["shots"])
     out = [scene_prompt_msg(cid, k - 1, n, item["script"]["scenes"][k - 1], m["shots"][k - 1]["prompt"],
-                            ingredients_note(bible, item["script"]["scenes"][k - 1], k - 1)) for k in want if 1 <= k <= n]
+                            ingredients_note(bible, item["script"]["scenes"][k - 1], k - 1))
+           + extend_msg(cid, k - 1, n, item["script"], bible) for k in want if 1 <= k <= n]
     return reply(*out) if out else reply(msg(f"Video #{cid} chỉ có cảnh 1–{n}."))
 
 
@@ -1995,7 +2095,9 @@ def tg_command(body: dict = BODY, x_worker_token: str = TOKEN) -> dict:
              "/themnv": lambda: add_cast_cmd(str(body.get("text", ""))),
              "/clip": lambda: resend_prompts(str(body.get("text", ""))),
              "/tansuat": lambda: frequency_cmd(str(body.get("text", ""))),
-             "/socanh": lambda: scenes_cmd(str(body.get("text", "")))}
+             "/socanh": lambda: scenes_cmd(str(body.get("text", ""))),
+             "/doithu": lambda: channels_cmd(str(body.get("text", "")), "competitors"),
+             "/kenhmau": lambda: channels_cmd(str(body.get("text", "")), "reference")}
     return _safe(table.get(cmd, lambda: reply(msg(HELP))))
 
 
@@ -2046,6 +2148,7 @@ def tg_button(body: dict = BODY, x_worker_token: str = TOKEN) -> dict:
         "ge": lambda: ask_voice_edit(n),
         "tf": lambda: set_frequency(n, mid),
         "sn": lambda: set_scenes(n, mid),
+        "pn": lambda: replan_for_channels(mid),
         "am": lambda: reply(msg("⏳ Đang đổi nhạc…"), next_step={"action": "audio", "id": n, "what": "music"}),
         "av": lambda: reply(msg("⏳ Đang đổi giọng đọc…"), next_step={"action": "audio", "id": n, "what": "voice"}),
         "dc": lambda: drive_check(mid),
@@ -2192,6 +2295,8 @@ def cont(body: dict = BODY, x_worker_token: str = TOKEN) -> dict:
         return _safe(do_render, int(n), True)
     if action == "plan":
         return _safe(create_plan)
+    if action == "plan_channels":
+        return _safe(create_plan, str(body.get("feedback") or "")[:2000] or None)
     if action == "plan_redo":
         p = get_plan(int(n))
         return _safe(create_plan, body.get("feedback") or "Làm một kế hoạch khác hẳn.", p["data"] if p else None)
