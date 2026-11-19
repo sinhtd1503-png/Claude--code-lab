@@ -1,6 +1,6 @@
 # Tiến độ dự án — TikTok Content Agent
 
-_Cập nhật: 16/11/2026_
+_Cập nhật: 19/11/2026_
 
 ## 🔄 Lệnh cập nhật VPS (sao chép và dán vào Termius)
 
@@ -126,7 +126,43 @@ Xây agent tự động cho kênh TikTok ngách **tuổi thơ, kỷ niệm gia �
 - **`/kehoach` hỏi chọn nhân vật bằng ảnh trước:** chưa có ảnh nhân vật → bot hướng dẫn gửi ảnh (chú thích tên – vai) hoặc bấm "✨ Để AI tự tạo nhân vật"; đã có ảnh → lập kế hoạch với đúng các nhân vật đó
 - Đã kiểm thử trong Docker (căn thời gian, phụ đề, bản nghe thử, đổi nhạc/giọng, dùng lại giọng đã duyệt khi ghép) và thử edge-tts thật với giọng tiếng Việt
 
-### 📌 Tóm tắt thay đổi hôm nay (16/11/2026) — Sửa lỗi prompt dài làm hỏng tin Telegram; tần suất ra video
+### 📌 Tóm tắt thay đổi hôm nay (19/11/2026) — Duyệt nhạc trước, ảnh bìa + câu kết, duyệt font, giọng nhân vật nhất quán
+- **Yêu cầu của chủ kênh:**
+  - Clip Flow không có nhạc. Muốn duyệt nhạc nền trước, rồi mới hỏi tạo clip tự động hay bằng tay (chọn tay mới ra prompt).
+  - Ảnh bìa nổi bật thông điệp; clip cuối có câu kết.
+  - Font chữ đầu/cuối video hơi xấu: cần duyệt font cho chữ đầu, phụ đề và câu kết, kèm ảnh minh hoạ.
+  - Cùng một nhân vật nhưng giọng khác nhau giữa các clip 8 giây.
+- **PR #33 (đã merge) — luồng duyệt mới, ảnh bìa, câu kết:**
+  - Luồng: duyệt kịch bản → duyệt nhạc nền → chọn 🤖 tự động (Gemini) hay ✋ tạo tay (Flow); chỉ khi chọn tạo tay mới gửi prompt.
+  - Bản nghe thử nhạc dài bằng cả video. Gửi mp3 mới trong lúc chờ duyệt nhạc → có nút nghe thử ngay với bài đó.
+  - Kịch bản có thêm **chữ ảnh bìa** (3–7 từ, thông điệp) và **câu kết** (6–14 từ), hiện cho chủ kênh duyệt.
+  - Video: chữ thông điệp to ở 1,6 giây đầu (ảnh bìa, gửi kèm `thumbnail.jpg` khi duyệt video; đăng thẳng TikTok lấy đúng khung này). Câu kết hiện ở đoạn kết, tăng lên 4,5 giây.
+- **PR #34 (đã merge) — font chữ và giọng nhất quán:**
+  - Đóng gói **9 font đủ dấu tiếng Việt** (Google Fonts, giấy phép OFL) vào image.
+  - **Bước mới "Duyệt chữ"** (bước 3/4, sau duyệt nhạc): ảnh minh hoạ 3 khung (ảnh bìa, phụ đề, câu kết) dựng đúng như video thật. Bấm 🔤 để đổi font từng phần; lựa chọn được nhớ cho các video sau. Lệnh `/font` xem/đổi bất kỳ lúc nào.
+  - Chế độ giọng mới **"Khớp giọng nhân vật"** (mặc định): đo cao độ + âm lượng từng câu, kéo câu lệch về **giọng chuẩn** của nhân vật (học từ video đầu, nhớ cho các video sau). Tốc độ nói và khẩu hình giữ nguyên; giới hạn ±4 nửa cung, ±8 dB. `/giong` hiện giọng chuẩn đã học, có nút học lại.
+  - Lần cập nhật VPS này dựng lại image (thêm font + numpy) nên lâu hơn vài phút.
+- **Kiểm thử:** toàn bộ bộ test trong Docker đạt. Ví dụ: Bà nói ở 200 / 240 / 180 Hz qua 3 clip → sau khớp đều ≈ 200 Hz, âm lượng đều. Chưa thử với clip Flow thật.
+- **Giới hạn:** khớp giọng chỉnh được cao độ và âm lượng, chưa đổi được chất giọng; nếu Flow tạo hai giọng khác hẳn nhau thì vẫn còn khác (dùng Extend cho cảnh 2+ giúp ổn định hơn).
+
+### 📌 Tóm tắt thay đổi 17/11/2026 — Prompt nối tiếp từ cảnh 2, nhạc nền luôn nghe rõ, sửa kênh đối thủ qua Telegram
+- **Yêu cầu:** hình ảnh giữa các clip tạo tay chưa nhất quán; âm thanh nền mỗi clip chưa ổn, cần nhạc xuyên suốt không im lặng; cập nhật kênh đối thủ qua Telegram để kế hoạch/kịch bản đổi theo.
+- **PR #32 (đã merge):**
+  - Prompt từ cảnh 2 mở đầu bằng khối **"NỐI TIẾP clip trước"** (không cắt cảnh, cùng người, quần áo, nơi chốn, ống kính, ánh sáng; nhắc lại clip trước kết thúc ở đâu). Thêm **prompt ngắn cho Extend** của Flow.
+  - Prompt cấm clip tự có nhạc. Mức nhạc nền **tự cân** theo giọng trong clip (nằm dưới giọng ~12 dB, bài nhỏ tự tăng, bài to tự giảm, không bao giờ tụt mất). Làm mềm tiếng nền ở điểm nối clip.
+  - `/doithu`, `/kenhmau`: thêm/xoá/đặt lại kênh (nhận cả link TikTok), nút **🔄 Lập kế hoạch mới theo danh sách này**.
+
+### 📌 Tóm tắt thay đổi 16/11/2026 (tiếp) — Cảnh liền mạch, số cảnh, giữ âm thanh clip, nhạc liên tục, đoạn kết
+- **PR #30 (đã merge):**
+  - Kịch bản có mô tả bối cảnh không đổi và khung đầu/khung cuối từng cảnh; khung đầu cảnh sau = khung cuối cảnh trước. Gemini tạo lần lượt, dùng khung cuối clip trước làm khung đầu clip sau. Bỏ hiệu ứng tối màn hình giữa các cảnh.
+  - `/socanh N` (2–6 cảnh, mỗi cảnh 8 giây).
+  - Giữ nguyên âm thanh clip khi ghép (không cắt, không đổi tốc độ, không bị giảm 3 dB khi mono → stereo). Phụ đề khớp chỗ có giọng thật.
+- **PR #31 (đã merge):**
+  - Không cắt clip 8 giây ở chế độ lời dẫn; lời đọc tách theo cảnh, giữ tiếng nền clip.
+  - Nhạc nền một bài liền từ đầu đến cuối, lặp có crossfade; chỉ hạ nhẹ khi có người nói (không bị tiếng mưa/gió kéo xuống), không dưới 50%. Tự kiểm tra nhạc từng đoạn 8 giây, báo trên Telegram nếu quá nhỏ hoặc thư viện trống.
+  - Đoạn kết: giữ khung cuối, zoom-out chậm, mờ sang tối ấm, nhạc tắt dần.
+
+### 📌 Tóm tắt thay đổi 16/11/2026 — Sửa lỗi prompt dài làm hỏng tin Telegram; tần suất ra video
 - **Yêu cầu của chủ kênh:**
   - Bot báo `can't parse entities: Can't find end tag … "code"` khi gửi prompt của kịch bản mới.
   - Muốn đổi tần suất ra video (ví dụ 2 ngày 1 video) bất kỳ lúc nào, hiệu lực từ ngày hôm sau.
@@ -275,25 +311,23 @@ Xây agent tự động cho kênh TikTok ngách **tuổi thơ, kỷ niệm gia �
 1. **Phong cách kênh mẫu mới dựa trên mô tả**, chưa đối chiếu trực tiếp với video mẫu; cần chủ kênh xem kết quả và chỉnh bằng `/phongcach`.
 2. **Vẫn còn bước làm tay mỗi ngày:** tạo 3–4 clip trên Google Flow (~5 phút). Tự động hoàn toàn chỉ có qua Gemini API trả phí (key hiện chưa có quyền model video).
 3. **Đăng TikTok chưa chạy thật:** cần tạo app, thêm tài khoản vào Sandbox, kết nối bằng `/tiktok`. `direct` chỉ đăng riêng tư tới khi app qua audit.
-4. **Prompt rất dài** được chia thành nhiều phần; chủ kênh phải chép lần lượt và dán nối tiếp vào cùng một ô prompt trong Flow.
-5. **edge-tts lỗi theo đợt** ("No audio was received") — đã có thử lại + nút 🔁 Thử lại trên Telegram.
-6. **Hạn chế đã biết:**
-   - Độ nhất quán khuôn mặt vẫn phụ thuộc model video (đã có mô tả cố định, ảnh mẫu, khung cuối).
-   - Giọng cố định chỉ dựa trên 2 giọng edge-tts tiếng Việt và có thể lệch khẩu hình nhẹ.
+4. **Giọng nhân vật:** khớp giọng chỉ chỉnh cao độ + âm lượng; nếu Flow tạo hai chất giọng khác hẳn nhau giữa các clip thì vẫn còn khác.
+5. **Prompt rất dài** được chia thành nhiều phần; chủ kênh phải chép lần lượt và dán nối tiếp vào cùng một ô prompt trong Flow.
+6. **edge-tts lỗi theo đợt** ("No audio was received") — đã có thử lại + nút 🔁 Thử lại trên Telegram.
+7. **Hạn chế đã biết:**
+   - Độ nhất quán khuôn mặt vẫn phụ thuộc model video (đã có mô tả cố định, ảnh mẫu, khung cuối, prompt nối tiếp, Extend).
+   - Đăng vào hộp nháp TikTok: chủ kênh tự chọn ảnh bìa ở giây đầu khi đăng trong app.
    - Còn lại: Telegram chỉ cho bot tải file ≤ 20 MB; chưa hỗ trợ upload TikTok > 64 MB; phụ đề căn thời gian theo ước lượng; số lượt Flow miễn phí do Google quyết định và có thể thay đổi.
 
 ## 📋 Các bước cần cấu hình tiếp
 
-1. **Kiểm tra bản sửa ngày 16/11:**
-   - `/trangthai` có dòng tần suất.
-   - `/tansuat 2` (hoặc số ngày mong muốn).
-   - `/clip` nhận đủ prompt Cảnh 1–3, không có tin báo lỗi.
-2. **Giọng:** đặt lại giọng theo ý bằng `/giong <tên> pitch … rate …`. Giá trị mới trong `config.yaml` không tự áp dụng vì VPS đã có `data/nhan_vat.yaml`.
-3. **Nhân vật:** `/nhanvat` → đủ ảnh mẫu cho 6 nhân vật (📷 Thay ảnh nếu chưa ưng); thêm nhân vật phụ nếu cần (`/themnv`).
-4. **Làm trọn 1 video:** `/kichban` → nghe bản thử → duyệt → tạo clip.
-   - Tạo tay trên Flow, thêm đúng ảnh ở dòng **🧩 Ingredients**.
-   - Hoặc Gemini với ngân sách $1 (cần Gemini key hợp lệ trong `.env`).
-5. **Đánh giá video:** mặt và quần áo giữa 3 cảnh, giọng từng người, phụ đề, độ to của nhạc → gửi nhận xét cho Claude để chỉnh.
-6. **Kết nối TikTok** (`CAI_DAT_CONTABO.md` Bước 7) → `/tiktok` → thử **Duyệt & đăng** (video vào hộp nháp TikTok).
-7. Nhạc nền: kiểm tra `/nhac` còn bài. Google Drive: `/drive` nếu chưa kết nối.
-8. Huỷ hoặc gia hạn Contabo trước ngày hết kỳ 1 tháng.
+1. **Cập nhật VPS** (lệnh đầu file; lần này dựng lại image, lâu hơn vài phút).
+2. `/font` → chọn font cho chữ đầu video, phụ đề, câu kết (xem ảnh minh hoạ).
+3. `/giong` → kiểm tra đang chọn **Khớp giọng nhân vật**.
+4. `/nhac` → có ít nhất 1 bài nhạc nền không bản quyền.
+5. `/doithu` → cập nhật kênh đối thủ nếu cần → **🔄 Lập kế hoạch mới** → duyệt.
+6. **Làm trọn 1 video:** `/kichban` → duyệt kịch bản → duyệt nhạc → duyệt chữ → chọn tạo tay/tự động.
+   - Tạo tay: cảnh 1 dán prompt dài; cảnh 2+ ưu tiên **Extend** với prompt ngắn 🔁, thêm ảnh nhân vật ở Ingredients.
+7. **Đánh giá video:** ảnh bìa có chữ thông điệp; nhạc liền từ đầu đến cuối; câu kết ở đoạn cuối; giọng mỗi nhân vật giữ nguyên qua các clip; nhân vật giống nhau → gửi nhận xét cho Claude.
+8. **Kết nối TikTok** (`CAI_DAT_CONTABO.md` Bước 7) → `/tiktok` → thử **Duyệt & đăng**.
+9. Huỷ hoặc gia hạn Contabo trước ngày hết kỳ 1 tháng.
