@@ -165,8 +165,12 @@ video:
   music_min_dbfs: -35         # sau khi ghép: đoạn 8 giây nào nhạc nhỏ hơn mức này thì bot cảnh báo
   keep_full_clip: true        # KHÔNG cắt clip AI 8 giây: mỗi cảnh dài = max(clip, lời đọc); chỉ làm chậm khi lời dài hơn
   clip_ambient_volume: 0.35   # tiếng nền của clip (gió, chim…) giữ lại nhỏ dưới lời đọc (chế độ lời dẫn)
-  outro_sec: 3.5              # đoạn kết: giữ khung cuối, zoom-out rất chậm, mờ dần sang tối ấm; 0 = không có
-  outro_text: ""              # chữ hiện giữa đoạn kết (để trống = không có), vd "Bạn còn nhớ không?"
+  outro_sec: 4.5              # đoạn kết: giữ khung cuối + CÂU KẾT của kịch bản, zoom-out chậm, mờ sang tối ấm; 0 = bỏ
+  outro_text: ""              # chữ đoạn kết khi kịch bản không có câu kết (mỗi kịch bản tự có "câu kết" riêng)
+  thumbnail_text: true        # chữ thông điệp to ở giây đầu video = ảnh bìa (thumbnail) TikTok
+  thumbnail_sec: 1.6          # chữ ảnh bìa hiện bao lâu (giây) rồi mờ đi
+  thumbnail_at: 0.5           # giây lấy làm ảnh bìa (gửi kèm khi duyệt video; đăng thẳng TikTok dùng khung này)
+  thumbnail_upper: true       # viết HOA chữ ảnh bìa
   fallback_query: "family warm sunset"
 
 ai_video:
@@ -176,8 +180,8 @@ ai_video:
   #                   (labs.google/flow, ~50 credit miễn phí/ngày) rồi reply lại bằng file video
   #   "gemini_api"  = tự động hoàn toàn qua Gemini API (trả phí, cần GEMINI_API_KEY)
   provider: "manual_flow"
-  # true = duyệt kịch bản xong, hệ thống TỰ tạo clip bằng Gemini API (trả phí, cần GEMINI_API_KEY) — luôn qua cổng
-  # duyệt ngân sách: hết hạn mức thì bot hỏi bạn trên Telegram trước khi tiêu. Lỗi/hết hạn mức → chuyển sang tạo tay.
+  # Video thoại: sau khi duyệt kịch bản → duyệt nhạc nền → bot HỎI tạo clip tự động (Gemini) hay bằng tay (Flow).
+  # auto_generate chỉ còn áp dụng cho kịch bản lời dẫn kiểu cũ. Tự động luôn qua cổng duyệt ngân sách.
   auto_generate: true
   # Cảnh nào dùng AI, còn lại dùng Pixabay:
   #   "first" = chỉ cảnh mở đầu (hook) | "all" = tất cả | "none" = không dùng | [1, 3] = cảnh số 1 và 3

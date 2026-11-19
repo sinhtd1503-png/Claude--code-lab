@@ -87,16 +87,15 @@ Trong Telegram, gửi cho bot:
    **Kết quả đúng:** bot gửi kịch bản 3–4 cảnh.
 7. Test viết lại: **Trả lời** vào tin kịch bản, gõ góp ý (ví dụ "Lời đọc ngắn hơn") → gửi.
    **Kết quả đúng:** bot gửi kịch bản mới.
-8. Kịch bản giờ là **thoại giữa các nhân vật** (💬 tên nhân vật, cảm xúc, câu thoại), không còn người dẫn chuyện.
-   Sau kịch bản, bot gửi **🎵 nhạc nền nghe thử** (đúng độ dài video + đoạn kết, nhạc tắt dần ở cuối). Thử
-   **🎵 Đổi nhạc** (xoay vòng các bài trong `/nhac`). **Kết quả đúng:** mỗi lần bấm, bot gửi bài mới.
-9. Bấm **✅ Duyệt kịch bản & nhạc**.
-   Khi nhận video thành phẩm, kiểm tra: video dài ≈ (số cảnh × 8 giây) + 3,5 giây đoạn kết; nhạc nghe được ở mọi
-   đoạn (kể cả cảnh có mưa); cuối video khung hình đứng lại, nhạc tắt dần, màn hình mờ sang tối ấm. Nếu bot gửi
-   **🎵 Kiểm tra âm thanh** kèm cảnh báo, đổi bài nhạc to hơn hoặc tăng `music_volume`.
-   - Có `GEMINI_API_KEY`: bot báo "🤖 Hệ thống tự tạo 3 clip AI có thoại…" → lần đầu hỏi **duyệt ngân sách Gemini**.
-     Duyệt → 5–15 phút sau nhận video. Từ chối → bot gửi prompt để tạo tay trên Flow.
-   - Chưa có key: bot gửi các tin **"Cảnh 1… Cảnh 3"** (prompt có sẵn thoại) để tạo tay trên Flow.
+8. Kịch bản là **thoại giữa các nhân vật**, có dòng **🖼 Chữ trên ảnh bìa** và **🔚 Câu kết**. Bấm **✅ Duyệt kịch bản**.
+   **Kết quả đúng:** bot chưa gửi prompt, mà gửi **🎵 Bước 2/3 – nhạc nền nghe thử** (độ dài cả video + đoạn kết).
+   Thử **🎵 Đổi nhạc** → bot gửi bài khác. Bấm **✅ Duyệt nhạc nền**.
+9. **Kết quả đúng:** bot hỏi **🎬 Bước 3/3**: 🤖 Tự động (Gemini) hay ✋ Tạo tay (Flow).
+   Khi nhận video thành phẩm, kiểm tra: dài ≈ (số cảnh × 8 giây) + 4,5 giây đoạn kết; giây đầu có chữ thông điệp
+   to (ảnh bìa); nhạc nghe được liền từ đầu đến cuối; đoạn kết hiện câu kết rồi mờ sang tối ấm; bot gửi kèm
+   **🖼 Ảnh bìa**. Nếu bot gửi **🎵 Kiểm tra âm thanh** kèm cảnh báo, đổi bài nhạc khác.
+   - Chọn 🤖 Tự động: lần đầu hỏi **duyệt ngân sách Gemini** → 5–15 phút sau nhận video. Từ chối → bot gửi prompt tạo tay.
+   - Chọn ✋ Tạo tay (hoặc chưa có key): bot gửi các tin **"Cảnh 1… Cảnh 3"** (+ prompt Extend 🔁 cho cảnh 2, 3).
 
 ## Phần 4 – Gửi clip và ghép video (5 phút)
 

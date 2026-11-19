@@ -112,6 +112,12 @@ class SeriesScript(BaseModel):
                                                        "under the guava tree, golden low sun from the left, a woven "
                                                        "bamboo tray of rice cakes on a low wooden table'")
     lesson: str = Field(description="Thông điệp của video, 1 câu")
+    thumb_text: str = Field(default="", description="Chữ to trên ẢNH BÌA (thumbnail), tiếng Việt, 3–7 từ, nêu bật thông "
+                                                    "điệp/ký ức để người lướt dừng lại, vd 'Chiếc diều của ông', 'Mùa "
+                                                    "hè không điện thoại'. Không dấu chấm, không emoji")
+    closing_line: str = Field(default="", description="CÂU KẾT hiện trên màn hình ở clip cuối để người xem ghi nhớ, tiếng "
+                                                      "Việt, 6–14 từ, ấm áp, đọng lại, không giáo điều, vd 'Có những "
+                                                      "mùa hè chỉ còn trong ký ức — và trong tim'")
     caption: str = Field(description="Caption TikTok tiếng Việt, ấm áp, có câu hỏi gợi bình luận")
     hashtags: list[str] = Field(description="5–8 hashtag, không có dấu #")
 
@@ -239,6 +245,8 @@ def write_script(niche: dict, bible: dict, idea: dict, patterns: list[str], scen
     elif previous:
         parts.append("Chủ kênh muốn một phiên bản KHÁC hẳn (hook và cách kể khác), vẫn cùng ý tưởng:\n"
                      f"<previous>\n{json.dumps(previous, ensure_ascii=False)}\n</previous>")
+    parts.append("Viết thêm thumb_text (chữ to trên ảnh bìa, 3–7 từ, nêu bật thông điệp) và closing_line (câu kết hiện "
+                 "trên màn hình ở cuối video, 6–14 từ, đọng lại cảm xúc của thông điệp; khác câu thoại cuối).")
     parts.append("Thoại như người Việt nói thật ngoài đời (xưng hô đúng vai: con – mẹ, cháu – bà, anh – em…), có cảm "
                  "xúc, không văn vẻ, không giảng giải. Caption ngắn, gợi nhớ, kết bằng câu hỏi gợi bình luận "
                  "(vd 'Bạn còn nhớ không?').")
