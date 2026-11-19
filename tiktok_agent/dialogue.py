@@ -235,7 +235,7 @@ def fallback_voices(lines: list[dict], characters: dict, cfg: dict, dur: float, 
 
 
 def render_dialogue(script: dict, workdir: Path, cfg: dict, stock_key: str, ai, bible: dict,
-                    voice_mode: str = "clip", voice_dir: Path | None = None) -> Path:
+                    voice_mode: str = "clip", voice_dir: Path | None = None, voice_refs: dict | None = None) -> Path:
     """`script["scenes"]`: [{lines, visual_query, keep_audio, prompt_full?}], `ai`: clip source (Flow/Gemini).
     voice_mode "fixed": replace clip audio with the characters' fixed voices (cached in `voice_dir`)."""
     workdir.mkdir(parents=True, exist_ok=True)
@@ -248,6 +248,7 @@ def render_dialogue(script: dict, workdir: Path, cfg: dict, stock_key: str, ai, 
     used: set[str] = set()
     segments, srt, t0, idx = [], [], 0.0, 1
     spans: list[tuple[float, float]] = []  # where someone speaks (global timeline) → the only thing that ducks music
+    labelled: list[tuple[float, float, str]] = []  # the same spans with their speaker (clip voices only)
     vf = (f"scale={W}:{H}:force_original_aspect_ratio=increase:flags=lanczos,crop={W}:{H},setsar=1,fps={FPS},"
           "format=yuv420p")
 
@@ -302,6 +303,8 @@ def render_dialogue(script: dict, workdir: Path, cfg: dict, stock_key: str, ai, 
 
         for ln, (s, e) in zip(lines, times):
             spans.append((round(t0 + s, 3), round(t0 + e, 3)))
+            if own_voice:
+                labelled.append((round(t0 + s, 3), round(t0 + e, 3), ln.get("speaker", "")))
             srt += [str(idx), f"{_srt_time(t0 + s)} --> {_srt_time(t0 + e)}", ln["text"], ""]
             idx += 1
         t0 += dur
@@ -315,10 +318,23 @@ def render_dialogue(script: dict, workdir: Path, cfg: dict, stock_key: str, ai, 
 
     total = t0 + (_duration(outro) if outro else 0.0)
     music = vid.get("background_music")
-    # the clips' own sound (voices + rain/wind) is the voice bus, untouched; the music bed is ducked only by `spans`
-    final_mix(workdir, cfg, total, "joined.mkv", None,
+    voice_file = None
+    if voice_mode == "match" and labelled:
+        # same character = same voice in every clip: pull each line's pitch/loudness to the character's reference
+        from . import voicematch
+        src = workdir / "clip_audio.wav"
+        _run(["ffmpeg", "-y", "-i", "joined.mkv", "-vn", "-c:a", "pcm_s16le", src.name], cwd=workdir)
+        try:
+            matched, refs, report = voicematch.match(src, labelled, voice_refs or {}, cfg, total, workdir)
+            voice_file = str(matched)
+            (workdir / "voice_match.json").write_text(json.dumps({"refs": refs, "report": report}, ensure_ascii=False),
+                                                      encoding="utf-8")
+        except Exception as e:  # never lose a video over this step
+            log.warning("Khớp giọng nhân vật lỗi, giữ nguyên âm thanh clip: %s", e)
+    # the clips' own sound (voices + rain/wind) is the voice bus; the music bed is ducked only by `spans`
+    final_mix(workdir, cfg, total, "joined.mkv", voice_file,
               str(Path(music).resolve()) if music and Path(music).exists() else None, spans,
-              ambient_from_joined=False, voice_from_joined=True, thumb_text=script.get("thumb_text", ""))
+              ambient_from_joined=False, voice_from_joined=voice_file is None, thumb_text=script.get("thumb_text", ""))
     final = workdir / "final.mp4"
     log.info("Rendered dialogue video %s (%.1fs)", final, _duration(final))
     return final

@@ -132,11 +132,16 @@ voice:
     - "vi-VN-NamMinhNeural"   # nam
   rate: "-8%"                 # chậm hơn một chút cho cảm xúc
   # Giọng thoại khi ghép video (đổi nhanh bằng lệnh /giong trên Telegram):
-  #   "clip"  = GIỮ NGUYÊN âm thanh từng clip Flow/Gemini (giọng, âm lượng, tốc độ y như clip), chỉ thêm nhạc nền
-  #             nhỏ phía dưới + phụ đề; clip không có tiếng thì dùng giọng cố định (tts) của nhân vật. (khuyên dùng)
-  #   "fixed" = THAY tiếng trong clip bằng giọng cố định (tts) của từng nhân vật → giọng giống nhau giữa mọi clip,
-  #             nhưng khác âm lượng/tốc độ so với clip gốc
-  dialogue_voice: "clip"
+  #   "match" = (khuyên dùng) giữ giọng thật trong clip Flow/Gemini, nhưng đo cao độ + âm lượng TỪNG CÂU và kéo về
+  #             "giọng chuẩn" của mỗi nhân vật (học từ video đầu, nhớ cho các video sau) → cùng một nhân vật thì
+  #             cùng một giọng ở mọi clip; tốc độ nói và khẩu hình giữ nguyên
+  #   "clip"  = giữ nguyên âm thanh từng clip, không chỉnh gì (giọng có thể lệch giữa các clip)
+  #   "fixed" = THAY tiếng trong clip bằng giọng máy (tts) của từng nhân vật (giống hệt nhau, kém tự nhiên)
+  dialogue_voice: "match"
+  match_max_semitones: 4      # (match) chỉnh cao độ tối đa ±N nửa cung mỗi câu
+  match_max_db: 8             # (match) chỉnh âm lượng tối đa ±N dB mỗi câu
+  match_min_semitones: 0.5    # (match) lệch ít hơn thì để nguyên
+  match_min_db: 1.0
   # Các giọng để chọn trong /giong (nút "Đổi giọng" của từng nhân vật xoay vòng danh sách này);
   # cũng là giọng DỰ PHÒNG khi clip không có tiếng
   fallback:
@@ -148,7 +153,14 @@ voice:
     old_male:   {voice: "vi-VN-NamMinhNeural", pitch: "-12Hz", rate: "-14%"}
 
 video:
-  font: "DejaVu Sans"         # font phải hỗ trợ tiếng Việt
+  font: "DejaVu Sans"         # (cũ) không còn dùng — xem fonts bên dưới
+  # Font cho 3 phần chữ (chọn và DUYỆT bằng ảnh minh hoạ trên Telegram: /font, hoặc bước duyệt chữ của mỗi video).
+  # Có sẵn: bvp_xb, bvp (Be Vietnam Pro), mali, itim, pacifico, lobster, prata, taviraj, dejavu — đều đủ dấu tiếng Việt.
+  fonts:
+    cover: "bvp_xb"           # chữ thông điệp ở giây đầu (ảnh bìa)
+    subtitle: "bvp"           # phụ đề
+    ending: "prata"           # câu kết ở đoạn cuối
+  font_review: true           # mỗi video có bước duyệt chữ (ảnh minh hoạ) sau bước duyệt nhạc
   # Nhạc nền: gửi file nhạc (mp3/m4a) vào Telegram cho bot → lưu vào data/music, mỗi video tự xoay vòng 1 bài.
   # Chỉ dùng nhạc KHÔNG BẢN QUYỀN (YouTube Audio Library, Pixabay Music…). Xem danh sách: /nhac
   background_music: ""        # (tuỳ chọn) cố định 1 file nhạc cho mọi video; để trống = xoay vòng thư viện

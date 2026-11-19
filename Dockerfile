@@ -5,6 +5,10 @@ RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends ffmpeg 
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+COPY assets/fonts ./assets/fonts
+# Vietnamese fonts for cover text, subtitles and closing line (also visible to libass/fontconfig)
+RUN mkdir -p /usr/share/fonts/truetype/tiktok-agent && cp assets/fonts/*.ttf /usr/share/fonts/truetype/tiktok-agent/ \
+    && fc-cache -f >/dev/null
 COPY tiktok_agent ./tiktok_agent
 COPY config.yaml .
 RUN useradd --create-home --uid 1000 agent && mkdir -p /app/data && chown agent:agent /app/data
