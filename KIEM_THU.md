@@ -88,9 +88,10 @@ Trong Telegram, gửi cho bot:
 7. Test viết lại: **Trả lời** vào tin kịch bản, gõ góp ý (ví dụ "Lời đọc ngắn hơn") → gửi.
    **Kết quả đúng:** bot gửi kịch bản mới.
 8. Kịch bản là **thoại giữa các nhân vật**, có dòng **🖼 Chữ trên ảnh bìa** và **🔚 Câu kết**. Bấm **✅ Duyệt kịch bản**.
-   **Kết quả đúng:** bot chưa gửi prompt, mà gửi **🎵 Bước 2/3 – nhạc nền nghe thử** (độ dài cả video + đoạn kết).
+   **Kết quả đúng:** bot chưa gửi prompt, mà gửi **🎵 Bước 2/4 – nhạc nền nghe thử** (độ dài cả video + đoạn kết).
    Thử **🎵 Đổi nhạc** → bot gửi bài khác. Bấm **✅ Duyệt nhạc nền**.
-9. **Kết quả đúng:** bot hỏi **🎬 Bước 3/3**: 🤖 Tự động (Gemini) hay ✋ Tạo tay (Flow).
+9. **Kết quả đúng:** bot gửi **🔤 Bước 3/4 – duyệt chữ** kèm ảnh minh hoạ 3 phần (ảnh bìa, phụ đề, câu kết). Bấm
+   **🔤 Font kết** → ảnh mới với font khác. Bấm **✅ Duyệt chữ** → bot hỏi **🎬 Bước 4/4**: 🤖 Tự động hay ✋ Tạo tay.
    Khi nhận video thành phẩm, kiểm tra: dài ≈ (số cảnh × 8 giây) + 4,5 giây đoạn kết; giây đầu có chữ thông điệp
    to (ảnh bìa); nhạc nghe được liền từ đầu đến cuối; đoạn kết hiện câu kết rồi mờ sang tối ấm; bot gửi kèm
    **🖼 Ảnh bìa**. Nếu bot gửi **🎵 Kiểm tra âm thanh** kèm cảnh báo, đổi bài nhạc khác.

@@ -32,7 +32,7 @@ from fastapi.responses import FileResponse, HTMLResponse
 
 import hashlib
 
-from . import audio, content, dialogue, gdrive, scraper, series, video
+from . import audio, content, dialogue, fonts, gdrive, scraper, series, video
 from .ai_video import AIAuthError, AIBudgetExceeded, AIPolicyError, AIQuotaError, AIVideoSource
 from .budget import LABELS, Budget, BudgetNeeded
 from .cast import Cast, bible_characters, deaccent, parse_edit, parse_voice
@@ -191,6 +191,7 @@ HELP = ("🤖 <b>Trợ lý kênh TikTok</b>\n\n"
         "/tansuat – tần suất ra video (vd /tansuat 2 = 2 ngày 1 video, áp dụng từ ngày mai)\n"
         "/socanh – số cảnh mỗi video (vd /socanh 4 ≈ 32 giây)\n"
         "/doithu, /kenhmau – xem/sửa kênh đối thủ và kênh mẫu (vd /doithu them @kenh), rồi lập kế hoạch mới\n"
+        "/font – xem/đổi font chữ đầu video, phụ đề, câu kết (có ảnh minh hoạ)\n"
         "/trangthai – xem tình trạng hệ thống\n"
         "/ngansach – chi phí tháng này\n"
         "/nhanvat – 6 nhân vật cố định (ảnh mẫu, ngoại hình, cách nói)\n"
@@ -478,7 +479,8 @@ def script_messages(cid: int) -> list[dict]:
               f"🔚 <b>Câu kết (hiện ở clip cuối):</b> {esc(closing_line(sc))}", "",
               f"📣 <b>Caption:</b> {esc(item['caption'])}", ""]
     if is_dialogue(sc):  # order: script → background music → auto or manual clips
-        lines.append("👉 Duyệt kịch bản → bot gửi <b>nhạc nền</b> để bạn duyệt → rồi hỏi tạo clip tự động hay bằng tay. "
+        lines.append("👉 Duyệt kịch bản → duyệt <b>nhạc nền</b> → duyệt <b>chữ</b> (ảnh minh hoạ font) → chọn tạo clip tự "
+                     "động hay bằng tay. "
                      "Muốn sửa thoại/nội dung: <b>Trả lời (Reply)</b> tin này và gõ góp ý.")
         return long_msg("\n".join(lines), kb([("✅ Duyệt kịch bản", f"sa:{cid}")],
                                              [("🔄 Viết bản khác", f"sr:{cid}"), ("❌ Bỏ", f"sx:{cid}")]))
@@ -1019,7 +1021,7 @@ def approve_script(cid: int, message_id: int | None) -> dict:
             except Exception as e:
                 log.warning("Không tạo được nhạc nghe thử #%s: %s", cid, e)
         return reply(clear_buttons(message_id),
-                     msg(f"✅ Đã duyệt kịch bản #{cid}.{saved}\n🎵 <b>Bước 2/3 – duyệt nhạc nền</b> (một bài chạy liền "
+                     msg(f"✅ Đã duyệt kịch bản #{cid}.{saved}\n🎵 <b>Bước 2/4 – duyệt nhạc nền</b> (một bài chạy liền "
                          "từ đầu đến hết video, nhỏ dưới giọng nhân vật). Nghe thử ở tin dưới."),
                      audio_message(cid) or msg("⚠️ Chưa tạo được nhạc nghe thử.",
                                                kb([("🎵 Đổi nhạc", f"am:{cid}")], [("⏭ Bỏ qua", f"ma:{cid}")])))
@@ -1040,10 +1042,126 @@ def approve_music(cid: int, mid: int | None) -> dict:
         item = DB_.get_content(cid)
         if not item or item["status"] != "music_review":
             return reply(clear_buttons(mid), msg(f"#{cid} không ở bước duyệt nhạc."))
-        DB_.update_content(cid, status="awaiting_clips")
+        review = bool(S.raw.get("video", {}).get("font_review", True))
+        DB_.update_content(cid, status="font_review" if review else "awaiting_clips")
     a = (item["script"] or {}).get("audio") or {}
     name = esc(Path(a["music"]).stem) if a.get("music") else "chưa có nhạc"
-    return reply(clear_buttons(mid), msg(f"✅ Đã duyệt nhạc nền #{cid}: <b>{name}</b>."), clip_mode_msg(cid))
+    done = msg(f"✅ Đã duyệt nhạc nền #{cid}: <b>{name}</b>.")
+    if review:
+        return reply(clear_buttons(mid), done, font_review_msg(cid))
+    return reply(clear_buttons(mid), done, clip_mode_msg(cid))
+
+
+# ---------------------------------------------------------------- fonts (cover / subtitles / closing line)
+
+FONT_KEY = "fonts"
+ROLE_ARGS = {"dau": "cover", "bia": "cover", "phude": "subtitle", "pd": "subtitle", "ket": "ending", "cuoi": "ending"}
+
+
+def current_fonts() -> dict:
+    with LOCK:
+        kv = DB_.kv_get(FONT_KEY) or {}
+    base = (S.raw.get("video", {}) or {}).get("fonts") or {}
+    return {r: kv.get(r) or base.get(r) or fonts.DEFAULTS[r] for r in fonts.ROLES}
+
+
+def set_font(role: str, key: str) -> None:
+    with LOCK:
+        kv = DB_.kv_get(FONT_KEY) or {}
+        kv[role] = key
+        DB_.kv_set(FONT_KEY, kv)
+
+
+def font_texts(cid: int | None) -> tuple[dict, Path | None]:
+    """Sample texts (from the script when there is one) and a background (a character photo) for the preview."""
+    if not cid:
+        return dict(fonts.SAMPLE), None
+    item = DB_.get_content(cid)
+    sc = item["script"]
+    first = next((ln["text"] for s in sc.get("scenes", []) for ln in s.get("lines") or []), fonts.SAMPLE["subtitle"])
+    bg = None
+    bible = content_bible(item)
+    for c in series.scene_cast(bible, (sc.get("scenes") or [{}])[0]):
+        bg = bg or CAST.image_path(c)
+    return {"cover": thumb_text(sc), "subtitle": first, "ending": closing_line(sc)}, bg
+
+
+def font_preview_file(cid: int | None) -> Path:
+    texts, bg = font_texts(cid)
+    d = DATA / "fonts_preview"
+    d.mkdir(parents=True, exist_ok=True)
+    for old in d.glob(f"{cid or 0}_*.jpg"):
+        old.unlink(missing_ok=True)
+    return fonts.preview({"fonts": current_fonts()}, texts, bg, d / "work", d / f"{cid or 0}_{now_ts()}.jpg")
+
+
+def font_caption(cid: int | None) -> str:
+    cur = current_fonts()
+    head = (f"🔤 <b>Bước 3/4 – #{cid}: duyệt chữ</b> (ảnh minh hoạ dựng đúng như video thật)\n" if cid
+            else "🔤 <b>Font chữ đang dùng</b> (ảnh minh hoạ)\n")
+    return head + "\n".join(f"• {fonts.ROLE_LABEL[r]}: <b>{esc(fonts.CATALOG[cur[r]]['label'])}</b>" for r in fonts.ROLES)
+
+
+def font_review_msg(cid: int) -> dict:
+    rows = [[("✅ Duyệt chữ", f"fa:{cid}")],
+            [("🔤 Font đầu", f"ff:{cid * 10}"), ("🔤 Font phụ đề", f"ff:{cid * 10 + 1}"),
+             ("🔤 Font kết", f"ff:{cid * 10 + 2}")]]
+    try:
+        return media("photo", font_preview_file(cid), font_caption(cid) + "\n\nBấm 🔤 để thử font khác (chọn xong "
+                     "áp dụng cho các video sau).", kb(*rows))
+    except Exception as e:
+        log.warning("font preview #%s: %s", cid, e)
+        return msg(font_caption(cid) + f"\n⚠️ Chưa tạo được ảnh minh hoạ ({esc(str(e)[:150])}).", kb(*rows))
+
+
+def cycle_font(n: int, mid: int | None) -> dict:
+    cid, r = divmod(n, 10)
+    if r >= len(fonts.ROLES):
+        return reply()
+    role = fonts.ROLES[r]
+    set_font(role, fonts.next_key({"fonts": current_fonts()}, role))
+    if cid:
+        with LOCK:
+            item = DB_.get_content(cid)
+        if not item or item["status"] != "font_review":
+            return reply(clear_buttons(mid), msg(f"#{cid} không còn ở bước duyệt chữ (font mới vẫn được lưu)."))
+        return reply(clear_buttons(mid), font_review_msg(cid))
+    return reply(clear_buttons(mid), font_cmd(""))
+
+
+def approve_fonts(cid: int, mid: int | None) -> dict:
+    with LOCK:
+        item = DB_.get_content(cid)
+        if not item or item["status"] != "font_review":
+            return reply(clear_buttons(mid), msg(f"#{cid} không ở bước duyệt chữ."))
+        DB_.update_content(cid, status="awaiting_clips")
+    return reply(clear_buttons(mid), msg(f"✅ Đã duyệt chữ cho #{cid}."), clip_mode_msg(cid))
+
+
+def font_cmd(text: str) -> dict:
+    """/font → preview + buttons; /font dau mali | /font phude bvp | /font ket prata → set directly."""
+    args = text.split()[1:]
+    if len(args) >= 2:
+        role = ROLE_ARGS.get(deaccent(args[0]).replace(" ", ""))
+        key = args[1].lower()
+        if role and key in fonts.available():
+            set_font(role, key)
+        else:
+            return reply(msg("Cú pháp: <code>/font dau|phude|ket TEN</code>. Tên font: "
+                             + ", ".join(f"<code>{k}</code> ({esc(fonts.CATALOG[k]['label'])})" for k in fonts.available())))
+    with LOCK:
+        r = DB_.conn.execute("SELECT id FROM content WHERE script IS NOT NULL ORDER BY id DESC LIMIT 1").fetchone()
+    cid = r["id"] if r else None
+    rows = [[("🔤 Font đầu", "fg:0"), ("🔤 Font phụ đề", "fg:1"), ("🔤 Font kết", "fg:2")]]
+    try:
+        texts, bg = font_texts(cid)
+        d = DATA / "fonts_preview"
+        d.mkdir(parents=True, exist_ok=True)
+        f = fonts.preview({"fonts": current_fonts()}, texts, bg, d / "work", d / f"cmd_{now_ts()}.jpg")
+        return reply(media("photo", f, font_caption(None) + "\n\nBấm 🔤 để đổi; hoặc gõ <code>/font ket pacifico</code>. "
+                           "Áp dụng cho các video ghép từ giờ.", kb(*rows)))
+    except Exception as e:
+        return reply(msg(font_caption(None) + f"\n⚠️ Chưa tạo được ảnh minh hoạ ({esc(str(e)[:150])}).", kb(*rows)))
 
 
 def use_newest_music(cid: int, mid: int | None) -> dict:
@@ -1064,7 +1182,7 @@ def clip_mode_msg(cid: int) -> dict:
         rows.append([(f"🤖 Tự động bằng Gemini (≈ ${usd * n:.2f})", f"pg:{cid}")])
     rows.append([("✋ Tạo tay trên Google Flow (miễn phí)", f"cm:{cid}")])
     note = "" if os.getenv("GEMINI_API_KEY") else "\n<i>(Tự động cần GEMINI_API_KEY trong .env.)</i>"
-    return msg(f"🎬 <b>Bước 3/3 – #{cid}: tạo {n} clip 8 giây bằng cách nào?</b>\n"
+    return msg(f"🎬 <b>Bước 4/4 – #{cid}: tạo {n} clip 8 giây bằng cách nào?</b>\n"
                "• <b>Tự động:</b> hệ thống tạo clip bằng Gemini (trả phí, luôn hỏi duyệt ngân sách trước).\n"
                f"• <b>Bằng tay:</b> bot gửi {n} prompt để bạn dán vào Google Flow.{note}", kb(*rows))
 
@@ -1485,9 +1603,9 @@ def delete_cast_image(i: int, mid: int | None) -> dict:
 def voice_mode() -> str:
     with LOCK:
         kv = DB_.kv_get("dialogue_voice") or {}
-    saved = kv.get("mode") if kv.get("v") == 2 else None  # choices saved before 16/11 are ignored
-    m = saved or (S.raw.get("voice") or {}).get("dialogue_voice") or "clip"
-    return m if m in ("fixed", "clip") else "clip"
+    saved = kv.get("mode") if kv.get("v") == 3 else None  # choices saved before 20/11 are ignored
+    m = saved or (S.raw.get("voice") or {}).get("dialogue_voice") or "match"
+    return m if m in ("fixed", "clip", "match") else "match"
 
 
 def voice_presets() -> list[dict]:
@@ -1499,17 +1617,26 @@ def voice_presets() -> list[dict]:
 def voice_cmd() -> dict:
     mode = voice_mode()
     lines = ["🎙 <b>Giọng thoại khi ghép video</b>", "",
-             ("✅ <b>Giọng cố định</b> (đang dùng): bot THAY tiếng trong clip bằng giọng máy riêng của từng nhân vật "
-              "(giống nhau ở mọi clip, nhưng âm lượng/tốc độ khác clip gốc)." if mode == "fixed" else
-              "✅ <b>Giữ nguyên âm thanh clip</b> (đang dùng, khuyên dùng): giọng, âm lượng, tốc độ y như từng clip "
-              "Flow/Gemini; bot chỉ thêm nhạc nền nhỏ phía dưới và phụ đề. Giọng máy chỉ dùng cho clip không có tiếng."),
-             "",
+             {"match": "✅ <b>Khớp giọng nhân vật</b> (đang dùng, khuyên dùng): giữ giọng thật trong clip, nhưng bot đo "
+                       "cao độ + âm lượng từng câu và kéo về <b>giọng chuẩn</b> của mỗi nhân vật — cùng một người thì "
+                       "cùng một giọng ở mọi clip (tốc độ nói giữ nguyên).",
+              "clip": "✅ <b>Giữ nguyên âm thanh clip</b> (đang dùng): y như từng clip Flow/Gemini, không chỉnh — giọng "
+                      "một nhân vật có thể khác nhau giữa các clip.",
+              "fixed": "✅ <b>Giọng cố định (máy)</b> (đang dùng): bot THAY tiếng trong clip bằng giọng máy riêng của "
+                       "từng nhân vật (giống hệt nhau, nhưng kém tự nhiên)."}[mode], "",
              "Giọng từng nhân vật (bấm để nghe; dưới bản nghe có nút ✏️ để <b>nhập cao độ/tốc độ</b>). Nhập nhanh: "
              "<code>/giong Ông pitch -10 rate -5</code> hoặc <code>/giong Bé Na cao hơn</code>:"]
     lines += [f"• <b>{esc(c['name'])}</b>: {esc(VOICE_LABELS.get(c['tts']['voice'], c['tts']['voice']))} "
               f"{esc(c['tts']['pitch'])} {esc(c['tts']['rate'])}" for c in cast_items()]
-    rows = [[(("🔘 " if mode == "clip" else "") + "Giữ âm thanh clip", "gm:2"),
+    refs = voice_refs()
+    if refs:
+        lines += ["", "🎯 <b>Giọng chuẩn đã học</b> (từ video đầu tiên): " +
+                  ", ".join(f"{esc(k)} {v['f0']:.0f} Hz" for k, v in refs.items())]
+    rows = [[(("🔘 " if mode == "match" else "") + "Khớp giọng nhân vật", "gm:3")],
+            [(("🔘 " if mode == "clip" else "") + "Giữ nguyên clip", "gm:2"),
              (("🔘 " if mode == "fixed" else "") + "Giọng cố định (máy)", "gm:1")]]
+    if refs:
+        rows.append([("♻️ Học lại giọng chuẩn ở video tới", "gr:0")])
     items = cast_items()
     rows += [[(f"🔊 {items[k]['name']}", f"gp:{k}") for k in range(j, min(j + 3, len(items)))]
              for j in range(0, len(items), 3)]
@@ -1583,9 +1710,24 @@ def pending_voice_text(text: str) -> dict | None:
     return None
 
 
+VOICE_REFS = "voice_refs"
+
+
+def voice_refs() -> dict:
+    with LOCK:
+        return (DB_.kv_get(VOICE_REFS) or {}).get("refs") or {}
+
+
+def reset_voice_refs(mid: int | None) -> dict:
+    with LOCK:
+        DB_.kv_set(VOICE_REFS, {})
+    return reply(clear_buttons(mid), msg("♻️ Đã xoá giọng chuẩn. Video ghép tiếp theo sẽ học lại giọng chuẩn cho từng "
+                                         "nhân vật (từ chính video đó)."))
+
+
 def set_voice_mode(n: int, mid: int | None) -> dict:
     with LOCK:
-        DB_.kv_set("dialogue_voice", {"mode": "fixed" if n == 1 else "clip", "v": 2})
+        DB_.kv_set("dialogue_voice", {"mode": {1: "fixed", 2: "clip", 3: "match"}.get(n, "match"), "v": 3})
     return reply(clear_buttons(mid), *voice_cmd()["messages"])
 
 
@@ -1846,12 +1988,18 @@ def do_render(cid: int, paid: bool = False) -> dict:
         src.start_run(cid)
         run: dict = {}
         try:
-            cfg = {**S.raw, "video": {**S.raw.get("video", {}), "background_music": approved_music(item)}}
+            cfg = {**S.raw, "video": {**S.raw.get("video", {}), "background_music": approved_music(item),
+                                      "fonts": current_fonts()}}
             if is_dialogue(item["script"]):
                 src.strict = paid  # paid clips must not silently turn into stock footage
                 path = dialogue.render_dialogue(script, workdir, cfg, S.pixabay_api_key or "", src,
                                                 content_bible(item), voice_mode=voice_mode(),
-                                                voice_dir=DATA / "audio" / str(cid) / "voices")
+                                                voice_dir=DATA / "audio" / str(cid) / "voices", voice_refs=voice_refs())
+                vm = workdir / "voice_match.json"
+                if vm.is_file():  # remember each character's reference voice for the next videos
+                    with LOCK:
+                        DB_.kv_set(VOICE_REFS, {"refs": json.loads(vm.read_text(encoding="utf-8"))["refs"],
+                                                "ts": now_ts()})
             else:
                 path = video.render(script, workdir, cfg, S.pixabay_api_key or "", ai=src,
                                     narration=approved_narration(item))
@@ -2013,7 +2161,7 @@ def status_text() -> str:
         lp = latest_plan()
         rows = DB_.conn.execute("SELECT status, COUNT(*) n FROM content GROUP BY status").fetchall()
         waiting = DB_.conn.execute("SELECT id, status FROM content WHERE status IN "
-                                   "('script_review','music_review','awaiting_clips','rendering','video_review') ORDER BY id").fetchall()
+                                   "('script_review','music_review','font_review','awaiting_clips','rendering','video_review') ORDER BY id").fetchall()
         rem = remaining_days()
     lines = ["📊 <b>Tình trạng</b>", ""]
     lines.append(f"Kế hoạch: #KH{lp['id']} ({lp['status']}), còn {rem} ý tưởng chưa viết" if lp else "Kế hoạch: chưa có")
@@ -2021,7 +2169,8 @@ def status_text() -> str:
     lines.append(f"Mỗi video: {scenes_count()} cảnh (≈ {scenes_count() * CLIP_SEC}s, /socanh để đổi)")
     lines.append(f"Tần suất: {freq_label(freq_on(today)['days'])} · kịch bản tới: "
                  + ", ".join(d.strftime("%d/%m") for d in next_due_days(today, 3)) + " (/tansuat để đổi)")
-    names = {"script_review": "chờ duyệt kịch bản", "music_review": "chờ duyệt nhạc nền", "awaiting_clips": "chờ clip",
+    names = {"script_review": "chờ duyệt kịch bản", "music_review": "chờ duyệt nhạc nền", "font_review": "chờ duyệt chữ",
+             "awaiting_clips": "chờ clip",
              "rendering": "đang ghép",
              "video_review": "chờ duyệt video"}
     for w in waiting:
@@ -2181,7 +2330,8 @@ def tg_command(body: dict = BODY, x_worker_token: str = TOKEN) -> dict:
              "/tansuat": lambda: frequency_cmd(str(body.get("text", ""))),
              "/socanh": lambda: scenes_cmd(str(body.get("text", ""))),
              "/doithu": lambda: channels_cmd(str(body.get("text", "")), "competitors"),
-             "/kenhmau": lambda: channels_cmd(str(body.get("text", "")), "reference")}
+             "/kenhmau": lambda: channels_cmd(str(body.get("text", "")), "reference"),
+             "/font": lambda: font_cmd(str(body.get("text", "")))}
     return _safe(table.get(cmd, lambda: reply(msg(HELP))))
 
 
@@ -2214,6 +2364,9 @@ def tg_button(body: dict = BODY, x_worker_token: str = TOKEN) -> dict:
                                   f"❌ Đã bỏ kịch bản #{n}. Gõ /kichban để viết kịch bản ngày tiếp theo."),
         "pg": lambda: request_paid(n, mid),
         "ma": lambda: approve_music(n, mid),
+        "fa": lambda: approve_fonts(n, mid),
+        "ff": lambda: cycle_font(n, mid),
+        "fg": lambda: cycle_font(n, mid),
         "mu": lambda: use_newest_music(n, mid),
         "cm": lambda: choose_manual(n, mid),
         "va": lambda: publish(n, mid),
@@ -2233,6 +2386,7 @@ def tg_button(body: dict = BODY, x_worker_token: str = TOKEN) -> dict:
         "gp": lambda: voice_sample(n),
         "gv": lambda: cycle_voice(n, mid),
         "ge": lambda: ask_voice_edit(n),
+        "gr": lambda: reset_voice_refs(mid),
         "tf": lambda: set_frequency(n, mid),
         "sn": lambda: set_scenes(n, mid),
         "pn": lambda: replan_for_channels(mid),

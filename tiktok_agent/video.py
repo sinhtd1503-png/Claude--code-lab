@@ -173,9 +173,25 @@ def thumb_filter(vid: dict, workdir: Path, text: str) -> str:
     tf = workdir / "thumb_text.txt"
     tf.write_text(wrap_text(text.upper() if vid.get("thumbnail_upper", True) else text, 14), encoding="utf-8")
     alpha = f"if(lt(t,{sec - 0.5}),1,max(0,({sec}-t)/0.5))"
-    return (f",drawtext=textfile='{tf.name}':font='{vid.get('font', 'DejaVu Sans')}':fontsize=92:fontcolor=white:"
-            f"text_align=C:line_spacing=14:borderw=5:bordercolor=black@0.6:box=1:boxcolor={OUTRO_COLOR}@0.55:boxborderw=36:"
+    from .fonts import drawtext_font, size
+    return (f",drawtext=textfile='{tf.name}':{drawtext_font(vid, 'cover')}:fontsize={size(vid, 'cover', 92)}:"
+            f"fontcolor=white:text_align=C:line_spacing=14:borderw=5:bordercolor=black@0.6:box=1:boxcolor={OUTRO_COLOR}@0.55:boxborderw=36:"
             f"x=(w-text_w)/2:y=h*0.20:alpha='{alpha}':enable='lt(t,{sec})'")
+
+
+def ending_drawtext(vid: dict, workdir: Path, text: str, sec: float | None = None, fade: float = 1.2) -> str:
+    """The closing line, centred, fading in (and out before the fade to dark when `sec` is given)."""
+    from .fonts import drawtext_font, size
+    tf = workdir / "outro_text.txt"
+    tf.write_text(wrap_text(text, 20), encoding="utf-8")
+    alpha = "1"
+    if sec:
+        t_in, t_out = 0.3, max(0.8, sec - fade - 0.1)
+        alpha = (f"if(lt(t,{t_in}),0,if(lt(t,{t_in + 0.6}),(t-{t_in})/0.6,if(lt(t,{t_out - 0.5}),1,"
+                 f"max(0,({t_out}-t)/0.5))))")
+    return (f"drawtext=textfile='{tf.name}':{drawtext_font(vid, 'ending')}:fontsize={size(vid, 'ending', 70)}:"
+            f"fontcolor=white:text_align=C:line_spacing=14:borderw=4:bordercolor=black@0.5:box=1:"
+            f"boxcolor={OUTRO_COLOR}@0.5:boxborderw=34:x=(w-text_w)/2:y=(h-text_h)/2:alpha='{alpha}'")
 
 
 def make_outro(last_seg: Path, workdir: Path, cfg: dict, text: str | None = None) -> Path | None:
@@ -196,13 +212,7 @@ def make_outro(last_seg: Path, workdir: Path, cfg: dict, text: str | None = None
          f"[bgb][fgs]overlay=x='(W-w)/2':y='(H-h)/2':eval=frame,fps={FPS},format=yuv420p")
     text = str(text if text is not None else vid.get("outro_text") or "").strip()
     if text:  # the closing line (câu kết) the viewer should remember
-        tf = workdir / "outro_text.txt"
-        tf.write_text(wrap_text(text, 20), encoding="utf-8")
-        t_in, t_out = 0.3, max(0.8, sec - fade - 0.1)
-        alpha = f"if(lt(t,{t_in}),0,if(lt(t,{t_in + 0.6}),(t-{t_in})/0.6,if(lt(t,{t_out - 0.5}),1,max(0,({t_out}-t)/0.5))))"
-        g += (f",drawtext=textfile='{tf.name}':font='{vid.get('font', 'DejaVu Sans')}':fontsize=70:fontcolor=white:"
-              f"text_align=C:line_spacing=14:borderw=4:bordercolor=black@0.5:box=1:boxcolor={OUTRO_COLOR}@0.5:"
-              f"boxborderw=34:x=(w-text_w)/2:y=(h-text_h)/2:alpha='{alpha}'")
+        g += "," + ending_drawtext(vid, workdir, text, sec, fade)
     g += f",fade=t=out:st={sec - fade:.3f}:d={fade:.3f}:color={OUTRO_COLOR}[v]"
     out = workdir / "outro.mkv"
     _run(["ffmpeg", "-y", "-loop", "1", "-t", f"{sec:.3f}", "-i", frame.name, "-f", "lavfi", "-i",
@@ -213,15 +223,15 @@ def make_outro(last_seg: Path, workdir: Path, cfg: dict, text: str | None = None
 
 
 def subtitle_style(vid: dict) -> str:
-    return (f"FontName={vid['font']},FontSize=13,PrimaryColour=&H00FFFFFF,OutlineColour=&H80000000,"
-            "BorderStyle=1,Outline=2,Shadow=0,Bold=1,Alignment=2,MarginV=70")
+    from .fonts import subtitle_style as st
+    return st(vid)
 
 
 def final_mix(workdir: Path, cfg: dict, total: float, joined: str, voice_file: str | None,
               music: str | None, spans: list, ambient_from_joined: bool, voice_from_joined: bool = False,
               thumb_text: str = "") -> dict:
     """Burn subtitles and mix the soundtrack in one pass; also writes voice/music stems and checks the music."""
-    from . import audio
+    from . import audio, fonts
     st = audio.music_settings(cfg)
     ins = ["-i", joined]
     k = 1
@@ -240,7 +250,7 @@ def final_mix(workdir: Path, cfg: dict, total: float, joined: str, voice_file: s
     vpre = audio.stereo_prefix(voice_file) if voice_file else ""
     graph = audio.mix_graph(total, cfg, vl, ml, spans, amb, voice_pre=vpre, stems=False, volume=vol)
     _run(["ffmpeg", "-y", *ins, "-filter_complex",
-          f"[0:v]subtitles=subs.srt:force_style='{subtitle_style(cfg['video'])}'"
+          f"[0:v]{fonts.subtitles_filter(cfg['video'])}"
           f"{thumb_filter(cfg['video'], workdir, thumb_text)}[v];{graph}",
           "-map", "[v]", "-map", "[a]", "-t", f"{total:.3f}", "-c:v", "libx264", "-preset", "medium", "-crf", "20",
           "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", "-ar", str(SR), "-movflags", "+faststart",

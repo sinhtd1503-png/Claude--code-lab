@@ -257,6 +257,9 @@ Mỗi lần bạn bấm **Duyệt kịch bản**, hệ thống cập nhật mộ
    - **Thêm nhân vật** (hàng xóm, thầy cô…): gửi ảnh với chú thích `Tên - vai` → bấm **➕ Nhân vật mới**, hoặc gõ
      `/themnv Cô Lan - cô giáo chủ nhiệm` (bot tự viết mô tả và gửi prompt tạo ảnh). Nhân vật thêm có nút xoá;
      6 nhân vật chính chỉ sửa được, không xoá.
+   - **Giọng nhất quán giữa các clip:** mặc định **Khớp giọng nhân vật** — bot giữ giọng thật trong clip Flow nhưng
+     đo cao độ + âm lượng từng câu và kéo về "giọng chuẩn" của mỗi nhân vật (học từ video đầu, nhớ cho các video
+     sau), tốc độ nói và khẩu hình giữ nguyên. Học lại: `/giong` → **♻️ Học lại giọng chuẩn**.
    - **Giọng:** gửi `/giong` → bấm 🔊 để nghe giọng từng người. Muốn chỉnh theo ý: bấm **✏️ Nhập giọng** (hoặc
      **Trả lời** bản nghe thử) và gõ yêu cầu, ví dụ `pitch -10 rate +5`, `cao độ 20 tốc độ -5`, `trầm hơn`,
      `nhanh hơn nhiều`, `giọng nam`. Nhập nhanh một lệnh: `/giong Ông pitch -10 rate -5`.
@@ -268,14 +271,17 @@ Mỗi lần bạn bấm **Duyệt kịch bản**, hệ thống cập nhật mộ
 5. Gửi `/kichban` (hoặc chờ 07:00 sáng mai) → bot gửi **📝 Kịch bản**: thoại từng cảnh, **chữ trên ảnh bìa**
    (thông điệp) và **câu kết** (hiện ở clip cuối). **✅ Duyệt kịch bản** / **🔄 Viết bản khác** / **❌ Bỏ** — hoặc
    Reply để góp ý. Bot ghi nhớ góp ý cho các kịch bản sau.
-6. **Bước 2/3 – duyệt nhạc nền:** bot gửi bản nghe thử (một bài chạy liền cả video, tắt dần ở cuối).
+6. **Bước 2/4 – duyệt nhạc nền:** bot gửi bản nghe thử (một bài chạy liền cả video, tắt dần ở cuối).
    **🎵 Đổi nhạc** để nghe bài khác, **✅ Duyệt nhạc nền** khi ưng. Thư viện trống: gửi file mp3 vào bot, bấm
    **🎧 Nghe thử với bài này**.
-7. **Bước 3/3 – chọn cách tạo clip:** **🤖 Tự động bằng Gemini** (trả phí, hỏi duyệt ngân sách) hoặc
+7. **Bước 3/4 – duyệt chữ:** bot gửi **ảnh minh hoạ** 3 phần chữ dựng y như video thật: chữ ảnh bìa (đầu video),
+   phụ đề, câu kết (cuối video). Bấm **🔤 Font đầu / Font phụ đề / Font kết** để thử font khác (9 font đủ dấu tiếng
+   Việt), ưng thì **✅ Duyệt chữ**. Font đã chọn được nhớ cho các video sau; xem/đổi bất kỳ lúc nào bằng `/font`.
+8. **Bước 4/4 – chọn cách tạo clip:** **🤖 Tự động bằng Gemini** (trả phí, hỏi duyệt ngân sách) hoặc
    **✋ Tạo tay trên Google Flow** → lúc này bot mới gửi các prompt. Xem mục **"Tạo clip trên iPad"** ngay dưới.
-8. Đủ clip → bot ghép video: nhạc nền xuyên suốt từ đầu đến cuối, phụ đề, **chữ thông điệp ở giây đầu (ảnh bìa)**,
+9. Đủ clip → bot ghép video: nhạc nền xuyên suốt từ đầu đến cuối, phụ đề, **chữ thông điệp ở giây đầu (ảnh bìa)**,
    **câu kết ở đoạn kết**. Bot gửi **🎞 Video** kèm **🖼 ảnh bìa**.
-9. **✅ Duyệt & đăng TikTok** → bot đăng lên các kênh đã kết nối. **🔁 Thay clip** nếu muốn đổi clip.
+10. **✅ Duyệt & đăng TikTok** → bot đăng lên các kênh đã kết nối. **🔁 Thay clip** nếu muốn đổi clip.
    (Đăng vào hộp nháp: khi bấm đăng trong app TikTok, chọn ảnh bìa ở giây đầu – khung có chữ.)
 
 ### 🎬 Tạo clip trên iPad với Google Flow (≈5 phút/ngày, miễn phí)
@@ -358,6 +364,7 @@ Mỗi lần bạn bấm **Duyệt kịch bản**, hệ thống cập nhật mộ
 | `/tansuat N` | Tần suất ra video: N ngày 1 kịch bản (vd `/tansuat 2`), áp dụng từ ngày mai; `/tansuat` xem lịch |
 | `/socanh N` | Số cảnh mỗi video (2–6; mỗi cảnh 8 giây), vd `/socanh 4` ≈ 32 giây; áp dụng từ kịch bản tiếp theo |
 | `/doithu`, `/kenhmau` | Xem/sửa kênh đối thủ và kênh mẫu: `/doithu them @kenh` (hoặc dán link TikTok), `/doithu xoa @kenh`, `/kenhmau dat @kenh` → bấm **🔄 Lập kế hoạch mới** |
+| `/font` | Xem/đổi font chữ đầu video, phụ đề, câu kết (ảnh minh hoạ); `/font ket pacifico` đặt nhanh |
 | `/nhanvat` | 6 nhân vật cố định: ảnh mẫu, ngoại hình, cách nói (Trả lời thẻ để sửa) |
 | `/giong` | Nghe/đổi giọng từng nhân vật; `/giong Ông pitch -10 rate -5` hoặc `/giong Bé Na cao hơn` để nhập cao độ/tốc độ |
 | `/themnv Tên - vai` | Thêm nhân vật mới (vd `/themnv Cô Lan - cô giáo`); hoặc gửi ảnh chú thích `Tên - vai` → ➕ Nhân vật mới |

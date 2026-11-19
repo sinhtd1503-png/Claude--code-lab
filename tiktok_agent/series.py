@@ -377,7 +377,8 @@ def clip_prompt(bible: dict, scene: dict, index: int, total: int, script: dict |
             if c and c.get("voice_en") and c not in speakers:
                 speakers.append(c)
         if speakers:
-            parts.append("Voices (each character always has this exact same voice in every shot): "
+            parts.append("Voices — the SAME voice actor for each character in every clip of this film (same pitch, "
+                         "timbre, age, accent and pace; do not change the voice between clips): "
                          + " | ".join(f"{c['name']}: {c['voice_en'].rstrip('.')}" for c in speakers) + ".")
         spoken = [f'{ln["speaker"]} ({ln.get("delivery_en", "").rstrip(".") or "natural"}) says in Vietnamese: '
                   f'"{ln["text"]}"' for ln in lines]
