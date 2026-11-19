@@ -121,7 +121,7 @@ class TikTokPublisher:
         self._upload(data["upload_url"], video)
         return data["publish_id"]
 
-    def direct_post(self, video: Path, title: str, privacy_level: str) -> str:
+    def direct_post(self, video: Path, title: str, privacy_level: str, cover_ms: int | None = None) -> str:
         creator = self._post("/v2/post/publish/creator_info/query/", {})
         options = creator.get("privacy_level_options", [])
         if privacy_level not in options:
@@ -134,6 +134,7 @@ class TikTokPublisher:
                 "disable_comment": False,
                 "disable_duet": False,
                 "disable_stitch": False,
+                **({"video_cover_timestamp_ms": int(cover_ms)} if cover_ms is not None else {}),
             },
             "source_info": self._source_info(video),
         })

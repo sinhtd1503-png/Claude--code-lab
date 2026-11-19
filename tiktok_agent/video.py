@@ -143,7 +143,42 @@ def last_frame_of(src: Path, dst: Path) -> Path | None:
     return dst if p.returncode == 0 and dst.is_file() and dst.stat().st_size else None
 
 
-def make_outro(last_seg: Path, workdir: Path, cfg: dict) -> Path | None:
+def wrap_text(text: str, width: int) -> str:
+    """Break a sentence into balanced lines of at most ~`width` characters (no lonely last word)."""
+    words = str(text or "").split()
+    if not words:
+        return ""
+    total = len(" ".join(words))
+    k = max(1, -(-total // width))
+    target = total / k
+    lines, cur = [], ""
+    for i, w in enumerate(words):
+        cand = f"{cur} {w}".strip()
+        left = len(words) - i
+        if cur and len(lines) < k - 1 and (len(cand) > target + 2 or len(cand) > width) and left >= 1:
+            lines.append(cur)
+            cur = w
+        else:
+            cur = cand
+    lines.append(cur)
+    return "\n".join(lines)
+
+
+def thumb_filter(vid: dict, workdir: Path, text: str) -> str:
+    """Big message text over the first seconds (TikTok's cover frame is taken from here), fading out."""
+    text = str(text or "").strip()
+    sec = float(vid.get("thumbnail_sec", 1.6) or 0)
+    if not text or sec <= 0 or not vid.get("thumbnail_text", True):
+        return ""
+    tf = workdir / "thumb_text.txt"
+    tf.write_text(wrap_text(text.upper() if vid.get("thumbnail_upper", True) else text, 14), encoding="utf-8")
+    alpha = f"if(lt(t,{sec - 0.5}),1,max(0,({sec}-t)/0.5))"
+    return (f",drawtext=textfile='{tf.name}':font='{vid.get('font', 'DejaVu Sans')}':fontsize=92:fontcolor=white:"
+            f"text_align=C:line_spacing=14:borderw=5:bordercolor=black@0.6:box=1:boxcolor={OUTRO_COLOR}@0.55:boxborderw=36:"
+            f"x=(w-text_w)/2:y=h*0.20:alpha='{alpha}':enable='lt(t,{sec})'")
+
+
+def make_outro(last_seg: Path, workdir: Path, cfg: dict, text: str | None = None) -> Path | None:
     """Ending: the last frame held, a very slow ~3% zoom-out (over a blurred copy, so nothing jumps), optional
     centred text fading in/out, and a fade to warm dark in the final 1.2 s. Silent audio (music plays on top)."""
     vid = cfg.get("video", {}) or {}
@@ -159,14 +194,15 @@ def make_outro(last_seg: Path, workdir: Path, cfg: dict) -> Path | None:
          f"[bg]boxblur=20:2,eq=brightness=-0.06[bgb];"
          f"[fg]scale=w='trunc({W}*(1-{z}*t/{sec})/2)*2':h='trunc({H}*(1-{z}*t/{sec})/2)*2':eval=frame[fgs];"
          f"[bgb][fgs]overlay=x='(W-w)/2':y='(H-h)/2':eval=frame,fps={FPS},format=yuv420p")
-    text = str(vid.get("outro_text") or "").strip()
-    if text:
+    text = str(text if text is not None else vid.get("outro_text") or "").strip()
+    if text:  # the closing line (câu kết) the viewer should remember
         tf = workdir / "outro_text.txt"
-        tf.write_text(text, encoding="utf-8")
+        tf.write_text(wrap_text(text, 20), encoding="utf-8")
         t_in, t_out = 0.3, max(0.8, sec - fade - 0.1)
         alpha = f"if(lt(t,{t_in}),0,if(lt(t,{t_in + 0.6}),(t-{t_in})/0.6,if(lt(t,{t_out - 0.5}),1,max(0,({t_out}-t)/0.5))))"
-        g += (f",drawtext=textfile='{tf.name}':font='{vid.get('font', 'DejaVu Sans')}':fontsize=64:fontcolor=white:"
-              f"borderw=4:bordercolor=black@0.5:x=(w-text_w)/2:y=(h-text_h)/2:alpha='{alpha}'")
+        g += (f",drawtext=textfile='{tf.name}':font='{vid.get('font', 'DejaVu Sans')}':fontsize=70:fontcolor=white:"
+              f"text_align=C:line_spacing=14:borderw=4:bordercolor=black@0.5:box=1:boxcolor={OUTRO_COLOR}@0.5:"
+              f"boxborderw=34:x=(w-text_w)/2:y=(h-text_h)/2:alpha='{alpha}'")
     g += f",fade=t=out:st={sec - fade:.3f}:d={fade:.3f}:color={OUTRO_COLOR}[v]"
     out = workdir / "outro.mkv"
     _run(["ffmpeg", "-y", "-loop", "1", "-t", f"{sec:.3f}", "-i", frame.name, "-f", "lavfi", "-i",
@@ -182,7 +218,8 @@ def subtitle_style(vid: dict) -> str:
 
 
 def final_mix(workdir: Path, cfg: dict, total: float, joined: str, voice_file: str | None,
-              music: str | None, spans: list, ambient_from_joined: bool, voice_from_joined: bool = False) -> dict:
+              music: str | None, spans: list, ambient_from_joined: bool, voice_from_joined: bool = False,
+              thumb_text: str = "") -> dict:
     """Burn subtitles and mix the soundtrack in one pass; also writes voice/music stems and checks the music."""
     from . import audio
     st = audio.music_settings(cfg)
@@ -203,12 +240,16 @@ def final_mix(workdir: Path, cfg: dict, total: float, joined: str, voice_file: s
     vpre = audio.stereo_prefix(voice_file) if voice_file else ""
     graph = audio.mix_graph(total, cfg, vl, ml, spans, amb, voice_pre=vpre, stems=False, volume=vol)
     _run(["ffmpeg", "-y", *ins, "-filter_complex",
-          f"[0:v]subtitles=subs.srt:force_style='{subtitle_style(cfg['video'])}'[v];{graph}",
+          f"[0:v]subtitles=subs.srt:force_style='{subtitle_style(cfg['video'])}'"
+          f"{thumb_filter(cfg['video'], workdir, thumb_text)}[v];{graph}",
           "-map", "[v]", "-map", "[a]", "-t", f"{total:.3f}", "-c:v", "libx264", "-preset", "medium", "-crf", "20",
           "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", "-ar", str(SR), "-movflags", "+faststart",
           "final.mp4"], cwd=workdir)
     audio.write_stems(ins, audio.mix_graph(total, cfg, vl, ml, spans, amb, voice_pre=vpre, volume=vol), total, workdir,
                       cwd=workdir)
+    cover = float(cfg["video"].get("thumbnail_at", 0.5))
+    subprocess.run(["ffmpeg", "-y", "-v", "error", "-ss", f"{cover:.2f}", "-i", "final.mp4", "-frames:v", "1", "-q:v", "2",
+                    "thumbnail.jpg"], cwd=workdir, capture_output=True)
     warnings = []
     if not music:
         warnings.append("chưa có nhạc nền — gửi file mp3 cho bot để thêm vào thư viện (/nhac)")
@@ -299,7 +340,7 @@ def render(script: dict, workdir: Path, cfg: dict, stock_key: str, ai=None, narr
         segments.append(seg)
         durs.append(dur)
 
-    outro = make_outro(segments[-1], workdir, cfg)
+    outro = make_outro(segments[-1], workdir, cfg, script.get("closing_line") or None)
     if outro:
         segments.append(outro)
     starts = [sum(durs[:k]) for k in range(n)]
@@ -344,7 +385,7 @@ def render(script: dict, workdir: Path, cfg: dict, stock_key: str, ai=None, narr
     music = vid.get("background_music")
     final_mix(workdir, cfg, total, "joined.mkv", str(voice_file),
               str(Path(music).resolve()) if music and Path(music).exists() else None, spans,
-              ambient_from_joined=True)
+              ambient_from_joined=True, thumb_text=script.get("thumb_text", ""))
     final = workdir / "final.mp4"
     log.info("Rendered %s (%.1fs)", final, _duration(final))
     return final

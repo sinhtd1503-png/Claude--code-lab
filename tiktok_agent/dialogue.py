@@ -306,7 +306,7 @@ def render_dialogue(script: dict, workdir: Path, cfg: dict, stock_key: str, ai, 
             idx += 1
         t0 += dur
 
-    outro = make_outro(segments[-1], workdir, cfg)
+    outro = make_outro(segments[-1], workdir, cfg, script.get("closing_line") or None)
     if outro:
         segments.append(outro)
     (workdir / "subs.srt").write_text("\n".join(srt), encoding="utf-8")
@@ -318,7 +318,7 @@ def render_dialogue(script: dict, workdir: Path, cfg: dict, stock_key: str, ai, 
     # the clips' own sound (voices + rain/wind) is the voice bus, untouched; the music bed is ducked only by `spans`
     final_mix(workdir, cfg, total, "joined.mkv", None,
               str(Path(music).resolve()) if music and Path(music).exists() else None, spans,
-              ambient_from_joined=False, voice_from_joined=True)
+              ambient_from_joined=False, voice_from_joined=True, thumb_text=script.get("thumb_text", ""))
     final = workdir / "final.mp4"
     log.info("Rendered dialogue video %s (%.1fs)", final, _duration(final))
     return final

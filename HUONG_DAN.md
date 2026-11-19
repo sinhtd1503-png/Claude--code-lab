@@ -265,11 +265,18 @@ Mỗi lần bạn bấm **Duyệt kịch bản**, hệ thống cập nhật mộ
      nên mọi clip đều cùng giọng, kể cả clip tạo tay. Bản nghe thử lúc duyệt kịch bản chính là âm thanh thành phẩm.
    - Tất cả được lưu trong `/opt/tiktok-agent/data/nhan_vat.yaml` (sửa bằng nano cũng được; cập nhật code không
      ghi đè). Giá trị ban đầu nằm ở mục `cast:` trong `config.yaml`.
-5. Gửi `/kichban` (hoặc chờ 07:00 sáng mai) → bot gửi **📝 Kịch bản** 4 cảnh.
-   **✅ Duyệt kịch bản** / **🔄 Viết bản khác** / **❌ Bỏ** — hoặc Reply để góp ý cụ thể. Bot ghi nhớ góp ý cho các kịch bản sau.
-6. Duyệt xong, bot gửi **4 prompt** (mỗi cảnh 1 tin). Tạo clip — xem mục **"Tạo clip trên iPad"** ngay dưới.
-7. Gửi đủ 4 clip → bot báo "Đang ghép video" → 1–3 phút sau gửi **🎞 Video** (~28 giây, có giọng đọc + phụ đề).
-8. **✅ Duyệt & đăng TikTok** → bot đăng lên các kênh đã kết nối. **🔁 Thay clip** nếu muốn đổi clip.
+5. Gửi `/kichban` (hoặc chờ 07:00 sáng mai) → bot gửi **📝 Kịch bản**: thoại từng cảnh, **chữ trên ảnh bìa**
+   (thông điệp) và **câu kết** (hiện ở clip cuối). **✅ Duyệt kịch bản** / **🔄 Viết bản khác** / **❌ Bỏ** — hoặc
+   Reply để góp ý. Bot ghi nhớ góp ý cho các kịch bản sau.
+6. **Bước 2/3 – duyệt nhạc nền:** bot gửi bản nghe thử (một bài chạy liền cả video, tắt dần ở cuối).
+   **🎵 Đổi nhạc** để nghe bài khác, **✅ Duyệt nhạc nền** khi ưng. Thư viện trống: gửi file mp3 vào bot, bấm
+   **🎧 Nghe thử với bài này**.
+7. **Bước 3/3 – chọn cách tạo clip:** **🤖 Tự động bằng Gemini** (trả phí, hỏi duyệt ngân sách) hoặc
+   **✋ Tạo tay trên Google Flow** → lúc này bot mới gửi các prompt. Xem mục **"Tạo clip trên iPad"** ngay dưới.
+8. Đủ clip → bot ghép video: nhạc nền xuyên suốt từ đầu đến cuối, phụ đề, **chữ thông điệp ở giây đầu (ảnh bìa)**,
+   **câu kết ở đoạn kết**. Bot gửi **🎞 Video** kèm **🖼 ảnh bìa**.
+9. **✅ Duyệt & đăng TikTok** → bot đăng lên các kênh đã kết nối. **🔁 Thay clip** nếu muốn đổi clip.
+   (Đăng vào hộp nháp: khi bấm đăng trong app TikTok, chọn ảnh bìa ở giây đầu – khung có chữ.)
 
 ### 🎬 Tạo clip trên iPad với Google Flow (≈5 phút/ngày, miễn phí)
 
