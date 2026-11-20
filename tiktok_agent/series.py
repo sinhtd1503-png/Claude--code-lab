@@ -399,14 +399,20 @@ def extend_prompt(bible: dict, scene: dict, index: int, total: int, script: dict
     """Short prompt for Google Flow's "Extend" (continue the previous clip): only what happens next."""
     chars = {c["name"].strip().lower(): c for c in bible.get("characters", [])}
     lines = scene.get("lines") or []
-    parts = [f"Continue this exact shot seamlessly for 8 more seconds (clip {index + 1} of {total}): same place, same "
-             "people, same clothes, same lighting, same camera lens; no cut, no new people.",
+    parts = [f"Continue this exact shot seamlessly for 8 more seconds (part {index + 1} of {total}): same place, same "
+             "people, same clothes, same lighting, same camera lens and color grade; no cut, no new people.",
              f"Action: {scene['action_en'].rstrip('.')}.",
              f"Camera: {scene.get('camera_en', 'slow gentle movement').rstrip('.')}."]
     end = (scene.get("end_en") or "").strip().rstrip(".")
     if end:
         parts.append(f"End on: {end}.")
+    on_screen = scene_cast(bible, scene)
+    if on_screen:  # short identity reminder: Extend sees the previous frames, this stops faces/clothes drifting
+        parts.append("Keep exactly as before — " + "; ".join(
+            f"{c['name']}: {c.get('look_en', '').rstrip('.')}" for c in on_screen) + ".")
     if lines:
+        parts.append("Every character keeps the SAME voice as in the previous part (same voice actor, pitch, accent, "
+                     "loudness).")
         spoken = []
         for ln in lines:
             c = chars.get(ln["speaker"].strip().lower()) or {}

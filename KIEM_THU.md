@@ -91,12 +91,15 @@ Trong Telegram, gửi cho bot:
    **Kết quả đúng:** bot chưa gửi prompt, mà gửi **🎵 Bước 2/4 – nhạc nền nghe thử** (độ dài cả video + đoạn kết).
    Thử **🎵 Đổi nhạc** → bot gửi bài khác. Bấm **✅ Duyệt nhạc nền**.
 9. **Kết quả đúng:** bot gửi **🔤 Bước 3/4 – duyệt chữ** kèm ảnh minh hoạ 3 phần (ảnh bìa, phụ đề, câu kết). Bấm
-   **🔤 Font kết** → ảnh mới với font khác. Bấm **✅ Duyệt chữ** → bot hỏi **🎬 Bước 4/4**: 🤖 Tự động hay ✋ Tạo tay.
+   **🔤 Font kết** → ảnh mới với font khác. Bấm **✅ Duyệt chữ** → bot hỏi **🎬 Bước 4/4**: 🤖 Tự động, 🎞 Kéo dài (1 video) hay 🧩 Clip độc lập.
    Khi nhận video thành phẩm, kiểm tra: dài ≈ (số cảnh × 8 giây) + 4,5 giây đoạn kết; giây đầu có chữ thông điệp
    to (ảnh bìa); nhạc nghe được liền từ đầu đến cuối; đoạn kết hiện câu kết rồi mờ sang tối ấm; bot gửi kèm
    **🖼 Ảnh bìa**. Nếu bot gửi **🎵 Kiểm tra âm thanh** kèm cảnh báo, đổi bài nhạc khác.
    - Chọn 🤖 Tự động: lần đầu hỏi **duyệt ngân sách Gemini** → 5–15 phút sau nhận video. Từ chối → bot gửi prompt tạo tay.
-   - Chọn ✋ Tạo tay (hoặc chưa có key): bot gửi các tin **"Cảnh 1… Cảnh 3"** (+ prompt Extend 🔁 cho cảnh 2, 3).
+   - Chọn 🎞 Kéo dài: bot gửi **🎬 Đoạn 1 (prompt đầy đủ)**, các tin **🔁 Đoạn 2/3, 3/3 – kéo dài** và cuối cùng
+     **📥 Gửi video kéo dài**. Trả lời tin 📥 bằng 1 video hoàn chỉnh → bot dựng ngay, video dài = video gửi + 4,5 giây
+     đoạn kết, giọng nghe y như video gửi, phụ đề khớp từng câu.
+   - Chọn 🧩 Clip độc lập (hoặc chưa có key): bot gửi các tin **"Cảnh 1… Cảnh 3"**, không có prompt kéo dài.
 
 ## Phần 4 – Gửi clip và ghép video (5 phút)
 

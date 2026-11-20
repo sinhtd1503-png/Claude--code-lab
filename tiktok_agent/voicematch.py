@@ -2,9 +2,11 @@
 
 Video models give a character a slightly different voice in every clip (a bit higher, lower, louder, softer).
 After the clips are joined, every spoken line is attributed to its speaker (subtitle timing), and for each line we
-measure the pitch (median F0) and loudness. Each character gets ONE reference — learned from the first video and
-remembered across videos — and lines that drift are pulled back to it: pitch with rubberband (tempo untouched,
-so the pace and lip-sync stay), loudness with a plain gain. Everything else in the clip audio is left alone.
+measure the pitch (median F0) and loudness. Each character gets ONE reference — by default the median of its own
+lines in THIS video (clips that already sound alike are left untouched; `match_memory: true` instead pulls every
+video to the voice remembered from earlier videos) — and only lines that clearly drift are pulled back to it: pitch
+with rubberband (tempo untouched, so the pace and lip-sync stay), loudness with a plain gain. A line whose speaker
+is not certain (the subtitle timing had to be guessed) is never touched. Everything else is left alone.
 """
 from __future__ import annotations
 
@@ -67,10 +69,12 @@ def plan(lines: list[dict], refs: dict, cfg: dict) -> tuple[list[dict], dict]:
     Returns (corrections [{start, end, ratio, gain_db}], updated refs)."""
     vc = (cfg.get("voice") or {})
     max_st = float(vc.get("match_max_semitones", 4))
-    max_db = float(vc.get("match_max_db", 8))
-    min_st = float(vc.get("match_min_semitones", 0.5))
-    min_db = float(vc.get("match_min_db", 1.0))
-    refs = {k: dict(v) for k, v in (refs or {}).items()}
+    max_db = float(vc.get("match_max_db", 6))
+    min_st = float(vc.get("match_min_semitones", 1.0))
+    min_db = float(vc.get("match_min_db", 3.0))
+    stored = {k: dict(v) for k, v in (refs or {}).items()}
+    refs = dict(stored) if vc.get("match_memory", False) else {}
+    lines = [ln for ln in lines if ln.get("sure", True)]
     by: dict[str, list[dict]] = {}
     for ln in lines:
         if ln.get("f0"):
@@ -92,7 +96,7 @@ def plan(lines: list[dict], refs: dict, cfg: dict) -> tuple[list[dict], dict]:
         out.append({"start": ln["start"], "end": ln["end"], "speaker": ln["speaker"],
                     "ratio": round(2 ** (st / 12), 4) if abs(st) >= min_st else 1.0,
                     "gain_db": round(gain, 2) if abs(gain) >= min_db else 0.0})
-    return out, refs
+    return out, {**stored, **refs}
 
 
 def apply(src: Path, corrections: list[dict], total: float, out: Path) -> Path:
@@ -126,18 +130,18 @@ def apply(src: Path, corrections: list[dict], total: float, out: Path) -> Path:
     return out
 
 
-def match(src: Path, labelled: list[tuple[float, float, str]], refs: dict, cfg: dict, total: float,
+def match(src: Path, labelled: list[tuple], refs: dict, cfg: dict, total: float,
           workdir: Path) -> tuple[Path, dict, list[dict]]:
-    """Measure every line, plan corrections against the characters' references, render. Returns
-    (audio file, updated refs, report)."""
+    """labelled: [(start, end, speaker[, sure])]. Measure every line, plan corrections against the characters'
+    references, render. Returns (audio file, updated refs, report)."""
     lines = []
-    for a, b, spk in labelled:
+    for a, b, spk, *rest in labelled:
         m = measure(src, a, b)
-        lines.append({"start": a, "end": b, "speaker": spk, **(m or {})})
+        lines.append({"start": a, "end": b, "speaker": spk, "sure": bool(rest[0]) if rest else True, **(m or {})})
     corr, refs = plan(lines, refs, cfg)
     out = apply(src, corr, total, workdir / "voices_matched.wav")
     report = [{"speaker": ln["speaker"], "start": round(ln["start"], 2), "f0": round(ln.get("f0") or 0, 1),
-               "db": round(ln.get("db") or -120, 1)} for ln in lines]
+               "db": round(ln.get("db") or -120, 1), "sure": ln["sure"]} for ln in lines]
     for c in corr:
         log.info("Giọng %s %.1f–%.1fs: cao độ ×%.3f, %+.1f dB", c["speaker"], c["start"], c["end"], c["ratio"],
                  c["gain_db"])

@@ -865,30 +865,32 @@ def rewrite_script(cid: int, feedback: str | None, message_id: int | None = None
 
 # ====================================================================== clips
 
-def prompt_messages(cid: int) -> list[dict]:
-    m = manual().load(cid)
-    n = len(m["shots"])
-    out = [msg(f"🎥 <b>#{cid} – Tạo {n} clip miễn phí</b> — bot gửi lần lượt {n} tin <b>Cảnh 1…{n}</b> bên dưới "
-               f"(mỗi tin cách nhau ~1 giây). Thiếu cảnh nào: gõ <code>/clip 2</code> (số cảnh) hoặc <code>/clip</code> "
-               "để gửi lại tất cả.\n\n"
-               "1) Mở <b>labs.google/flow</b> trên Safari (tài khoản Google miễn phí).\n"
-               "2) Chạm vào khung prompt của từng cảnh bên dưới để <b>sao chép</b> → dán vào Flow → chọn "
-               "khung <b>dọc 9:16</b>, 8 giây → tạo → tải clip về.\n"
-               "3) Quay lại Telegram, <b>Trả lời (Reply)</b> đúng tin nhắn \"Cảnh N\" và gửi clip đó "
-               "(<b>giữ nguyên âm thanh</b> — Flow tạo luôn giọng thoại của nhân vật). "
-               f"Hoặc gửi cả {n} clip một lượt theo đúng thứ tự cảnh.\n\n"
-               "🧩 <b>Nhân vật giống nhau:</b> lưu các ảnh mẫu bên dưới; ở MỌI cảnh, trong Flow bấm <b>+ Ingredients</b> "
-               "và thêm đúng các ảnh ghi dưới cảnh đó (cùng ảnh cho cả video).\n"
-               "🔗 <b>Liền mạch:</b> tạo <b>theo thứ tự</b> Cảnh 1 → 2 → 3…, gửi clip cảnh trước cho bot rồi mới tạo cảnh "
-               "sau. Bot gửi lại <b>khung hình cuối</b> của cảnh trước → trong Flow chọn <i>Frames to Video</i>, đặt ảnh đó "
-               "làm <b>khung bắt đầu</b> (hoặc dùng <i>Extend</i> nối tiếp clip trước), rồi dán prompt cảnh sau."
-               + ("\n🎙 Giọng: khi ghép, bot thay bằng <b>giọng cố định</b> của từng nhân vật (/giong)."
-                  if voice_mode() == "fixed" else
-                  "\n🎙 Âm thanh: <b>giữ nguyên</b> như clip bạn gửi (giọng, âm lượng, tốc độ); bot chỉ thêm nhạc nhỏ "
-                  "phía dưới và phụ đề."))]
+CLIP_MODES = ("extend", "independent")
+
+
+def clip_mode(cid: int) -> str | None:
+    """How the owner makes the clips by hand: "extend" (ONE video built with Flow's Extend), "independent" (one
+    8-second clip per scene, joined by the bot) or None (not chosen yet). Narration videos are always independent."""
+    m = manual().load(cid) or {}
+    if m.get("mode") in CLIP_MODES:
+        return m["mode"]
     item = DB_.get_content(cid)
-    bible = content_bible(item)
-    used = []
+    return None if item and is_dialogue(item["script"]) else "independent"
+
+
+def manual_choice_msg(cid: int, head: str = "") -> dict:
+    n = len(manual().load(cid)["shots"])
+    return msg((head or f"✋ <b>#{cid} – Tạo tay trên Google Flow: chọn cách làm</b>") + "\n"
+               f"• <b>🎞 Kéo dài (Extend):</b> bot gửi prompt đầy đủ cho đoạn 1 và {n - 1} prompt kéo dài. Bạn làm "
+               "tất cả trong Flow thành <b>1 video hoàn chỉnh</b> rồi gửi lại <b>đúng 1 video</b> — bot không cắt, "
+               "không ghép, chỉ thêm nhạc nền, phụ đề, ảnh bìa và câu kết. Hình và giọng liền mạch nhất.\n"
+               f"• <b>🧩 Clip độc lập:</b> bot gửi {n} prompt riêng (mỗi cảnh 1 clip 8 giây); bạn gửi lại {n} clip, "
+               "bot ghép theo thứ tự.",
+               kb([("🎞 Kéo dài – gửi 1 video", f"ce:{cid}")], [("🧩 Clip độc lập – gửi từng clip", f"cm:{cid}")]))
+
+
+def cast_photo_messages(cid: int, item: dict, bible: dict) -> list[dict]:
+    out, used = [], []
     for sc in item["script"]["scenes"]:
         for c in series.scene_cast(bible, sc):
             if c not in used:
@@ -902,25 +904,95 @@ def prompt_messages(cid: int) -> list[dict]:
     if missing:
         out.append(msg(f"⚠️ Chưa có ảnh mẫu cho: {esc(', '.join(missing))}. Gõ /nhanvat để lấy prompt tạo ảnh chân "
                        "dung và gửi lại cho bot — từ lần sau các clip sẽ giống mặt hơn."))
+    return out
+
+
+VOICE_NOTE_KEEP = ("\n🎙 Âm thanh: <b>giữ nguyên</b> như video bạn gửi (giọng, âm lượng, tốc độ); bot chỉ thêm nhạc "
+                   "nhỏ phía dưới và phụ đề.")
+
+
+def prompt_messages(cid: int) -> list[dict]:
+    mode = clip_mode(cid)
+    if mode is None:
+        return [manual_choice_msg(cid)]
+    if mode == "extend":
+        return extend_messages(cid)
+    m = manual().load(cid)
+    n = len(m["shots"])
+    out = [msg(f"🎥 <b>#{cid} – {n} clip độc lập</b> — bot gửi lần lượt {n} tin <b>Cảnh 1…{n}</b> bên dưới "
+               f"(mỗi tin cách nhau ~1 giây). Thiếu cảnh nào: gõ <code>/clip 2</code> (số cảnh) hoặc <code>/clip</code> "
+               "để gửi lại tất cả.\n\n"
+               "1) Mở <b>labs.google/flow</b> trên Safari (tài khoản Google miễn phí).\n"
+               "2) Chạm vào khung prompt của từng cảnh bên dưới để <b>sao chép</b> → dán vào Flow → chọn "
+               "khung <b>dọc 9:16</b>, 8 giây → tạo → tải clip về.\n"
+               "3) Quay lại Telegram, <b>Trả lời (Reply)</b> đúng tin nhắn \"Cảnh N\" và gửi clip đó "
+               "(<b>giữ nguyên âm thanh</b> — Flow tạo luôn giọng thoại của nhân vật). "
+               f"Hoặc gửi cả {n} clip một lượt theo đúng thứ tự cảnh.\n\n"
+               "🧩 <b>Nhân vật giống nhau:</b> lưu các ảnh mẫu bên dưới; ở MỌI cảnh, trong Flow bấm <b>+ Ingredients</b> "
+               "và thêm đúng các ảnh ghi dưới cảnh đó (cùng ảnh cho cả video).\n"
+               "🔗 <b>Liền mạch:</b> tạo <b>theo thứ tự</b> Cảnh 1 → 2 → 3…, gửi clip cảnh trước cho bot rồi mới tạo cảnh "
+               "sau. Bot gửi lại <b>khung hình cuối</b> của cảnh trước → trong Flow chọn <i>Frames to Video</i>, đặt ảnh đó "
+               "làm <b>khung bắt đầu</b>, rồi dán prompt cảnh sau."
+               + ("\n🎙 Giọng: khi ghép, bot thay bằng <b>giọng cố định</b> của từng nhân vật (/giong)."
+                  if voice_mode() == "fixed" else
+                  "\n🎙 Âm thanh: giữ nguyên clip bạn gửi; chỉ câu nào lệch giọng <b>rõ</b> so với các câu khác của cùng "
+                  "nhân vật trong video này mới được chỉnh nhẹ cao độ (/giong).")
+)]
+    item = DB_.get_content(cid)
+    bible = content_bible(item)
+    out += cast_photo_messages(cid, item, bible)
     for i, s in enumerate(m["shots"]):
         scene = item["script"]["scenes"][i]
         out.extend(scene_prompt_msg(cid, i, n, scene, s["prompt"], ingredients_note(bible, scene, i)))
-        out.extend(extend_msg(cid, i, n, item["script"], bible))
+    rows = [[("🎞 Đổi sang kéo dài – gửi 1 video", f"ce:{cid}")]] if clip_mode_choosable(item) else []
     if os.getenv("GEMINI_API_KEY"):
         usd = float((S.raw.get("budget") or {}).get("services", {}).get("gemini_video", {}).get("usd_per_clip", 0.19))
-        out.append(msg("Không muốn tạo tay?",
-                       kb([(f"🤖 Tạo tự động bằng Gemini (≈ ${usd * n:.2f})", f"pg:{cid}")])))
+        rows.append([(f"🤖 Tạo tự động bằng Gemini (≈ ${usd * n:.2f})", f"pg:{cid}")])
+    if rows:
+        out.append(msg("Muốn đổi cách làm?", kb(*rows)))
+    return out
+
+
+def clip_mode_choosable(item: dict) -> bool:
+    return bool(item) and is_dialogue(item["script"])
+
+
+def extend_messages(cid: int) -> list[dict]:
+    """Extend mode: the full prompt of part 1, then one short Extend prompt per following part, then ONE message to
+    reply to with the finished video."""
+    m = manual().load(cid)
+    n = len(m["shots"])
+    item = DB_.get_content(cid)
+    bible = content_bible(item)
+    scenes = item["script"]["scenes"]
+    out = [msg(f"🎞 <b>#{cid} – 1 video kéo dài ({n} đoạn)</b>\n\n"
+               "1) Mở <b>labs.google/flow</b> → tạo dự án mới, khung <b>dọc 9:16</b>.\n"
+               "2) <b>Đoạn 1:</b> bấm <b>+ Ingredients</b>, thêm ảnh mẫu các nhân vật bên dưới, dán prompt "
+               "<b>Đoạn 1</b> → tạo.\n"
+               f"3) <b>Đoạn 2…{n}:</b> trên clip vừa tạo bấm <b>Extend</b> (kéo dài / Add to scene) và dán lần lượt "
+               "prompt kéo dài tương ứng. Đoạn nào chưa ưng thì tạo lại đoạn đó trước khi kéo tiếp.\n"
+               f"4) Xong cả {n} đoạn: tải về <b>toàn bộ video</b> (Scene builder → Download), rồi <b>Trả lời</b> tin "
+               "<b>📥 Gửi video kéo dài</b> ở cuối bằng <b>đúng 1 video</b> đó.\n\n"
+               "Bot <b>không cắt, không ghép</b> video này: giữ nguyên hình, giọng và tiếng; chỉ thêm nhạc nền đã duyệt, "
+               "phụ đề, chữ ảnh bìa và câu kết."
+               + VOICE_NOTE_KEEP)]
+    out += cast_photo_messages(cid, item, bible)
+    out.extend(scene_prompt_msg(cid, 0, n, scenes[0], m["shots"][0]["prompt"], ingredients_note(bible, scenes[0], 0),
+                                label="Đoạn 1 (prompt đầy đủ)"))
+    for i in range(1, n):
+        out.extend(extend_msg(cid, i, n, item["script"], bible))
+    out.append(msg(f"📥 <b>#{cid} · Gửi video kéo dài</b> — Trả lời tin này bằng <b>1 video hoàn chỉnh</b> (đủ {n} đoạn).",
+                   kb([("🧩 Đổi sang clip độc lập", f"cm:{cid}")])))
     return out
 
 
 def extend_msg(cid: int, i: int, n: int, script: dict, bible: dict) -> list[dict]:
-    """Scenes 2…n: a short prompt for Flow's "Extend" (continues the previous clip itself — best continuity)."""
+    """Part i+1 (i ≥ 1) of an Extend video: the short prompt to paste after pressing Extend."""
     if i == 0:
         return []
     p = series.extend_prompt(bible, script["scenes"][i], i, n, script)
-    return [msg(f"🔁 <b>#{cid} · Cảnh {i + 1}/{n} – cách nối liền nhất:</b> trong Flow mở clip cảnh {i}, bấm "
-                f"<b>Extend</b> (kéo dài) và dán prompt ngắn này thay cho prompt dài ở trên. Tải phần kéo dài về, "
-                f"<b>Trả lời</b> tin này bằng clip đó.\n\n<code>{code_esc(p)}</code>")]
+    return [msg(f"🔁 <b>#{cid} · Đoạn {i + 1}/{n} – kéo dài:</b> bấm <b>Extend</b> trên đoạn {i} rồi dán:"
+                f"\n\n<code>{code_esc(p)}</code>")]
 
 
 def ingredients_note(bible: dict, scene: dict, i: int = 0) -> str:
@@ -961,9 +1033,9 @@ def code_esc(text: str) -> str:
     return html.escape(text, quote=False)  # quotes need no escaping inside <code> (and &quot; wastes 5 chars)
 
 
-def scene_prompt_msg(cid: int, i: int, n: int, scene: dict, prompt: str, note: str = "") -> list[dict]:
+def scene_prompt_msg(cid: int, i: int, n: int, scene: dict, prompt: str, note: str = "", label: str = "") -> list[dict]:
     """One scene prompt; split into several messages (each its own complete <code> block) if it is long."""
-    head = f"🎬 <b>#{cid} · Cảnh {i + 1}/{n}</b>"
+    head = f"🎬 <b>#{cid} · {label}</b>" if label else f"🎬 <b>#{cid} · Cảnh {i + 1}/{n}</b>"
     parts = split_text(prompt)
     out = []
     for k, part in enumerate(parts):
@@ -1180,18 +1252,29 @@ def clip_mode_msg(cid: int) -> dict:
     rows = []
     if os.getenv("GEMINI_API_KEY"):
         rows.append([(f"🤖 Tự động bằng Gemini (≈ ${usd * n:.2f})", f"pg:{cid}")])
-    rows.append([("✋ Tạo tay trên Google Flow (miễn phí)", f"cm:{cid}")])
+    rows.append([("🎞 Tay – Flow kéo dài, gửi 1 video", f"ce:{cid}")])
+    rows.append([("🧩 Tay – Flow clip độc lập, gửi từng clip", f"cm:{cid}")])
     note = "" if os.getenv("GEMINI_API_KEY") else "\n<i>(Tự động cần GEMINI_API_KEY trong .env.)</i>"
-    return msg(f"🎬 <b>Bước 4/4 – #{cid}: tạo {n} clip 8 giây bằng cách nào?</b>\n"
+    return msg(f"🎬 <b>Bước 4/4 – #{cid}: tạo video {n} đoạn bằng cách nào?</b>\n"
                "• <b>Tự động:</b> hệ thống tạo clip bằng Gemini (trả phí, luôn hỏi duyệt ngân sách trước).\n"
-               f"• <b>Bằng tay:</b> bot gửi {n} prompt để bạn dán vào Google Flow.{note}", kb(*rows))
+               f"• <b>🎞 Kéo dài (miễn phí):</b> bot gửi prompt đoạn 1 + {n - 1} prompt kéo dài; bạn làm trên Flow thành "
+               "1 video hoàn chỉnh và gửi lại đúng 1 video (bot không ghép).\n"
+               f"• <b>🧩 Clip độc lập (miễn phí):</b> bot gửi {n} prompt riêng; bạn gửi lại {n} clip 8 giây, bot ghép."
+               f"{note}", kb(*rows))
 
 
-def choose_manual(cid: int, mid: int | None) -> dict:
+def choose_manual(cid: int, mid: int | None, mode: str = "independent") -> dict:
     with LOCK:
         item = DB_.get_content(cid)
-    if not item or item["status"] != "awaiting_clips":
-        return reply(clear_buttons(mid), msg(f"#{cid} không ở bước tạo clip."))
+        m = manual().load(cid)
+        if not item or not m or item["status"] != "awaiting_clips":
+            return reply(clear_buttons(mid), msg(f"#{cid} không ở bước tạo clip."))
+        if m.get("mode") != mode:  # switching method: clips received for the other method no longer apply
+            for sh in m["shots"]:
+                sh["file"], sh["tg_message_id"] = None, None
+            m["unassigned"], m["full"] = [], None
+        m["mode"] = mode
+        manual().save(cid, m)
     return reply(clear_buttons(mid), prompt_messages(cid))
 
 
@@ -1875,6 +1958,17 @@ def receive_clip(body: dict) -> dict:
     dst = folder / f"in_{body.get('message_id', now_ts())}.mp4"
     _tg_download(body["file_id"], dst)
 
+    with LOCK:
+        m = src.load(cid)
+        extend = m.get("mode") == "extend" or (not m.get("mode") and "video kéo dài" in ref)
+        if extend:  # ONE finished Extend video: nothing to collect or join
+            m["mode"], m["full"] = "extend", str(dst)
+            src.save(cid, m)
+            DB_.update_content(cid, status="rendering")
+    if extend:
+        return reply(msg(f"📥 Đã nhận video kéo dài cho #{cid}. ⏳ Đang thêm nhạc nền, phụ đề, ảnh bìa, câu kết "
+                         "(không cắt, không ghép)…"), next_step={"action": "render", "id": cid})
+
     scene = None
     m_sc = re.search(r"Cảnh (\d+)", ref) or re.match(r"\s*(?:cảnh|canh|c)?\s*(\d)\b", body.get("caption") or "", re.I)
     if m_sc:
@@ -1919,7 +2013,7 @@ def reset_clips(cid: int, message_id: int | None) -> dict:
             return reply(clear_buttons(message_id), msg(f"Không thay clip được cho #{cid} lúc này."))
         for s in m["shots"]:
             s["file"], s["tg_message_id"] = None, None
-        m["unassigned"] = []
+        m["unassigned"], m["full"] = [], None
         manual().save(cid, m)
         DB_.update_content(cid, status="awaiting_clips")
     return reply(clear_buttons(message_id), msg(f"🔁 Gửi lại clip cho #{cid}:"), prompt_messages(cid))
@@ -1985,6 +2079,10 @@ def do_render(cid: int, paid: bool = False) -> dict:
         else:
             src = manual()
             script = _render_script(item)
+            if m and m.get("mode") == "extend":
+                if not m.get("full") or not Path(m["full"]).is_file():
+                    raise RuntimeError("chưa nhận được video kéo dài")
+                script["single_clip"] = m["full"]
         src.start_run(cid)
         run: dict = {}
         try:
@@ -2252,12 +2350,20 @@ def resend_prompts(text: str = "") -> dict:
     if not want:
         return reply(prompt_messages(r["id"]))
     cid = r["id"]
+    mode = clip_mode(cid)
+    if mode is None:
+        return reply(manual_choice_msg(cid))
     item, m = DB_.get_content(cid), manual().load(cid)
     bible, n = content_bible(item), len(m["shots"])
-    out = [scene_prompt_msg(cid, k - 1, n, item["script"]["scenes"][k - 1], m["shots"][k - 1]["prompt"],
-                            ingredients_note(bible, item["script"]["scenes"][k - 1], k - 1))
-           + extend_msg(cid, k - 1, n, item["script"], bible) for k in want if 1 <= k <= n]
-    return reply(*out) if out else reply(msg(f"Video #{cid} chỉ có cảnh 1–{n}."))
+    sc = item["script"]["scenes"]
+    if mode == "extend":
+        out = [extend_msg(cid, k - 1, n, item["script"], bible) if k > 1 else
+               scene_prompt_msg(cid, 0, n, sc[0], m["shots"][0]["prompt"], ingredients_note(bible, sc[0], 0),
+                                label="Đoạn 1 (prompt đầy đủ)") for k in want if 1 <= k <= n]
+    else:
+        out = [scene_prompt_msg(cid, k - 1, n, sc[k - 1], m["shots"][k - 1]["prompt"],
+                                ingredients_note(bible, sc[k - 1], k - 1)) for k in want if 1 <= k <= n]
+    return reply(*out) if out else reply(msg(f"Video #{cid} chỉ có {'đoạn' if mode == 'extend' else 'cảnh'} 1–{n}."))
 
 
 # ====================================================================== HTTP layer
@@ -2368,7 +2474,8 @@ def tg_button(body: dict = BODY, x_worker_token: str = TOKEN) -> dict:
         "ff": lambda: cycle_font(n, mid),
         "fg": lambda: cycle_font(n, mid),
         "mu": lambda: use_newest_music(n, mid),
-        "cm": lambda: choose_manual(n, mid),
+        "cm": lambda: choose_manual(n, mid, "independent"),
+        "ce": lambda: choose_manual(n, mid, "extend"),
         "va": lambda: publish(n, mid),
         "vc": lambda: reset_clips(n, mid),
         "vx": lambda: _set_status(n, "video_review", "video_rejected", mid, f"❌ Đã bỏ video #{n}."),

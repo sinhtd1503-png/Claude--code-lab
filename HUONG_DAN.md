@@ -257,9 +257,11 @@ Mỗi lần bạn bấm **Duyệt kịch bản**, hệ thống cập nhật mộ
    - **Thêm nhân vật** (hàng xóm, thầy cô…): gửi ảnh với chú thích `Tên - vai` → bấm **➕ Nhân vật mới**, hoặc gõ
      `/themnv Cô Lan - cô giáo chủ nhiệm` (bot tự viết mô tả và gửi prompt tạo ảnh). Nhân vật thêm có nút xoá;
      6 nhân vật chính chỉ sửa được, không xoá.
-   - **Giọng nhất quán giữa các clip:** mặc định **Khớp giọng nhân vật** — bot giữ giọng thật trong clip Flow nhưng
-     đo cao độ + âm lượng từng câu và kéo về "giọng chuẩn" của mỗi nhân vật (học từ video đầu, nhớ cho các video
-     sau), tốc độ nói và khẩu hình giữ nguyên. Học lại: `/giong` → **♻️ Học lại giọng chuẩn**.
+   - **Giọng nhất quán giữa các clip:** mặc định **Khớp giọng nhân vật** — bot giữ giọng thật trong clip Flow, đo
+     cao độ + âm lượng từng câu và so với các câu khác của **cùng nhân vật trong cùng video**: clip đã giống nhau thì
+     **không đụng vào**; chỉ câu lệch rõ (≥ 1 nửa cung hoặc ≥ 3 dB) và chắc chắn đúng người nói mới được chỉnh nhẹ.
+     Tốc độ nói và khẩu hình giữ nguyên. Muốn kéo mọi video về một giọng nhớ từ video trước: `match_memory: true`.
+     Video làm bằng **🎞 Kéo dài** không bị chỉnh giọng (cả video do Flow tạo liền nên đã cùng giọng).
    - **Giọng:** gửi `/giong` → bấm 🔊 để nghe giọng từng người. Muốn chỉnh theo ý: bấm **✏️ Nhập giọng** (hoặc
      **Trả lời** bản nghe thử) và gõ yêu cầu, ví dụ `pitch -10 rate +5`, `cao độ 20 tốc độ -5`, `trầm hơn`,
      `nhanh hơn nhiều`, `giọng nam`. Nhập nhanh một lệnh: `/giong Ông pitch -10 rate -5`.
@@ -277,14 +279,31 @@ Mỗi lần bạn bấm **Duyệt kịch bản**, hệ thống cập nhật mộ
 7. **Bước 3/4 – duyệt chữ:** bot gửi **ảnh minh hoạ** 3 phần chữ dựng y như video thật: chữ ảnh bìa (đầu video),
    phụ đề, câu kết (cuối video). Bấm **🔤 Font đầu / Font phụ đề / Font kết** để thử font khác (9 font đủ dấu tiếng
    Việt), ưng thì **✅ Duyệt chữ**. Font đã chọn được nhớ cho các video sau; xem/đổi bất kỳ lúc nào bằng `/font`.
-8. **Bước 4/4 – chọn cách tạo clip:** **🤖 Tự động bằng Gemini** (trả phí, hỏi duyệt ngân sách) hoặc
-   **✋ Tạo tay trên Google Flow** → lúc này bot mới gửi các prompt. Xem mục **"Tạo clip trên iPad"** ngay dưới.
-9. Đủ clip → bot ghép video: nhạc nền xuyên suốt từ đầu đến cuối, phụ đề, **chữ thông điệp ở giây đầu (ảnh bìa)**,
-   **câu kết ở đoạn kết**. Bot gửi **🎞 Video** kèm **🖼 ảnh bìa**.
+8. **Bước 4/4 – chọn cách tạo clip:** lúc này bot mới gửi prompt, tuỳ cách bạn chọn:
+   - **🤖 Tự động bằng Gemini** (trả phí, hỏi duyệt ngân sách).
+   - **🎞 Tay – Flow kéo dài, gửi 1 video:** bot gửi **prompt đầy đủ cho Đoạn 1** và các **prompt kéo dài** cho
+     đoạn 2, 3…; bạn làm hết trong Flow thành **một video hoàn chỉnh** rồi gửi lại **đúng 1 video**. Bot **không cắt,
+     không ghép**, chỉ thêm nhạc nền, phụ đề, chữ ảnh bìa và câu kết. Hình và giọng liền mạch nhất — nên dùng cách này.
+   - **🧩 Tay – Flow clip độc lập, gửi từng clip:** bot gửi mỗi cảnh một prompt 8 giây riêng; bạn gửi lại từng clip,
+     bot ghép theo thứ tự.
+   Đổi cách làm bất cứ lúc nào bằng nút ở cuối loạt prompt (clip đã gửi theo cách cũ sẽ bị bỏ). Xem mục
+   **"Tạo clip trên iPad"** ngay dưới.
+9. Đủ clip (hoặc nhận video kéo dài) → bot dựng video: nhạc nền xuyên suốt từ đầu đến cuối, phụ đề, **chữ thông điệp
+   ở giây đầu (ảnh bìa)**, **câu kết ở đoạn kết**. Bot gửi **🎞 Video** kèm **🖼 ảnh bìa**.
 10. **✅ Duyệt & đăng TikTok** → bot đăng lên các kênh đã kết nối. **🔁 Thay clip** nếu muốn đổi clip.
    (Đăng vào hộp nháp: khi bấm đăng trong app TikTok, chọn ảnh bìa ở giây đầu – khung có chữ.)
 
-### 🎬 Tạo clip trên iPad với Google Flow (≈5 phút/ngày, miễn phí)
+### 🎞 Cách kéo dài (Extend) – gửi 1 video (khuyên dùng)
+
+1. Safari → **labs.google/flow** → **New project**, khung **dọc 9:16**.
+2. **Đoạn 1:** bấm **+ Ingredients**, thêm ảnh mẫu các nhân vật bot gửi; chạm khung **🎬 Đoạn 1 (prompt đầy đủ)** để
+   sao chép → dán → tạo.
+3. **Đoạn 2, 3…:** trên clip vừa tạo bấm **Extend** (kéo dài / *Add to scene*), dán **🔁 prompt kéo dài** của đoạn đó →
+   tạo. Đoạn nào chưa ưng thì tạo lại đoạn đó trước khi kéo tiếp. Gõ `/clip 2` để bot gửi lại prompt đoạn 2.
+4. Xong hết: tải về **toàn bộ video** (Scene builder → Download), rồi **Trả lời** tin **📥 Gửi video kéo dài** bằng
+   đúng 1 video đó. Bot dựng ngay (không cần gửi từng đoạn, không ghép).
+
+### 🧩 Cách clip độc lập – tạo trên iPad với Google Flow (≈5 phút/ngày, miễn phí)
 
 1. Safari → **labs.google/flow** → đăng nhập Google → tạo **New project**.
    (Nếu trang báo không hỗ trợ: bấm **aA** trên thanh địa chỉ → **Yêu cầu trang web cho máy tính**.)
@@ -293,11 +312,10 @@ Mỗi lần bạn bấm **Duyệt kịch bản**, hệ thống cập nhật mộ
    **ảnh mẫu của đúng các nhân vật ghi ở dòng "🧩 Ingredients"** dưới cảnh đó (bot gửi sẵn các ảnh này trước
    các prompt) → **Tạo**.
 4. Clip xong → bấm **Tải xuống** → lưu vào **Ảnh** hoặc **Tệp**.
-   **Để các cảnh nối liền:** tạo đúng thứ tự Cảnh 1 → 2 → 3…; gửi clip cảnh trước cho bot. Với cảnh 2 trở đi có 2 cách:
-   - **Cách liền nhất – Extend:** trong Flow mở clip cảnh trước → **Extend** → dán **prompt ngắn 🔁** bot gửi riêng
-     cho cảnh đó → tải phần kéo dài về, Trả lời tin 🔁 bằng clip.
-   - **Frames to Video:** đặt **khung cuối** bot gửi làm khung bắt đầu, thêm cùng các ảnh nhân vật ở *Ingredients*,
-     dán prompt dài (prompt từ cảnh 2 mở đầu bằng "CONTINUATION…" để giữ đúng người, chỗ, ánh sáng, góc máy).
+   **Để các cảnh nối liền:** tạo đúng thứ tự Cảnh 1 → 2 → 3…; gửi clip cảnh trước cho bot. Với cảnh 2 trở đi dùng
+   **Frames to Video:** đặt **khung cuối** bot gửi làm khung bắt đầu, thêm cùng các ảnh nhân vật ở *Ingredients*,
+   dán prompt (prompt từ cảnh 2 mở đầu bằng "CONTINUATION…" để giữ đúng người, chỗ, ánh sáng, góc máy).
+   (Muốn dùng Extend thì chọn cách **🎞 Kéo dài** ở trên — gửi 1 video, không phải cắt từng đoạn.)
    Prompt yêu cầu clip **không tự có nhạc**; nhạc nền do bot thêm liền một bài cho cả video. Giọng trong clip giữ nguyên.
 5. Telegram → **chạm giữ tin "Cảnh 1"** → **Trả lời** → biểu tượng 📎 → chọn clip → Gửi.
 6. Bot trả lời "đã nhận cảnh 1 (1/4)" và gửi **khung hình cuối của cảnh 1**. Với cảnh 2, nếu Flow có chế độ
@@ -317,7 +335,7 @@ Mỗi lần bạn bấm **Duyệt kịch bản**, hệ thống cập nhật mộ
   chạy theo. Tiếng nền của clip (gió, chim…) giữ lại nhỏ dưới lời đọc (`clip_ambient_volume: 0.35`).
 - **Mức nhạc tự cân** (`music_level: "auto"`): nhạc luôn nằm dưới giọng trong clip khoảng `music_below_voice_db: 12`
   dB (muốn nhạc to hơn: giảm số này, vd 9), bài nhạc nhỏ được tự tăng, bài to tự giảm; không bao giờ tụt dưới mức nghe
-  được. Ở điểm nối giữa các clip, tiếng nền được làm mềm (`clip_edge_fade_ms: 60`).
+  được. Ở điểm nối giữa các clip chỉ có 3 mili giây chống tiếng "tách" (`clip_edge_fade_ms: 3`), không làm hụt tiếng.
 - **Nhạc nền liên tục:** một bài chạy từ giây 0 đến hết video, bài ngắn thì lặp lại có nối mềm
   (`music_crossfade: 1.5`). Mức nền `music_volume: 0.22`; khi có người nói nhạc chỉ hạ nhẹ, không bao giờ dưới
   `music_floor: 0.5` (50%); tiếng mưa, gió trong clip không làm nhạc nhỏ đi.
