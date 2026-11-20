@@ -1,6 +1,6 @@
 # Tiến độ dự án — TikTok Content Agent
 
-_Cập nhật: 19/11/2026_
+_Cập nhật: 20/11/2026_
 
 ## 🔄 Lệnh cập nhật VPS (sao chép và dán vào Termius)
 
@@ -126,7 +126,28 @@ Xây agent tự động cho kênh TikTok ngách **tuổi thơ, kỷ niệm gia �
 - **`/kehoach` hỏi chọn nhân vật bằng ảnh trước:** chưa có ảnh nhân vật → bot hướng dẫn gửi ảnh (chú thích tên – vai) hoặc bấm "✨ Để AI tự tạo nhân vật"; đã có ảnh → lập kế hoạch với đúng các nhân vật đó
 - Đã kiểm thử trong Docker (căn thời gian, phụ đề, bản nghe thử, đổi nhạc/giọng, dùng lại giọng đã duyệt khi ghép) và thử edge-tts thật với giọng tiếng Việt
 
-### 📌 Tóm tắt thay đổi hôm nay (19/11/2026) — Duyệt nhạc trước, ảnh bìa + câu kết, duyệt font, giọng nhân vật nhất quán
+### 📌 Tóm tắt thay đổi hôm nay (20/11/2026) — Chọn "kéo dài" (1 video, không ghép) hoặc "clip độc lập"; ghép không làm lệch giọng
+- **Yêu cầu của chủ kênh:**
+  - Cách kéo dài (Extend) trong Flow đã cho ra một video hoàn chỉnh, rất khó tải từng đoạn về rồi gửi lại theo đúng thứ tự.
+  - Muốn chọn giữa kéo dài và clip độc lập. Chọn kéo dài thì chỉ gửi lại 1 video cuối, không cần ghép.
+  - Clip đã cắt sẵn, nghe đã giống nhau, nhưng ghép bằng code thì giọng lại lệch.
+  - Trong mọi trường hợp phải giữ nhân vật, bối cảnh, giọng nói nhất quán.
+- **Đã làm (PR #36):**
+  - Bước 4/4 có 3 lựa chọn: 🤖 Gemini tự động · 🎞 **Kéo dài – gửi 1 video** · 🧩 **Clip độc lập – gửi từng clip**.
+  - **Kéo dài:**
+    - Bot gửi prompt đầy đủ cho Đoạn 1, các prompt kéo dài cho đoạn 2, 3…, và tin **📥 Gửi video kéo dài**.
+    - Chủ kênh trả lời tin đó bằng đúng 1 video. Bot không cắt, không ghép, không chỉnh giọng; chỉ thêm nhạc nền, phụ đề, chữ ảnh bìa và câu kết.
+    - Phụ đề tự đặt theo chỗ ngắt lời của từng cảnh.
+  - **Clip độc lập:** mỗi cảnh một prompt 8 giây, không còn prompt kéo dài lẫn vào. Có nút đổi cách làm; `/clip N` gửi đúng loại prompt.
+  - **Sửa giọng bị lệch khi ghép:**
+    - Khớp giọng giờ chỉ so các câu trong **cùng video** (`match_memory: false`), không kéo về giọng của video trước.
+    - Lệch dưới 1 nửa cung hoặc dưới 3 dB thì để nguyên. Câu không chắc ai nói thì không bao giờ chỉnh.
+  - **Chỗ nối giữa các clip:** độ mờ âm thanh giảm từ 60 ms xuống 3 ms nên hết hụt tiếng ở chỗ nối.
+  - Prompt kéo dài nhắc lại ngoại hình từng nhân vật và yêu cầu giữ đúng giọng như đoạn trước.
+- **Sửa thêm:** video không có câu thoại nào giờ dựng được, trước đây ffmpeg báo lỗi vì file phụ đề rỗng.
+- **Kiểm thử:** 11 bộ test đều đạt (video tổng hợp). Video kéo dài giữ nguyên giọng (lệch < 0,3 dB) và 6 phụ đề khớp lời. Chưa thử với video thật từ Flow.
+
+### 📌 Tóm tắt thay đổi 19/11/2026 — Duyệt nhạc trước, ảnh bìa + câu kết, duyệt font, giọng nhân vật nhất quán
 - **Yêu cầu của chủ kênh:**
   - Clip Flow không có nhạc. Muốn duyệt nhạc nền trước, rồi mới hỏi tạo clip tự động hay bằng tay (chọn tay mới ra prompt).
   - Ảnh bìa nổi bật thông điệp; clip cuối có câu kết.
@@ -311,7 +332,7 @@ Xây agent tự động cho kênh TikTok ngách **tuổi thơ, kỷ niệm gia �
 1. **Phong cách kênh mẫu mới dựa trên mô tả**, chưa đối chiếu trực tiếp với video mẫu; cần chủ kênh xem kết quả và chỉnh bằng `/phongcach`.
 2. **Vẫn còn bước làm tay mỗi ngày:** tạo 3–4 clip trên Google Flow (~5 phút). Tự động hoàn toàn chỉ có qua Gemini API trả phí (key hiện chưa có quyền model video).
 3. **Đăng TikTok chưa chạy thật:** cần tạo app, thêm tài khoản vào Sandbox, kết nối bằng `/tiktok`. `direct` chỉ đăng riêng tư tới khi app qua audit.
-4. **Giọng nhân vật:** khớp giọng chỉ chỉnh cao độ + âm lượng; nếu Flow tạo hai chất giọng khác hẳn nhau giữa các clip thì vẫn còn khác.
+4. **Giọng nhân vật (clip độc lập):** khớp giọng chỉ chỉnh cao độ + âm lượng; nếu Flow tạo hai chất giọng khác hẳn nhau giữa các clip thì vẫn còn khác. Cách **🎞 Kéo dài** tránh được vấn đề này vì cả video do Flow tạo liền.
 5. **Prompt rất dài** được chia thành nhiều phần; chủ kênh phải chép lần lượt và dán nối tiếp vào cùng một ô prompt trong Flow.
 6. **edge-tts lỗi theo đợt** ("No audio was received") — đã có thử lại + nút 🔁 Thử lại trên Telegram.
 7. **Hạn chế đã biết:**
@@ -321,13 +342,13 @@ Xây agent tự động cho kênh TikTok ngách **tuổi thơ, kỷ niệm gia �
 
 ## 📋 Các bước cần cấu hình tiếp
 
-1. **Cập nhật VPS** (lệnh đầu file; lần này dựng lại image, lâu hơn vài phút).
+1. **Cập nhật VPS** (lệnh đầu file) để có lựa chọn Kéo dài / Clip độc lập.
 2. `/font` → chọn font cho chữ đầu video, phụ đề, câu kết (xem ảnh minh hoạ).
 3. `/giong` → kiểm tra đang chọn **Khớp giọng nhân vật**.
 4. `/nhac` → có ít nhất 1 bài nhạc nền không bản quyền.
 5. `/doithu` → cập nhật kênh đối thủ nếu cần → **🔄 Lập kế hoạch mới** → duyệt.
 6. **Làm trọn 1 video:** `/kichban` → duyệt kịch bản → duyệt nhạc → duyệt chữ → chọn tạo tay/tự động.
-   - Tạo tay: cảnh 1 dán prompt dài; cảnh 2+ ưu tiên **Extend** với prompt ngắn 🔁, thêm ảnh nhân vật ở Ingredients.
+   - Tạo tay: ưu tiên **🎞 Kéo dài** → Đoạn 1 dán prompt đầy đủ (thêm ảnh nhân vật ở Ingredients), đoạn sau bấm Extend và dán prompt kéo dài → tải toàn bộ video → trả lời tin **📥 Gửi video kéo dài**.
 7. **Đánh giá video:** ảnh bìa có chữ thông điệp; nhạc liền từ đầu đến cuối; câu kết ở đoạn cuối; giọng mỗi nhân vật giữ nguyên qua các clip; nhân vật giống nhau → gửi nhận xét cho Claude.
 8. **Kết nối TikTok** (`CAI_DAT_CONTABO.md` Bước 7) → `/tiktok` → thử **Duyệt & đăng**.
 9. Huỷ hoặc gia hạn Contabo trước ngày hết kỳ 1 tháng.

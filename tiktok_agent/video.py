@@ -249,8 +249,10 @@ def final_mix(workdir: Path, cfg: dict, total: float, joined: str, voice_file: s
     amb = "[0:a]" if ambient_from_joined else None
     vpre = audio.stereo_prefix(voice_file) if voice_file else ""
     graph = audio.mix_graph(total, cfg, vl, ml, spans, amb, voice_pre=vpre, stems=False, volume=vol)
+    srt = workdir / "subs.srt"
+    subs = fonts.subtitles_filter(cfg["video"]) if srt.is_file() and srt.read_text(encoding="utf-8").strip() else "null"
     _run(["ffmpeg", "-y", *ins, "-filter_complex",
-          f"[0:v]{fonts.subtitles_filter(cfg['video'])}"
+          f"[0:v]{subs}"
           f"{thumb_filter(cfg['video'], workdir, thumb_text)}[v];{graph}",
           "-map", "[v]", "-map", "[a]", "-t", f"{total:.3f}", "-c:v", "libx264", "-preset", "medium", "-crf", "20",
           "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", "-ar", str(SR), "-movflags", "+faststart",
