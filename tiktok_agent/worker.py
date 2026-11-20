@@ -2363,7 +2363,7 @@ def resend_prompts(text: str = "") -> dict:
     else:
         out = [scene_prompt_msg(cid, k - 1, n, sc[k - 1], m["shots"][k - 1]["prompt"],
                                 ingredients_note(bible, sc[k - 1], k - 1)) for k in want if 1 <= k <= n]
-    return reply(*out) if out else reply(msg(f"Video #{cid} chỉ có đoạn 1–{n}."))
+    return reply(*out) if out else reply(msg(f"Video #{cid} chỉ có {'đoạn' if mode == 'extend' else 'cảnh'} 1–{n}."))
 
 
 # ====================================================================== HTTP layer

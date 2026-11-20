@@ -323,7 +323,7 @@ def render_dialogue(script: dict, workdir: Path, cfg: dict, stock_key: str, ai, 
             fb = scene_voice(lines, characters, cfg, dur, workdir, f"fb{i}")
             a_in, a_map, times = ["-i", fb["path"]], "1:a", fb["times"]
         fade = ",fade=t=in:st=0:d=0.25" if i == 0 else ""  # no dip to black between scenes: they must flow
-        ef = float(vid.get("clip_edge_fade_ms", 8)) / 1000  # only a click guard: longer fades leave holes at joins
+        ef = float(vid.get("clip_edge_fade_ms", 3)) / 1000  # only a click guard: longer fades leave holes at joins
         edge = (f",afade=t=in:d={ef:.3f},afade=t=out:st={max(0.0, dur - ef):.3f}:d={ef:.3f}" if ef > 0 else "")
         # audio: only resampled/converted to a common format (no volume, speed or EQ change), kept as lossless PCM
         _run(["ffmpeg", "-y", *v_in, *a_in, "-filter_complex",

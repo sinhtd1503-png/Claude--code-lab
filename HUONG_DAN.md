@@ -335,7 +335,7 @@ Mỗi lần bạn bấm **Duyệt kịch bản**, hệ thống cập nhật mộ
   chạy theo. Tiếng nền của clip (gió, chim…) giữ lại nhỏ dưới lời đọc (`clip_ambient_volume: 0.35`).
 - **Mức nhạc tự cân** (`music_level: "auto"`): nhạc luôn nằm dưới giọng trong clip khoảng `music_below_voice_db: 12`
   dB (muốn nhạc to hơn: giảm số này, vd 9), bài nhạc nhỏ được tự tăng, bài to tự giảm; không bao giờ tụt dưới mức nghe
-  được. Ở điểm nối giữa các clip chỉ có 8 mili giây chống tiếng "tách" (`clip_edge_fade_ms: 8`), không làm hụt tiếng.
+  được. Ở điểm nối giữa các clip chỉ có 3 mili giây chống tiếng "tách" (`clip_edge_fade_ms: 3`), không làm hụt tiếng.
 - **Nhạc nền liên tục:** một bài chạy từ giây 0 đến hết video, bài ngắn thì lặp lại có nối mềm
   (`music_crossfade: 1.5`). Mức nền `music_volume: 0.22`; khi có người nói nhạc chỉ hạ nhẹ, không bao giờ dưới
   `music_floor: 0.5` (50%); tiếng mưa, gió trong clip không làm nhạc nhỏ đi.
