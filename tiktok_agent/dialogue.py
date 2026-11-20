@@ -51,26 +51,35 @@ def has_audio(path: Path) -> bool:
     return bool(json.loads(out).get("streams"))
 
 
-def speech_times(clip: Path, lines: list[dict], dur: float) -> list[tuple[float, float]] | None:
-    """Subtitle times from where the voices really are in a clip (silence detection); None if it can't tell."""
-    if not lines:
-        return []
+def silences(clip: Path, dur: float) -> list[tuple[float, float]]:
+    """Pauses in a clip's sound (silencedetect)."""
     proc = subprocess.run(["ffmpeg", "-v", "info", "-i", str(clip), "-af", "silencedetect=noise=-30dB:d=0.25",
                            "-vn", "-f", "null", "-"], capture_output=True, text=True)
     starts = [float(x) for x in re.findall(r"silence_start: ([\d.]+)", proc.stderr)]
     ends = [float(x) for x in re.findall(r"silence_end: ([\d.]+)", proc.stderr)]
-    silent = list(zip(starts, ends + [dur] * (len(starts) - len(ends))))
-    spans, t = [], 0.0
-    for a, b in silent:
-        if a - t > 0.15:
-            spans.append((t, a))
-        t = b
-    if dur - t > 0.15:
-        spans.append((t, dur))
-    if not spans or sum(b - a for a, b in spans) > 0.95 * dur:  # no pauses found (music/ambience): can't tell
-        return None
+    return list(zip(starts, ends + [dur] * (len(starts) - len(ends))))
+
+
+def assign_lines(silent: list[tuple[float, float]], lines: list[dict], a: float, b: float
+                 ) -> tuple[list[tuple[float, float]] | None, bool]:
+    """Subtitle times of `lines` inside the window [a, b] from the pauses in it. Returns (times, exact): exact means
+    one speech burst per line (so each burst's speaker is known); None if no pauses could be found."""
+    if not lines:
+        return [], True
+    spans, t = [], a
+    for s0, s1 in silent:
+        s0, s1 = max(a, s0), min(b, s1)
+        if s1 <= s0:
+            continue
+        if s0 - t > 0.15:
+            spans.append((t, s0))
+        t = max(t, s1)
+    if b - t > 0.15:
+        spans.append((t, b))
+    if not spans or sum(y - x for x, y in spans) > 0.95 * (b - a):  # no pauses found (music/ambience): can't tell
+        return None, False
     if len(spans) == len(lines):
-        return [(round(a, 3), round(b, 3)) for a, b in spans]
+        return [(round(x, 3), round(y, 3)) for x, y in spans], True
     a0, b0 = spans[0][0], spans[-1][1]  # spread the lines over the spoken window, by length
     words = [max(1, len(ln["text"].split())) for ln in lines]
     out, t = [], a0
@@ -78,7 +87,26 @@ def speech_times(clip: Path, lines: list[dict], dur: float) -> list[tuple[float,
         d = (b0 - a0) * w / sum(words)
         out.append((round(t, 3), round(t + d, 3)))
         t += d
-    return out
+    return out, False
+
+
+def speech_times(clip: Path, lines: list[dict], dur: float) -> list[tuple[float, float]] | None:
+    """Subtitle times from where the voices really are in a clip (silence detection); None if it can't tell."""
+    if not lines:
+        return []
+    return assign_lines(silences(clip, dur), lines, 0.0, dur)[0]
+
+
+def scene_windows(silent: list[tuple[float, float]], n: int, dur: float) -> list[tuple[float, float]]:
+    """One long (extended) video holding n scenes: split it into n windows of about equal length, each boundary
+    moved into the nearest pause (≤1.5 s away) so no spoken line is cut in two."""
+    cuts = [0.0]
+    for k in range(1, n):
+        x = dur * k / n
+        near = [((s0 + s1) / 2) for s0, s1 in silent if abs((s0 + s1) / 2 - x) <= 1.5 and (s0 + s1) / 2 > cuts[-1]]
+        cuts.append(min(near, key=lambda m: abs(m - x)) if near else x)
+    cuts.append(dur)
+    return list(zip(cuts[:-1], cuts[1:]))
 
 
 def line_times(lines: list[dict], dur: float) -> list[tuple[float, float]]:
@@ -243,7 +271,7 @@ def render_dialogue(script: dict, workdir: Path, cfg: dict, stock_key: str, ai, 
     clip_sec = float((cfg.get("ai_video") or {}).get("max_shot_sec", 8))
     characters = {c["name"]: c for c in (bible or {}).get("characters", [])}
     fixed = None
-    if voice_mode == "fixed":
+    if voice_mode == "fixed" and not script.get("single_clip"):  # an Extend video keeps its own (consistent) voices
         fixed = voice_tracks(script["scenes"], characters, cfg, clip_sec, voice_dir or workdir / "voices")
     used: set[str] = set()
     segments, srt, t0, idx = [], [], 0.0, 1
@@ -252,7 +280,10 @@ def render_dialogue(script: dict, workdir: Path, cfg: dict, stock_key: str, ai, 
     vf = (f"scale={W}:{H}:force_original_aspect_ratio=increase:flags=lanczos,crop={W}:{H},setsar=1,fps={FPS},"
           "format=yuv420p")
 
-    for i, scene in enumerate(script["scenes"]):
+    single = script.get("single_clip")
+    if single:  # ONE finished video (all scenes made with Flow's Extend): used whole, nothing cut or joined
+        t0, idx = _single_segment(Path(single), script["scenes"], workdir, vf, segments, srt, spans, labelled)
+    for i, scene in enumerate([] if single else script["scenes"]):
         lines = scene.get("lines") or []
         clip, own_voice = None, False
         if ai is not None and ai.wants_ai(i, len(script["scenes"])):
@@ -281,17 +312,18 @@ def render_dialogue(script: dict, workdir: Path, cfg: dict, stock_key: str, ai, 
         else:
             v_in = ["-f", "lavfi", "-i", f"color=c=0x3b2f2a:s={W}x{H}:r={FPS}"]
         times = line_times(lines, dur)
-        up = ""
+        up, exact = "", False
         if own_voice:
             a_in, a_map, up = [], "0:a", to_stereo(clip)
-            times = speech_times(clip, lines, dur) or times
+            found, exact = assign_lines(silences(clip, dur), lines, 0.0, dur)
+            times = found or times
         elif fixed is not None:
             a_in, a_map, times = ["-i", fixed[i]["path"]], "1:a", [tuple(t) for t in fixed[i]["times"]]
         else:
             fb = scene_voice(lines, characters, cfg, dur, workdir, f"fb{i}")
             a_in, a_map, times = ["-i", fb["path"]], "1:a", fb["times"]
         fade = ",fade=t=in:st=0:d=0.25" if i == 0 else ""  # no dip to black between scenes: they must flow
-        ef = float(vid.get("clip_edge_fade_ms", 60)) / 1000  # soften the jump in background sound at each join
+        ef = float(vid.get("clip_edge_fade_ms", 8)) / 1000  # only a click guard: longer fades leave holes at joins
         edge = (f",afade=t=in:d={ef:.3f},afade=t=out:st={max(0.0, dur - ef):.3f}:d={ef:.3f}" if ef > 0 else "")
         # audio: only resampled/converted to a common format (no volume, speed or EQ change), kept as lossless PCM
         _run(["ffmpeg", "-y", *v_in, *a_in, "-filter_complex",
@@ -304,7 +336,7 @@ def render_dialogue(script: dict, workdir: Path, cfg: dict, stock_key: str, ai, 
         for ln, (s, e) in zip(lines, times):
             spans.append((round(t0 + s, 3), round(t0 + e, 3)))
             if own_voice:
-                labelled.append((round(t0 + s, 3), round(t0 + e, 3), ln.get("speaker", "")))
+                labelled.append((round(t0 + s, 3), round(t0 + e, 3), ln.get("speaker", ""), exact))
             srt += [str(idx), f"{_srt_time(t0 + s)} --> {_srt_time(t0 + e)}", ln["text"], ""]
             idx += 1
         t0 += dur
@@ -319,7 +351,7 @@ def render_dialogue(script: dict, workdir: Path, cfg: dict, stock_key: str, ai, 
     total = t0 + (_duration(outro) if outro else 0.0)
     music = vid.get("background_music")
     voice_file = None
-    if voice_mode == "match" and labelled:
+    if voice_mode == "match" and labelled and not single:  # one Extend video already has one voice per character
         # same character = same voice in every clip: pull each line's pitch/loudness to the character's reference
         from . import voicematch
         src = workdir / "clip_audio.wav"
@@ -338,6 +370,38 @@ def render_dialogue(script: dict, workdir: Path, cfg: dict, stock_key: str, ai, 
     final = workdir / "final.mp4"
     log.info("Rendered dialogue video %s (%.1fs)", final, _duration(final))
     return final
+
+
+def _single_segment(clip: Path, scenes: list[dict], workdir: Path, vf: str, segments: list, srt: list, spans: list,
+                    labelled: list) -> tuple[float, int]:
+    """The whole Extend video as one segment: full length, original speed, original sound (only converted to the
+    common lossless format). Subtitles: the video is split into one window per scene at pauses, and each scene's
+    lines are placed on the speech in its window. Returns (duration, next subtitle index)."""
+    dur = _duration(clip)
+    seg = workdir / "seg0.mkv"
+    if has_audio(clip):
+        a_in, a_map, up = [], "0:a", to_stereo(clip)
+    else:  # no sound at all: keep the timeline, music + subtitles still work
+        a_in, a_map, up = ["-f", "lavfi", "-i", f"anullsrc=r={SR}:cl=stereo"], "1:a", ""
+    _run(["ffmpeg", "-y", "-i", str(clip), *a_in, "-filter_complex",
+          f"[0:v]{vf},fade=t=in:st=0:d=0.25[v];[{a_map}]{up}aresample={SR},"
+          f"aformat=sample_fmts=s16:channel_layouts=stereo,apad,atrim=0:{dur:.3f}[a]",
+          "-map", "[v]", "-map", "[a]", "-t", f"{dur:.3f}", "-c:v", "libx264", "-preset", "veryfast", "-crf", "18",
+          "-c:a", "pcm_s16le", str(seg)])
+    segments.append(seg)
+    silent = silences(clip, dur) if a_in == [] else []
+    idx = 1
+    for scene, (wa, wb) in zip(scenes, scene_windows(silent, len(scenes), dur)):
+        lines = scene.get("lines") or []
+        times, exact = assign_lines(silent, lines, wa, wb)
+        if not times:
+            times = [(wa + x, wa + y) for x, y in line_times(lines, wb - wa)]
+        for ln, (x, y) in zip(lines, times):
+            spans.append((round(x, 3), round(y, 3)))
+            labelled.append((round(x, 3), round(y, 3), ln.get("speaker", ""), exact))
+            srt += [str(idx), f"{_srt_time(x)} --> {_srt_time(y)}", ln["text"], ""]
+            idx += 1
+    return dur, idx
 
 
 def dialogue_preview(tracks: list[dict], music: str | None, total: float, cfg: dict, out: Path) -> Path:
