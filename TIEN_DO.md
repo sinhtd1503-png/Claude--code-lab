@@ -1,6 +1,6 @@
 # Tiến độ dự án — TikTok Content Agent
 
-_Cập nhật: 20/11/2026_
+_Cập nhật: 23/11/2026_
 
 ## 🔄 Lệnh cập nhật VPS (sao chép và dán vào Termius)
 
@@ -126,7 +126,32 @@ Xây agent tự động cho kênh TikTok ngách **tuổi thơ, kỷ niệm gia �
 - **`/kehoach` hỏi chọn nhân vật bằng ảnh trước:** chưa có ảnh nhân vật → bot hướng dẫn gửi ảnh (chú thích tên – vai) hoặc bấm "✨ Để AI tự tạo nhân vật"; đã có ảnh → lập kế hoạch với đúng các nhân vật đó
 - Đã kiểm thử trong Docker (căn thời gian, phụ đề, bản nghe thử, đổi nhạc/giọng, dùng lại giọng đã duyệt khi ghép) và thử edge-tts thật với giọng tiếng Việt
 
-### 📌 Tóm tắt thay đổi hôm nay (20/11/2026) — Chọn "kéo dài" (1 video, không ghép) hoặc "clip độc lập"; ghép không làm lệch giọng
+### 📌 Tóm tắt thay đổi hôm nay (23/11/2026) — Chọn chủ đề kịch bản: 1 Ký ức tuổi thơ / 2 Gia đình
+- **Yêu cầu của chủ kênh:**
+  - Khi đến bước viết kịch bản hằng ngày, hoặc khi gõ `/kichban`, được chọn chủ đề.
+  - **Chủ đề 1:** ký ức tuổi thơ, làm như hiện tại.
+  - **Chủ đề 2:** những điều cần nhắc nhở trong gia đình (bố mẹ – con cái – ông bà) và những thứ dễ bị lãng quên trong xã hội hiện đại. Mục tiêu là người xem lắng lại, hướng về chân – thiện – mỹ, và muốn chia sẻ cho người thân.
+  - Nhân vật chủ đề 2 có thể điều chỉnh cho hợp, nhưng thoại, hình ảnh, bối cảnh phải nhất quán.
+- **Đã làm (PR #38):**
+  - `/kichban` và lịch 07:00 hỏi chủ đề bằng 2 nút **1️⃣ Ký ức tuổi thơ** / **2️⃣ Gia đình**; gõ nhanh `/kichban 1`, `/kichban 2`.
+  - Đặt `topics: ask: false` thì bot luôn dùng chủ đề 1 như trước.
+  - Chủ đề 1 không đổi gì: vẫn theo kế hoạch 30 ngày, bối cảnh thập niên 1990.
+  - **Chủ đề 2:**
+    - Không cần kế hoạch 30 ngày: mỗi lần lấy trụ cột tiếp theo (8 trụ cột: lời cảm ơn, bữa cơm đủ mặt, thời gian bên ông bà, lắng nghe, điện thoại và sự kết nối, hy sinh của bố mẹ, hiếu thảo, anh chị em).
+    - Claude tự chọn tình huống gia đình ngày nay và tránh trùng các video chủ đề 2 đã làm.
+    - Giọng văn lắng đọng, không giáo điều, kết bằng một hành động nhỏ ấm áp; caption mời chia sẻ cho người thân.
+  - **Nhân vật hiện đại ở chủ đề 2** (chủ kênh nhận xét lần đầu chỉ đổi trang phục là chưa đủ):
+    - Cùng gia đình 6 nhân vật, cùng tên và giọng, nhưng ở **phiên bản hiện đại**: vai, ngoại hình + trang phục, cách nói theo cuộc sống ngày nay (`topics.giadinh.cast`).
+    - Ví dụ: ông bà nghỉ hưu sống cùng con cháu; bố đi làm văn phòng; mẹ nhắc bỏ điện thoại khi ăn cơm; Cu Tí học cấp hai, cầm điện thoại; Bé Na học tiểu học.
+    - **Không dùng ảnh mẫu thời xưa** cho chủ đề 2 (để Flow khỏi chép quần áo cũ). Ảnh mẫu hiện đại riêng: gửi ảnh chú thích `2 Bà` / `Bà hiện đại`.
+    - `/nhanvat 2` hiện thẻ hiện đại kèm prompt tạo ảnh. Trả lời thẻ bằng `Vai/Ngoại hình/Cách nói` để sửa (lưu trong `nhan_vat.yaml`, mục `modern`).
+    - **Một ngôi nhà ngày nay cố định** (`setting_en`), ghi nguyên văn trong mọi prompt clip. Prompt clip mô tả phim theo chủ đề, không còn câu cố định "1990s childhood memory".
+  - Lý do chủ kênh thấy `/kichban` vẫn viết chủ đề ký ức: PR #38 chưa merge nên VPS còn chạy bản cũ (n8n không lỗi). Cần merge rồi cập nhật VPS.
+  - Viết lại kịch bản vẫn giữ đúng chủ đề; tin kịch bản ghi rõ **🕰 Chủ đề 1** hay **👨‍👩‍👧 Chủ đề 2**.
+  - Mọi nội dung chủ đề 2 sửa được trong `config.yaml`, mục `topics:`.
+- **Kiểm thử:** thêm bộ test chủ đề và đã đạt hết. Sửa bộ test tần suất (lịch 07:00 giờ hỏi chủ đề trước). Chạy lại toàn bộ test trước khi merge.
+
+### 📌 Tóm tắt thay đổi 20/11/2026 — Chọn "kéo dài" (1 video, không ghép) hoặc "clip độc lập"; ghép không làm lệch giọng
 - **Yêu cầu của chủ kênh:**
   - Cách kéo dài (Extend) trong Flow đã cho ra một video hoàn chỉnh, rất khó tải từng đoạn về rồi gửi lại theo đúng thứ tự.
   - Muốn chọn giữa kéo dài và clip độc lập. Chọn kéo dài thì chỉ gửi lại 1 video cuối, không cần ghép.
@@ -333,22 +358,24 @@ Xây agent tự động cho kênh TikTok ngách **tuổi thơ, kỷ niệm gia �
 2. **Vẫn còn bước làm tay mỗi ngày:** tạo 3–4 clip trên Google Flow (~5 phút). Tự động hoàn toàn chỉ có qua Gemini API trả phí (key hiện chưa có quyền model video).
 3. **Đăng TikTok chưa chạy thật:** cần tạo app, thêm tài khoản vào Sandbox, kết nối bằng `/tiktok`. `direct` chỉ đăng riêng tư tới khi app qua audit.
 4. **Giọng nhân vật (clip độc lập):** khớp giọng chỉ chỉnh cao độ + âm lượng; nếu Flow tạo hai chất giọng khác hẳn nhau giữa các clip thì vẫn còn khác. Cách **🎞 Kéo dài** tránh được vấn đề này vì cả video do Flow tạo liền.
-5. **Prompt rất dài** được chia thành nhiều phần; chủ kênh phải chép lần lượt và dán nối tiếp vào cùng một ô prompt trong Flow.
-6. **edge-tts lỗi theo đợt** ("No audio was received") — đã có thử lại + nút 🔁 Thử lại trên Telegram.
-7. **Hạn chế đã biết:**
+5. **Chủ đề 2 chưa có ảnh mẫu hiện đại:** cần tạo 6 ảnh chân dung hiện đại (prompt trong `/nhanvat 2`) và gửi với chú thích `2 Tên`. Chưa có ảnh thì khuôn mặt giữa các clip chỉ dựa vào mô tả chữ, dễ lệch hơn.
+6. **Prompt rất dài** được chia thành nhiều phần; chủ kênh phải chép lần lượt và dán nối tiếp vào cùng một ô prompt trong Flow.
+7. **edge-tts lỗi theo đợt** ("No audio was received") — đã có thử lại + nút 🔁 Thử lại trên Telegram.
+8. **Hạn chế đã biết:**
    - Độ nhất quán khuôn mặt vẫn phụ thuộc model video (đã có mô tả cố định, ảnh mẫu, khung cuối, prompt nối tiếp, Extend).
    - Đăng vào hộp nháp TikTok: chủ kênh tự chọn ảnh bìa ở giây đầu khi đăng trong app.
    - Còn lại: Telegram chỉ cho bot tải file ≤ 20 MB; chưa hỗ trợ upload TikTok > 64 MB; phụ đề căn thời gian theo ước lượng; số lượt Flow miễn phí do Google quyết định và có thể thay đổi.
 
 ## 📋 Các bước cần cấu hình tiếp
 
-1. **Cập nhật VPS** (lệnh đầu file) để có lựa chọn Kéo dài / Clip độc lập.
+1. **Cập nhật VPS** (lệnh đầu file) để có lựa chọn Kéo dài / Clip độc lập và chọn chủ đề kịch bản.
 2. `/font` → chọn font cho chữ đầu video, phụ đề, câu kết (xem ảnh minh hoạ).
 3. `/giong` → kiểm tra đang chọn **Khớp giọng nhân vật**.
 4. `/nhac` → có ít nhất 1 bài nhạc nền không bản quyền.
 5. `/doithu` → cập nhật kênh đối thủ nếu cần → **🔄 Lập kế hoạch mới** → duyệt.
-6. **Làm trọn 1 video:** `/kichban` → duyệt kịch bản → duyệt nhạc → duyệt chữ → chọn tạo tay/tự động.
+6. **Ảnh mẫu hiện đại:** `/nhanvat 2` → tạo ảnh từng người → gửi ảnh chú thích `2 Ông`, `2 Bà`…
+7. **Làm trọn 1 video mỗi chủ đề:** `/kichban 1` (ký ức) và `/kichban 2` (gia đình) → duyệt kịch bản → duyệt nhạc → duyệt chữ → chọn tạo tay/tự động.
    - Tạo tay: ưu tiên **🎞 Kéo dài** → Đoạn 1 dán prompt đầy đủ (thêm ảnh nhân vật ở Ingredients), đoạn sau bấm Extend và dán prompt kéo dài → tải toàn bộ video → trả lời tin **📥 Gửi video kéo dài**.
-7. **Đánh giá video:** ảnh bìa có chữ thông điệp; nhạc liền từ đầu đến cuối; câu kết ở đoạn cuối; giọng mỗi nhân vật giữ nguyên qua các clip; nhân vật giống nhau → gửi nhận xét cho Claude.
-8. **Kết nối TikTok** (`CAI_DAT_CONTABO.md` Bước 7) → `/tiktok` → thử **Duyệt & đăng**.
-9. Huỷ hoặc gia hạn Contabo trước ngày hết kỳ 1 tháng.
+8. **Đánh giá video:** ảnh bìa có chữ thông điệp; nhạc liền từ đầu đến cuối; câu kết ở đoạn cuối; giọng mỗi nhân vật giữ nguyên qua các clip; nhân vật giống nhau → gửi nhận xét cho Claude.
+9. **Kết nối TikTok** (`CAI_DAT_CONTABO.md` Bước 7) → `/tiktok` → thử **Duyệt & đăng**.
+10. Huỷ hoặc gia hạn Contabo trước ngày hết kỳ 1 tháng.
