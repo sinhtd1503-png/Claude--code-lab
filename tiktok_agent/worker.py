@@ -287,24 +287,29 @@ def topic_niche(topic: str) -> dict:
     return {**base, **{k: t[k] for k in TOPIC_KEYS if t.get(k)}}
 
 
+def modern_char(c: dict) -> dict:
+    """The present-day version of a cast member (topic 2): same key, name, voice and way to recognise them; role,
+    look + outfit, way of speaking and reference photo of today's life. Owner edits (nhan_vat.yaml `modern`) win
+    over config.yaml (topics → giadinh → cast); the 1990s photo is never used (it would bring back old clothes)."""
+    d = ((topics_cfg().get("giadinh") or {}).get("cast") or {}).get(c["key"]) or {}
+    m = c.get("modern") or {}
+    pick = lambda k: " ".join(str(m.get(k) or d.get(k) or "").split())
+    return {**c, "role": pick("role") or c["role"], "look_en": pick("look_en") or c["look_en"],
+            "speech_vi": pick("speech_vi") or c["speech_vi"], "image": m.get("image") or ""}
+
+
 def family_bible() -> dict:
-    """Topic 2: the SAME family (names, faces from the reference photos, voices, way of speaking) living today —
-    a fixed present-day home and fixed present-day outfits, so every clip of every topic-2 video matches."""
+    """Topic 2: the SAME family (names, voices) in today's life — present-day versions of every character, a fixed
+    present-day home and style, so every clip of every topic-2 video matches."""
     t = topics_cfg().get("giadinh") or {}
     clean = lambda x: " ".join(str(x or "").split())
     b = {"era": clean(t.get("era")) or "Gia đình Việt Nam ngày nay",
          "setting_en": clean(t.get("setting_en")) or "a present-day Vietnamese family home",
          "style_en": clean(t.get("visual_style_en")) or clean(niche().get("visual_style_en")),
          "film_en": clean(t.get("film_en")) or "a short heartfelt film about a present-day Vietnamese family"}
-    looks = t.get("looks") or {}
-    chars = []
-    for c in bible_characters(cast_items()):
-        outfit = clean(looks.get(c["key"]))
-        if outfit:
-            c = {**c, "look_en": f"Face, hair and build exactly as: {c['look_en'].rstrip('.')}. Present-day outfit "
-                                 f"(replaces any clothing above): {outfit.rstrip('.')}"}
-        chars.append(c)
-    return series.set_cast(b, chars)
+    items = cast_items()
+    return series.set_cast(b, [modern_char({**bc, "modern": c.get("modern") or {}}) | {"modern": None}
+                               for c, bc in zip(items, bible_characters(items))])
 
 
 def content_bible(item: dict) -> dict:
@@ -1035,8 +1040,10 @@ def cast_photo_messages(cid: int, item: dict, bible: dict) -> list[dict]:
                                            f"{esc(c['name'])}"))
     missing = [c["name"] for c in used if not CAST.image_path(c)]
     if missing:
-        out.append(msg(f"⚠️ Chưa có ảnh mẫu cho: {esc(', '.join(missing))}. Gõ /nhanvat để lấy prompt tạo ảnh chân "
-                       "dung và gửi lại cho bot — từ lần sau các clip sẽ giống mặt hơn."))
+        two = topic_of(item.get("idea")) == "giadinh"
+        out.append(msg(f"⚠️ Chưa có ảnh mẫu{' hiện đại' if two else ''} cho: {esc(', '.join(missing))}. Gõ "
+                       f"{'/nhanvat 2' if two else '/nhanvat'} để lấy prompt tạo ảnh chân dung và gửi lại cho bot"
+                       f"{' (chú thích vd <code>2 Bà</code>)' if two else ''} — từ lần sau các clip sẽ giống mặt hơn."))
     return out
 
 
@@ -1632,6 +1639,41 @@ def card_msg(i: int, c: dict, bible: dict, extra: str = "") -> dict | list[dict]
     return msg(card_text(c) + extra + tip, card_buttons(i, c))
 
 
+MODERN_RX = re.compile(r"^\s*(?:2|chủ đề 2|chu de 2|cd2)\s*[-:·.]?\s+", re.I)
+MODERN_RX2 = re.compile(r"\s*[-–(]?\s*\b(?:hiện đại|hien dai|ngày nay|ngay nay)\b\s*\)?", re.I)
+
+
+def modern_card_msg(c: dict) -> dict:
+    """Card of a character's present-day version (topic 2): reply to it to edit, reply with a photo to set the photo."""
+    mc = modern_char(c)
+    text = (f"🏙 <b>{esc(mc['name'])} – phiên bản hiện đại</b> (chủ đề 2) [NV2:{esc(c['key'])}]\n\n"
+            f"🎭 <b>Vai:</b> {esc(mc['role'])}\n"
+            f"👀 <b>Ngoại hình + trang phục:</b> <i>{esc(mc['look_en'])}</i>\n"
+            f"💬 <b>Cách nói:</b> {esc(mc['speech_vi'])}\n"
+            f"🎙 <b>Giọng:</b> giống bản gốc (/giong)")
+    img = CAST.image_path(mc)
+    if img and len(html.unescape(re.sub(r"<[^>]+>", "", text))) <= 1000:
+        return media("photo", img, text)
+    if not img:
+        text += ("\n\n⚠️ <b>Chưa có ảnh mẫu hiện đại</b> (chủ đề 2 không dùng ảnh thời xưa để khỏi lẫn quần áo cũ). "
+                 "Dán prompt dưới vào Google Flow (chế độ ảnh) hoặc Gemini, rồi gửi ảnh vào đây với chú thích "
+                 f"<code>2 {esc(mc['name'])}</code>:\n<code>{esc(series.portrait_prompt(family_bible(), mc))}</code>")
+    return msg(text)
+
+
+def edit_modern(key: str, text: str) -> dict:
+    c = CAST.get(key)
+    if not c:
+        return reply(msg("Không tìm thấy nhân vật này. Gõ /nhanvat 2."))
+    f = parse_edit(text)
+    fields = {k: v for k, v in f.items() if k in ("role", "look_en", "speech_vi")}
+    if not fields:
+        return reply(msg("Để sửa phiên bản hiện đại, trả lời thẻ với từng dòng dạng:\n<code>Vai: …\nNgoại hình: …\n"
+                         "Cách nói: …</code>\n(Tên và giọng dùng chung với bản gốc: sửa ở /nhanvat và /giong.)"))
+    c = CAST.update(key, modern={**(c.get("modern") or {}), **fields})
+    return reply(msg("✅ Đã lưu phiên bản hiện đại. Kịch bản chủ đề 2 từ giờ dùng mô tả này."), modern_card_msg(c))
+
+
 def receive_photo(body: dict) -> dict:
     if int(body.get("file_size") or 0) > 20 * 1024 * 1024:
         return reply(msg("⚠️ Ảnh lớn hơn 20 MB, bot không tải được. Hãy gửi ảnh nhẹ hơn."))
@@ -1641,6 +1683,15 @@ def receive_photo(body: dict) -> dict:
     dst = d / f"nv_{now_ts()}_{secrets.token_hex(3)}{ext}"
     _tg_download(str(body["file_id"]), dst)
     caption = str(body.get("caption") or "").strip()[:300]
+    tag2 = re.search(r"\[NV2:([\w-]+)\]", str(body.get("reply_to_text") or ""))
+    mcap = MODERN_RX.match(caption) or MODERN_RX2.search(caption)
+    if tag2 or mcap:  # photo of a character's present-day version (topic 2)
+        c = CAST.get(tag2.group(1)) if tag2 else CAST.find(MODERN_RX2.sub("", MODERN_RX.sub("", caption)).strip())
+        if not c:
+            return reply(msg("Ảnh hiện đại của nhân vật nào? Gửi lại với chú thích vd <code>2 Bà</code> hoặc "
+                             "<code>Bà hiện đại</code>."))
+        return reply(msg(f"⏳ Đang đọc ảnh <b>{esc(c['name'])} – phiên bản hiện đại</b> (chủ đề 2)…"),
+                     next_step={"action": "photo", "path": rel(dst), "caption": caption, "key": f"m:{c['key']}"})
     tag = re.search(r"\[NV:([\w-]+)\]", str(body.get("reply_to_text") or ""))
     c = CAST.get(tag.group(1)) if tag else None
     c = c or CAST.find(caption)
@@ -1763,6 +1814,8 @@ def describe_photo(path: str, caption: str, key: str = "") -> dict:
     p = (DATA / str(path)).resolve()
     if not p.is_relative_to(DATA) or not p.is_file():
         return reply(msg("⚠️ Không tìm thấy ảnh vừa gửi, hãy gửi lại."))
+    if key.startswith("m:"):
+        return describe_modern_photo(p, path, caption, key[2:])
     new = key == "new"
     c = None if new else (CAST.get(key) or CAST.find(caption))
     if not c and not new:
@@ -1787,6 +1840,22 @@ def describe_photo(path: str, caption: str, key: str = "") -> dict:
             "dùng đúng mô tả này; ảnh được gửi kèm khi tạo clip tự động và gửi để bạn thêm vào <i>Ingredients</i> khi "
             "tạo tay trên Flow. Sai chỗ nào: <b>Trả lời</b> tin này, gõ vd <code>Ngoại hình: ...</code>")
     return reply(card_msg(_cast_index(c["key"]), c, fix_bible({}), note))
+
+
+def describe_modern_photo(p: Path, path: str, caption: str, key: str) -> dict:
+    c = CAST.get(key)
+    if not c:
+        return reply(msg("⚠️ Không rõ ảnh của nhân vật nào. Gửi lại với chú thích vd <code>2 Bà</code>."))
+    est = float(((S.raw.get("budget") or {}).get("services", {}).get("claude", {})).get("est_image_usd", 0.05))
+    with LOCK:
+        BUDGET.ensure("claude", est, "Đọc ảnh nhân vật (phiên bản hiện đại).",
+                      resume={"action": "photo", "path": path, "caption": caption, "key": f"m:{key}"})
+    mc = modern_char(c)
+    ch = series.describe_character(p.read_bytes(), IMG_TYPES.get(p.suffix.lower(), "image/jpeg"), caption,
+                                   family_bible().get("era", ""), who=f"{mc['name']} – {mc['role']} (ngày nay)")
+    c = CAST.update(key, modern={**(c.get("modern") or {}), "look_en": ch.look_en, "image": rel(p)})
+    return reply(msg(f"✅ Đã lưu ảnh mẫu hiện đại của <b>{esc(c['name'])}</b>. Kịch bản và prompt clip chủ đề 2 dùng "
+                     "ảnh và mô tả này; chủ đề 1 vẫn dùng ảnh cũ."), modern_card_msg(c))
 
 
 def edit_cast(key: str, text: str) -> dict:
@@ -2453,8 +2522,15 @@ def plan_cmd() -> dict:
                  next_step={"action": "plan"})
 
 
-def characters() -> dict:
+def characters(text: str = "") -> dict:
     cast = cast_items()
+    if re.search(r"\b2\b|hiện đại|hien dai", text.partition(" ")[2]):
+        head = ("🏙 <b>Nhân vật phiên bản hiện đại – chủ đề 2 Gia đình</b>\nCùng tên, cùng giọng với bản gốc; vai, ngoại "
+                "hình, trang phục và cách nói theo cuộc sống ngày nay.\n\n"
+                "📷 <b>Ảnh mẫu:</b> gửi ảnh với chú thích <code>2 Bà</code> (hoặc <code>Bà hiện đại</code>), hoặc "
+                "<b>Trả lời</b> thẻ bằng ảnh.\n✏️ <b>Sửa:</b> <b>Trả lời</b> thẻ, gõ <code>Vai: …</code> / "
+                "<code>Ngoại hình: …</code> / <code>Cách nói: …</code>\n🔁 Bản gốc (chủ đề 1): /nhanvat")
+        return reply(msg(head), *[modern_card_msg(c) for c in cast])
     bible = fix_bible(((active_plan() or latest_plan() or {}).get("data") or {}).get("bible") or {})
     err = CAST.broken()
     head = ["👨‍👩‍👧‍👦 <b>6 nhân vật cố định của kênh</b> — dùng nguyên văn trong mọi kịch bản và prompt clip.", "",
@@ -2467,6 +2543,7 @@ def characters() -> dict:
             "➕ <b>Thêm nhân vật:</b> gửi ảnh, chú thích <code>Tên - vai</code> → bấm <b>➕ Nhân vật mới</b>; hoặc gõ "
             "<code>/themnv Cô Lan - cô giáo chủ nhiệm</code>. Nhân vật thêm có nút xoá.",
             "🎙 <b>Giọng:</b> /giong để nghe và chọn giọng từng người.",
+            "🏙 <b>Phiên bản hiện đại (chủ đề 2):</b> /nhanvat 2",
             "🗂 Hoặc sửa file <code>/opt/tiktok-agent/data/nhan_vat.yaml</code> bằng nano."]
     if err:
         head += ["", f"⚠️ File nhan_vat.yaml đang lỗi cú pháp nên bot dùng nhân vật mặc định: <i>{esc(err)}</i>"]
@@ -2561,7 +2638,7 @@ def tg_command(body: dict = BODY, x_worker_token: str = TOKEN) -> dict:
     table = {"/kehoach": plan_cmd,
              "/kichban": lambda: kichban_cmd(str(body.get("text", ""))),
               "/trangthai": lambda: reply(msg(status_text())), "/ngansach": lambda: reply(msg(budget_text())),
-             "/nhanvat": characters, "/tiktok": tiktok_links, "/nhac": lambda: reply(music_list()),
+             "/nhanvat": lambda: characters(str(body.get("text", ""))), "/tiktok": tiktok_links, "/nhac": lambda: reply(music_list()),
              "/phongcach": lambda: style_cmd(str(body.get("text", ""))),
              "/drive": drive_cmd, "/giong": lambda: voice_cmd_text(str(body.get("text", ""))),
              "/themnv": lambda: add_cast_cmd(str(body.get("text", ""))),
@@ -2703,6 +2780,8 @@ def tg_text(body: dict = BODY, x_worker_token: str = TOKEN) -> dict:
     ref, text = body.get("reply_to_text") or "", str(body.get("text", "")).strip()
     if m := re.search(r"\[GIONG:([\w-]+)\]", ref):
         return _safe(apply_voice, m.group(1), text)
+    if m := re.search(r"\[NV2:([\w-]+)\]", ref):
+        return _safe(edit_modern, m.group(1), text)
     if m := re.search(r"\[NV:([\w-]+)\]", ref):
         return _safe(edit_cast, m.group(1), text)
     if not ref and (pv := _safe(pending_voice_text, text)) and pv.get("messages"):

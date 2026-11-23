@@ -120,8 +120,8 @@ scraper:
 
 # Chủ đề kịch bản: khi gõ /kichban (hoặc 07:00 mỗi ngày) bot hỏi chọn 1 hoặc 2.
 #   1 = "kyuc": ký ức tuổi thơ 8x 9x — dùng mục niche ở trên + kế hoạch 30 ngày (như cũ)
-#   2 = "giadinh": những điều cần nhắc nhở trong gia đình — bối cảnh ngày nay, cùng gia đình nhân vật (cùng mặt, cùng
-#       giọng), trang phục theo `looks` bên dưới; không dùng kế hoạch 30 ngày, mỗi lần tự chọn một vấn đề mới.
+#   2 = "giadinh": những điều cần nhắc nhở trong gia đình — cuộc sống ngày nay, cùng gia đình nhân vật (cùng tên, cùng
+#       giọng) ở phiên bản HIỆN ĐẠI (`cast` bên dưới); không dùng kế hoạch 30 ngày, mỗi lần tự chọn một vấn đề mới.
 topics:
   ask: true                   # true: /kichban và lịch hằng ngày hỏi chọn chủ đề; false: luôn dùng chủ đề 1
   giadinh:
@@ -163,14 +163,47 @@ topics:
       A present-day Vietnamese family home in a northern town: a small tiled living room with a low wooden sofa and
       family photos on the wall, a dining table with a rice cooker and simple dishes, a narrow balcony with potted
       plants, a smartphone on the table, warm lamp light in the evening
-    # Trang phục ngày nay của từng nhân vật (theo key trong cast); mặt, tóc, giọng giữ nguyên như ảnh mẫu.
-    looks:
-      ong: "light-grey polo shirt, dark trousers, reading glasses in his shirt pocket"
-      ba: "soft maroon cardigan over a cream blouse, dark trousers, green jade bracelet"
-      bo: "navy work shirt with rolled sleeves, dark trousers, simple wristwatch"
-      me: "light beige blouse, dark-blue trousers, small stud earrings"
-      be_trai: "white school T-shirt, dark-blue shorts, a small backpack when outside"
-      be_gai: "yellow T-shirt with a small star, light denim skirt"
+    # Nhân vật PHIÊN BẢN HIỆN ĐẠI cho chủ đề 2 (theo key trong cast): cùng tên, cùng giọng, cùng gương mặt; vai, ngoại
+    # hình + trang phục ngày nay và cách nói của cuộc sống hiện đại. Ảnh mẫu riêng: gửi ảnh với chú thích "2 Bà" (hoặc
+    # "Bà hiện đại"); xem/sửa bằng /nhanvat 2. Sửa trên Telegram được lưu vào data/nhan_vat.yaml (mục modern).
+    cast:
+      ong:
+        role: "Ông nội, đã nghỉ hưu, sống cùng con cháu, hiền từ, hóm hỉnh, hay ngồi đợi cả nhà về ăn cơm"
+        look_en: >-
+          Vietnamese grandfather, elderly man, thin kind face with smiling eyes and deep laugh lines, short neat white
+          hair, thin white mustache, slightly stooped, light-grey polo shirt, dark trousers, reading glasses in his
+          shirt pocket, brown leather sandals
+        speech_vi: "Xưng 'ông', gọi cháu là 'cháu'; nói chậm, hiền; hay hỏi han chuyện học, chuyện làm; lúng túng với điện thoại thông minh, hay nhờ cháu chỉ"
+      ba:
+        role: "Bà nội, sống cùng con cháu, dịu dàng, lo cho cả nhà từng bữa ăn, hay nhớ con cháu ở xa"
+        look_en: >-
+          Vietnamese grandmother, elderly woman, round gentle face with a warm smile, grey hair in a neat low bun,
+          soft maroon cardigan over a cream blouse, dark trousers, small green jade bracelet on her left wrist
+        speech_vi: "Xưng 'bà', gọi cháu là 'cháu' hoặc 'cục vàng của bà'; giọng ngọt, hay dặn 'ăn thêm đi cháu', hay gọi video cho con cháu ở xa"
+      bo:
+        role: "Bố, nhân viên văn phòng, bận rộn, hay về muộn, thương con nhưng ít nói ra"
+        look_en: >-
+          Vietnamese father in his early forties, square jaw, short black side-parted hair, light stubble, navy work
+          shirt with rolled sleeves, dark trousers, simple black wristwatch, a laptop bag
+        speech_vi: "Xưng 'bố', gọi con là 'con'; nói ngắn, hay nói 'bố đang bận chút'; khi xúc động thì ngập ngừng"
+      me:
+        role: "Mẹ, đi làm và lo việc nhà, ân cần, hay nhắc cả nhà bỏ điện thoại xuống khi ăn cơm"
+        look_en: >-
+          Vietnamese mother in her late thirties, oval face, gentle eyes, long straight black hair in a low ponytail,
+          light beige blouse, dark-blue trousers, small stud earrings
+        speech_vi: "Xưng 'mẹ', gọi con là 'con'; ân cần, hay nhắc 'cả nhà ăn cơm thôi', mắng yêu nhẹ nhàng"
+      be_trai:
+        role: "Con trai lớn, học cấp hai, mê điện thoại và game, tốt bụng, thương em"
+        look_en: >-
+          Vietnamese boy, slim, round face, big bright eyes, short black hair with a cowlick, white school uniform
+          shirt, dark-blue trousers, a smartphone in his hand, a black school backpack
+        speech_vi: "Xưng 'con' với bố mẹ, 'cháu' với ông bà, 'anh' với em gái; hay nói 'chút nữa con làm', 'con biết rồi mà'"
+      be_gai:
+        role: "Con gái út, học tiểu học, hồn nhiên, tò mò, thích ở bên ông bà"
+        look_en: >-
+          Vietnamese little girl, small, round face with rosy cheeks, big curious eyes, short black bob hair with
+          straight bangs and a small yellow hair clip, yellow T-shirt with a small star, light denim skirt, white sneakers
+        speech_vi: "Xưng 'con'/'cháu', gọi anh là 'anh Tí'; hồn nhiên, hay hỏi 'sao thế ạ?', 'ông ơi cái này là gì?'"
 
 content:
   target_duration_sec: 24     # độ dài video mong muốn (kênh mẫu: 15–30 giây)
