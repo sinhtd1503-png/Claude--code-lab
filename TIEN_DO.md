@@ -146,10 +146,14 @@ Xây agent tự động cho kênh TikTok ngách **tuổi thơ, kỷ niệm gia �
     - **Không dùng ảnh mẫu thời xưa** cho chủ đề 2 (để Flow khỏi chép quần áo cũ). Ảnh mẫu hiện đại riêng: gửi ảnh chú thích `2 Bà` / `Bà hiện đại`.
     - `/nhanvat 2` hiện thẻ hiện đại kèm prompt tạo ảnh. Trả lời thẻ bằng `Vai/Ngoại hình/Cách nói` để sửa (lưu trong `nhan_vat.yaml`, mục `modern`).
     - **Một ngôi nhà ngày nay cố định** (`setting_en`), ghi nguyên văn trong mọi prompt clip. Prompt clip mô tả phim theo chủ đề, không còn câu cố định "1990s childhood memory".
-  - Lý do chủ kênh thấy `/kichban` vẫn viết chủ đề ký ức: PR #38 chưa merge nên VPS còn chạy bản cũ (n8n không lỗi). Cần merge rồi cập nhật VPS.
+  - Lý do chủ kênh thấy `/kichban` vẫn viết chủ đề ký ức: lúc đó PR #38 chưa merge nên VPS còn chạy bản cũ (n8n không lỗi).
+- **Trạng thái cuối ngày:** PR #38 (chọn chủ đề + nhân vật hiện đại) và PR #39 (tiến độ) **đã merge**; chủ kênh **đã cập nhật VPS**. Việc tiếp theo: thử `/kichban` → chọn 2️⃣, tạo ảnh mẫu hiện đại bằng `/nhanvat 2`, làm trọn 1 video chủ đề 2.
   - Viết lại kịch bản vẫn giữ đúng chủ đề; tin kịch bản ghi rõ **🕰 Chủ đề 1** hay **👨‍👩‍👧 Chủ đề 2**.
   - Mọi nội dung chủ đề 2 sửa được trong `config.yaml`, mục `topics:`.
-- **Kiểm thử:** thêm bộ test chủ đề và đã đạt hết. Sửa bộ test tần suất (lịch 07:00 giờ hỏi chủ đề trước). Chạy lại toàn bộ test trước khi merge.
+- **Kiểm thử:**
+  - Thêm bộ test chủ đề, gồm cả phần nhân vật hiện đại (ảnh chú thích `2 Bà`, sửa thẻ hiện đại, `/nhanvat 2`, chủ đề 2 không dùng ảnh thời xưa); đạt hết.
+  - Sửa bộ test tần suất (lịch 07:00 giờ hỏi chủ đề trước).
+  - PR #38 được merge theo yêu cầu khi lượt chạy lại toàn bộ test mới xong một phần; các bộ đã chạy đều đạt, phần còn lại tiếp tục kiểm tra sau khi merge.
 
 ### 📌 Tóm tắt thay đổi 20/11/2026 — Chọn "kéo dài" (1 video, không ghép) hoặc "clip độc lập"; ghép không làm lệch giọng
 - **Yêu cầu của chủ kênh:**
@@ -368,7 +372,7 @@ Xây agent tự động cho kênh TikTok ngách **tuổi thơ, kỷ niệm gia �
 
 ## 📋 Các bước cần cấu hình tiếp
 
-1. **Cập nhật VPS** (lệnh đầu file) để có lựa chọn Kéo dài / Clip độc lập và chọn chủ đề kịch bản.
+1. ~~Cập nhật VPS~~ — đã làm 23/11 (có Kéo dài / Clip độc lập và chọn chủ đề). Lần sau có bản mới: chạy lại lệnh đầu file.
 2. `/font` → chọn font cho chữ đầu video, phụ đề, câu kết (xem ảnh minh hoạ).
 3. `/giong` → kiểm tra đang chọn **Khớp giọng nhân vật**.
 4. `/nhac` → có ít nhất 1 bài nhạc nền không bản quyền.
