@@ -186,7 +186,7 @@ def budget_msg(req: dict) -> dict:
 
 HELP = ("🤖 <b>Trợ lý kênh TikTok</b>\n\n"
         "/kehoach – lập kế hoạch 30 ngày mới\n"
-        "/kichban – viết ngay kịch bản tiếp theo\n"
+        "/kichban – viết kịch bản (chọn chủ đề 1 Ký ức / 2 Gia đình; gõ nhanh /kichban 2)\n"
         "/clip – gửi lại prompt clip đang chờ (/clip 2 = riêng cảnh 2)\n"
         "/tansuat – tần suất ra video (vd /tansuat 2 = 2 ngày 1 video, áp dụng từ ngày mai)\n"
         "/socanh – số cảnh mỗi video (vd /socanh 4 ≈ 32 giây)\n"
@@ -257,9 +257,102 @@ def fix_bible(bible: dict) -> dict:
     return series.set_cast(b, bible_characters(cast)) if cast else b
 
 
+# ---------------------------------------------------------------- topics (1 = childhood memories, 2 = family reminders)
+
+TOPICS = {1: "kyuc", 2: "giadinh"}
+TOPIC_LABEL = {"kyuc": "🕰 Chủ đề 1 · Ký ức tuổi thơ", "giadinh": "👨‍👩‍👧 Chủ đề 2 · Gia đình"}
+TOPIC_KEYS = ("name", "description", "audience", "tone", "pillars", "core_values", "caption_hint", "style_reference",
+              "visual_style_en")
+
+
+def topics_cfg() -> dict:
+    return S.raw.get("topics") or {}
+
+
+def ask_topic() -> bool:
+    t = topics_cfg()
+    return bool(t.get("ask", True)) and bool(t.get("giadinh"))
+
+
+def topic_of(idea: dict | None) -> str:
+    return "giadinh" if (idea or {}).get("topic") == "giadinh" else "kyuc"
+
+
+def topic_niche(topic: str) -> dict:
+    """The writer's brief: the channel niche (topic 1), or the same channel with topic 2's brief on top."""
+    base = niche()
+    if topic != "giadinh":
+        return base
+    t = topics_cfg().get("giadinh") or {}
+    return {**base, **{k: t[k] for k in TOPIC_KEYS if t.get(k)}}
+
+
+def family_bible() -> dict:
+    """Topic 2: the SAME family (names, faces from the reference photos, voices, way of speaking) living today —
+    a fixed present-day home and fixed present-day outfits, so every clip of every topic-2 video matches."""
+    t = topics_cfg().get("giadinh") or {}
+    clean = lambda x: " ".join(str(x or "").split())
+    b = {"era": clean(t.get("era")) or "Gia đình Việt Nam ngày nay",
+         "setting_en": clean(t.get("setting_en")) or "a present-day Vietnamese family home",
+         "style_en": clean(t.get("visual_style_en")) or clean(niche().get("visual_style_en")),
+         "film_en": clean(t.get("film_en")) or "a short heartfelt film about a present-day Vietnamese family"}
+    looks = t.get("looks") or {}
+    chars = []
+    for c in bible_characters(cast_items()):
+        outfit = clean(looks.get(c["key"]))
+        if outfit:
+            c = {**c, "look_en": f"Face, hair and build exactly as: {c['look_en'].rstrip('.')}. Present-day outfit "
+                                 f"(replaces any clothing above): {outfit.rstrip('.')}"}
+        chars.append(c)
+    return series.set_cast(b, chars)
+
+
 def content_bible(item: dict) -> dict:
+    if topic_of(item["idea"]) == "giadinh":
+        return family_bible()
     plan = get_plan(item["idea"]["plan_id"]) if item["idea"].get("plan_id") else None
     return fix_bible((plan or {}).get("data", {}).get("bible", {}))
+
+
+def topic_choice_msg(daily: bool = False) -> dict:
+    t = topics_cfg().get("giadinh") or {}
+    head = "☀️ <b>Đến giờ viết kịch bản hôm nay.</b> " if daily else ""
+    return msg(f"{head}📝 <b>Chọn chủ đề kịch bản:</b>\n"
+               "1️⃣ <b>Ký ức tuổi thơ 8x 9x</b> — theo kế hoạch 30 ngày như hiện tại.\n"
+               f"2️⃣ <b>{esc(t.get('name') or 'Gia đình')}</b> — tình huống gia đình ngày nay, nhắc nhở nhẹ nhàng điều dễ "
+               "bị lãng quên; cùng gia đình nhân vật (cùng mặt, cùng giọng), trang phục và bối cảnh hiện đại.\n\n"
+               "<i>Gõ nhanh: /kichban 1 hoặc /kichban 2</i>",
+               kb([("1️⃣ Ký ức tuổi thơ", "tp:1"), ("2️⃣ Gia đình", "tp:2")]))
+
+
+def choose_topic(n: int, mid: int | None) -> dict:
+    topic = TOPICS.get(n)
+    if not topic:
+        return reply(clear_buttons(mid))
+    return reply(clear_buttons(mid), msg(f"⏳ Đang viết kịch bản {TOPIC_LABEL[topic]} (khoảng 1 phút)…"),
+                 next_step={"action": "script", "topic": topic})
+
+
+def kichban_cmd(text: str) -> dict:
+    m = re.search(r"\b([12])\b", text.partition(" ")[2])
+    if m:
+        return choose_topic(int(m.group(1)), None)
+    if ask_topic():
+        return reply(topic_choice_msg())
+    return reply(msg("⏳ Đang viết kịch bản (khoảng 1 phút)…"), next_step={"action": "script"})
+
+
+def topic_titles(topic: str, limit: int = 40) -> list[str]:
+    rows = DB_.conn.execute("SELECT idea, script FROM content WHERE script IS NOT NULL ORDER BY id DESC LIMIT 200").fetchall()
+    out = []
+    for r in rows:
+        try:
+            idea, sc = json.loads(r["idea"] or "{}"), json.loads(r["script"] or "{}")
+        except (TypeError, ValueError):
+            continue
+        if topic_of(idea) == topic and sc.get("title"):
+            out.append(sc["title"])
+    return out[:limit]
 
 
 def is_dialogue(script: dict | None) -> bool:
@@ -462,7 +555,8 @@ def closing_line(sc: dict) -> str:
 def script_messages(cid: int) -> list[dict]:
     item = DB_.get_content(cid)
     sc, idea = item["script"], item["idea"]
-    lines = [f"📝 <b>Kịch bản #{cid}</b> · Ngày {idea.get('day', '?')}/{PLAN_DAYS} · <i>{esc(idea.get('theme', ''))}</i>",
+    day = "" if topic_of(idea) == "giadinh" else f" · Ngày {idea.get('day', '?')}/{PLAN_DAYS}"
+    lines = [f"📝 <b>Kịch bản #{cid}</b> · {TOPIC_LABEL[topic_of(idea)]}{day} · <i>{esc(idea.get('theme', ''))}</i>",
              f"<b>{esc(sc['title'])}</b>", "", f"🎣 <b>Hook:</b> {esc(sc['hook'])}", ""]
     for i, s in enumerate(sc["scenes"], 1):
         lines.append(f"🎬 <b>Cảnh {i}</b> – {esc(s['visual_vi'])}")
@@ -658,7 +752,7 @@ def change_audio(cid: int, what: str) -> dict:
 
 def _write(idea: dict, bible: dict, patterns: list[str], feedback=None, previous=None) -> tuple[dict, str]:
     n = scenes_count()
-    script = series.write_script(niche(), bible, idea, patterns, n, CLIP_SEC, owner_notes(),
+    script = series.write_script(topic_niche(topic_of(idea)), bible, idea, patterns, n, CLIP_SEC, owner_notes(),
                                  feedback=feedback, previous=previous).model_dump()
     script["scenes"] = script["scenes"][:n]
     link_scenes(script)
@@ -796,30 +890,41 @@ def frequency_cmd(text: str) -> dict:
                                           [("4 ngày/lần", "tf:4"), ("Mỗi tuần", "tf:7")])))
 
 
-def next_script(scheduled: bool = False) -> dict:
+def next_script(scheduled: bool = False, topic: str | None = None) -> dict:
+    topic = topic if topic in TOPIC_LABEL else None
+    ask = ask_topic()
     with LOCK:
         plan = active_plan()
-        if not plan:
-            lp = latest_plan()
-            if lp and lp["status"] == "review":
-                return reply(msg(f"⏳ Kế hoạch #KH{lp['id']} đang chờ bạn duyệt, chưa viết kịch bản."))
-            if scheduled:
-                return reply()  # the plan job will create one
-            return reply(msg("Chưa có kế hoạch. Gõ /kehoach để lập kế hoạch 30 ngày."))
         if scheduled:
+            if not plan and not ask:
+                lp = latest_plan()
+                if lp and lp["status"] == "review":
+                    return reply(msg(f"⏳ Kế hoạch #KH{lp['id']} đang chờ bạn duyệt, chưa viết kịch bản."))
+                return reply()  # the plan job will create one
             today = dt.datetime.now(TZ).date().isoformat()
             if (DB_.kv_get("last_daily") or {}).get("date") == today:
                 return reply()
             if not is_due(dt.datetime.now(TZ).date()):
                 return reply()  # not a video day under the current frequency (/tansuat)
             DB_.kv_set("last_daily", {"date": today})
+            if ask and topic is None:
+                return reply(topic_choice_msg(daily=True))
+    if topic == "giadinh":
+        return family_script()
+    with LOCK:
+        if not plan:
+            lp = latest_plan()
+            if lp and lp["status"] == "review":
+                return reply(msg(f"⏳ Kế hoạch #KH{lp['id']} đang chờ bạn duyệt, chưa viết kịch bản."))
+            return reply(msg("Chưa có kế hoạch ký ức 30 ngày. Gõ /kehoach để lập kế hoạch"
+                             + (", hoặc /kichban 2 để viết chủ đề Gia đình." if ask else ".")))
         row = DB_.conn.execute("SELECT * FROM plan_days WHERE plan_id=? AND status='planned' ORDER BY day_no LIMIT 1",
                                (plan["id"],)).fetchone()
         if not row:
             return reply(msg("🎉 Đã dùng hết kế hoạch. Gõ /kehoach để lập kế hoạch mới."))
         svc = (S.raw.get("budget") or {}).get("services", {})
         BUDGET.ensure("claude", float(svc.get("claude", {}).get("est_script_usd", 0.15)),
-                      "Viết kịch bản hằng ngày.", resume={"action": "script"})
+                      "Viết kịch bản hằng ngày.", resume={"action": "script", "topic": "kyuc"})
         key = f"day{row['id']}"
         if key in BUSY:
             return reply(msg("⏳ Đang viết kịch bản…"))
@@ -838,6 +943,34 @@ def next_script(scheduled: bool = False) -> dict:
         BUSY.discard(key)
 
 
+def family_script() -> dict:
+    """Topic 2: no monthly plan — each time the next pillar, a situation the writer picks, never a repeat."""
+    t = topics_cfg().get("giadinh") or {}
+    pillars = t.get("pillars") or ["Gia đình"]
+    with LOCK:
+        svc = (S.raw.get("budget") or {}).get("services", {})
+        BUDGET.ensure("claude", float(svc.get("claude", {}).get("est_script_usd", 0.15)),
+                      "Viết kịch bản chủ đề Gia đình.", resume={"action": "script", "topic": "giadinh"})
+        if "family" in BUSY:
+            return reply(msg("⏳ Đang viết kịch bản…"))
+        BUSY.add("family")
+        k = int((DB_.kv_get("giadinh_pillar") or {}).get("i") or 0)
+        DB_.kv_set("giadinh_pillar", {"i": k + 1})
+        avoid = topic_titles("giadinh")
+        plan = active_plan()
+    try:
+        idea = {"topic": "giadinh", "open": True, "theme": pillars[k % len(pillars)], "avoid": avoid}
+        script, caption = _write(idea, family_bible(), (plan or {}).get("data", {}).get("patterns") or [])
+        idea["title"] = script["title"]
+        with LOCK:
+            cid = DB_.create_content(idea)
+            DB_.update_content(cid, script=script, caption=caption, status="script_review")
+        _try_prepare_audio(cid)
+        return reply(script_messages(cid))
+    finally:
+        BUSY.discard("family")
+
+
 def rewrite_script(cid: int, feedback: str | None, message_id: int | None = None) -> dict:
     with LOCK:
         item = DB_.get_content(cid)
@@ -850,8 +983,8 @@ def rewrite_script(cid: int, feedback: str | None, message_id: int | None = None
             return reply(msg("⏳ Đang viết lại…"))
         BUSY.add(f"c{cid}")
     try:
-        plan = get_plan(item["idea"]["plan_id"])
-        script, caption = _write(item["idea"], fix_bible(plan["data"]["bible"]), plan["data"]["patterns"],
+        plan = get_plan(item["idea"]["plan_id"]) if item["idea"].get("plan_id") else active_plan()
+        script, caption = _write(item["idea"], content_bible(item), (plan or {}).get("data", {}).get("patterns") or [],
                                  feedback=feedback, previous=item["script"])
         with LOCK:
             old_audio = (item["script"] or {}).get("audio") or {}
@@ -2426,7 +2559,7 @@ def tg_command(body: dict = BODY, x_worker_token: str = TOKEN) -> dict:
         return stop
     cmd = str(body.get("text", "")).split()[0].split("@")[0].lower()
     table = {"/kehoach": plan_cmd,
-             "/kichban": lambda: reply(msg("⏳ Đang viết kịch bản (khoảng 1 phút)…"), next_step={"action": "script"}),
+             "/kichban": lambda: kichban_cmd(str(body.get("text", ""))),
               "/trangthai": lambda: reply(msg(status_text())), "/ngansach": lambda: reply(msg(budget_text())),
              "/nhanvat": characters, "/tiktok": tiktok_links, "/nhac": lambda: reply(music_list()),
              "/phongcach": lambda: style_cmd(str(body.get("text", ""))),
@@ -2476,6 +2609,7 @@ def tg_button(body: dict = BODY, x_worker_token: str = TOKEN) -> dict:
         "mu": lambda: use_newest_music(n, mid),
         "cm": lambda: choose_manual(n, mid, "independent"),
         "ce": lambda: choose_manual(n, mid, "extend"),
+        "tp": lambda: choose_topic(n, mid),
         "va": lambda: publish(n, mid),
         "vc": lambda: reset_clips(n, mid),
         "vx": lambda: _set_status(n, "video_review", "video_rejected", mid, f"❌ Đã bỏ video #{n}."),
@@ -2649,7 +2783,7 @@ def cont(body: dict = BODY, x_worker_token: str = TOKEN) -> dict:
         p = get_plan(int(n))
         return _safe(create_plan, body.get("feedback") or "Làm một kế hoạch khác hẳn.", p["data"] if p else None)
     if action == "script":
-        return _safe(next_script)
+        return _safe(next_script, False, body.get("topic"))
     if action == "rewrite":
         return _safe(rewrite_script, int(n), body.get("feedback"))
     if action == "fixprompt":

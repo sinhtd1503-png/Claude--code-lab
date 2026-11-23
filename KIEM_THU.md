@@ -84,7 +84,10 @@ Trong Telegram, gửi cho bot:
 /kichban
 ```
 
-   **Kết quả đúng:** bot gửi kịch bản 3–4 cảnh.
+   **Kết quả đúng:** bot hỏi chọn chủ đề **1️⃣ Ký ức tuổi thơ / 2️⃣ Gia đình**. Bấm 1️⃣ → bot gửi kịch bản 3–4 cảnh,
+   đầu tin ghi **🕰 Chủ đề 1 · Ký ức tuổi thơ · Ngày 1/30**.
+   Thử `/kichban 2` → kịch bản ghi **👨‍👩‍👧 Chủ đề 2 · Gia đình**, tình huống gia đình ngày nay, cùng tên nhân vật;
+   khi tạo clip, prompt có trang phục ngày nay (vd Bà mặc áo len đỏ mận) và nhà ngày nay.
 7. Test viết lại: **Trả lời** vào tin kịch bản, gõ góp ý (ví dụ "Lời đọc ngắn hơn") → gửi.
    **Kết quả đúng:** bot gửi kịch bản mới.
 8. Kịch bản là **thoại giữa các nhân vật**, có dòng **🖼 Chữ trên ảnh bìa** và **🔚 Câu kết**. Bấm **✅ Duyệt kịch bản**.

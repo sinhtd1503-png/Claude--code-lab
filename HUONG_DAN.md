@@ -270,7 +270,15 @@ Mỗi lần bạn bấm **Duyệt kịch bản**, hệ thống cập nhật mộ
      nên mọi clip đều cùng giọng, kể cả clip tạo tay. Bản nghe thử lúc duyệt kịch bản chính là âm thanh thành phẩm.
    - Tất cả được lưu trong `/opt/tiktok-agent/data/nhan_vat.yaml` (sửa bằng nano cũng được; cập nhật code không
      ghi đè). Giá trị ban đầu nằm ở mục `cast:` trong `config.yaml`.
-5. Gửi `/kichban` (hoặc chờ 07:00 sáng mai) → bot gửi **📝 Kịch bản**: thoại từng cảnh, **chữ trên ảnh bìa**
+5. Gửi `/kichban` (hoặc chờ 07:00 sáng mai) → bot hỏi **chọn chủ đề**:
+   - **1️⃣ Ký ức tuổi thơ 8x 9x** — theo kế hoạch 30 ngày như trước.
+   - **2️⃣ Gia đình – những điều dễ lãng quên** — tình huống gia đình ngày nay (bữa cơm, lời cảm ơn, thời gian bên
+     ông bà, điện thoại…), nhắc nhở nhẹ nhàng để cả nhà xem và chia sẻ cho nhau. Không cần kế hoạch 30 ngày: mỗi lần
+     bot lấy trụ cột tiếp theo và tự chọn tình huống mới, không trùng video trước. Vẫn **cùng gia đình 6 nhân vật**
+     (cùng ảnh mặt, cùng giọng, cùng cách xưng hô), chỉ đổi **trang phục ngày nay** và **bối cảnh nhà ngày nay** cố
+     định — sửa trong `config.yaml`, mục `topics: giadinh:` (`looks`, `setting_en`, `pillars`).
+   Gõ nhanh: `/kichban 1` hoặc `/kichban 2`. Không muốn bị hỏi: đặt `topics: ask: false` (luôn chủ đề 1).
+   Sau đó bot gửi **📝 Kịch bản**: thoại từng cảnh, **chữ trên ảnh bìa**
    (thông điệp) và **câu kết** (hiện ở clip cuối). **✅ Duyệt kịch bản** / **🔄 Viết bản khác** / **❌ Bỏ** — hoặc
    Reply để góp ý. Bot ghi nhớ góp ý cho các kịch bản sau.
 6. **Bước 2/4 – duyệt nhạc nền:** bot gửi bản nghe thử (một bài chạy liền cả video, tắt dần ở cuối).
@@ -377,7 +385,7 @@ Mỗi lần bạn bấm **Duyệt kịch bản**, hệ thống cập nhật mộ
 | Lệnh | Tác dụng |
 |---|---|
 | `/kehoach` | Lập kế hoạch 30 ngày mới (tự chạy khi kế hoạch cũ còn ≤ 2 ngày) |
-| `/kichban` | Viết ngay kịch bản tiếp theo (bình thường bot tự gửi 07:00) |
+| `/kichban` | Viết kịch bản: chọn chủ đề 1 Ký ức / 2 Gia đình (gõ nhanh `/kichban 1`, `/kichban 2`; bình thường bot hỏi lúc 07:00) |
 | `/clip` | Gửi lại tất cả prompt clip; `/clip 2` gửi riêng cảnh 2 (khi thiếu tin) |
 | `/tansuat N` | Tần suất ra video: N ngày 1 kịch bản (vd `/tansuat 2`), áp dụng từ ngày mai; `/tansuat` xem lịch |
 | `/socanh N` | Số cảnh mỗi video (2–6; mỗi cảnh 8 giây), vd `/socanh 4` ≈ 32 giây; áp dụng từ kịch bản tiếp theo |

@@ -118,6 +118,60 @@ scraper:
   lookback_days: 30           # chỉ phân tích video trong N ngày gần đây
   top_n_for_analysis: 25      # số video hiệu quả nhất gửi cho Claude phân tích
 
+# Chủ đề kịch bản: khi gõ /kichban (hoặc 07:00 mỗi ngày) bot hỏi chọn 1 hoặc 2.
+#   1 = "kyuc": ký ức tuổi thơ 8x 9x — dùng mục niche ở trên + kế hoạch 30 ngày (như cũ)
+#   2 = "giadinh": những điều cần nhắc nhở trong gia đình — bối cảnh ngày nay, cùng gia đình nhân vật (cùng mặt, cùng
+#       giọng), trang phục theo `looks` bên dưới; không dùng kế hoạch 30 ngày, mỗi lần tự chọn một vấn đề mới.
+topics:
+  ask: true                   # true: /kichban và lịch hằng ngày hỏi chọn chủ đề; false: luôn dùng chủ đề 1
+  giadinh:
+    name: "Gia đình – những điều dễ lãng quên"
+    description: >
+      Những thước phim ngắn nhắc nhở nhẹ nhàng về các mối quan hệ trong gia đình — bố mẹ và con cái, ông bà và
+      cháu, vợ chồng, anh chị em — và những điều dễ bị lãng quên trong cuộc sống hiện đại: một lời cảm ơn, một bữa
+      cơm đủ mặt, sự lắng nghe, thời gian bên ông bà, sự hy sinh thầm lặng của bố mẹ. Người xem lắng lại, hướng về
+      chân – thiện – mỹ và muốn gửi video cho người thân.
+    audience: "Cả gia đình: bố mẹ 28–50 tuổi, con cái tuổi teen và đi làm, ông bà; người Việt xa nhà"
+    tone: "Lắng đọng, chân thành, ấm áp; tình huống đời thường; không giáo điều, không trách móc; kết bằng một nhận ra nhẹ nhàng"
+    pillars:
+      - "Lời cảm ơn, lời xin lỗi chưa nói"
+      - "Thời gian bên ông bà"
+      - "Bữa cơm gia đình đủ mặt"
+      - "Lắng nghe con / lắng nghe bố mẹ"
+      - "Điện thoại và sự kết nối thật"
+      - "Sự hy sinh thầm lặng của bố mẹ"
+      - "Hiếu thảo và biết ơn"
+      - "Anh chị em yêu thương, nhường nhịn"
+    core_values: >
+      Mỗi video đặt ra MỘT tình huống gia đình đời thường ngày nay (bữa cơm, cuộc gọi, chiếc điện thoại, lúc ông bà
+      ốm, lần đầu con đi xa…) để người xem tự nhận ra một điều quý giá đang bị lãng quên. Kể bằng thoại và hành động,
+      không giảng đạo lý; các nhân vật đều tử tế, ai cũng có lý do của mình; kết bằng một hành động nhỏ ấm áp (một cái
+      ôm, một lời cảm ơn, đặt điện thoại xuống) khiến bố mẹ, con cái, ông bà xem xong muốn chia sẻ cho nhau.
+    caption_hint: >
+      Caption ngắn, chạm cảm xúc, kết bằng lời mời chia sẻ cho người thân hoặc câu hỏi gợi suy ngẫm (vd 'Gửi video
+      này cho bố mẹ bạn nhé', 'Lần cuối bạn ăn cơm cùng cả nhà là khi nào?').
+    style_reference: >
+      Video 15–40 giây gồm các clip AI 8 giây, bối cảnh một gia đình Việt Nam ngày nay. KHÔNG có người dẫn chuyện:
+      các thành viên nói chuyện với nhau bằng câu thoại ngắn, đời thường, có cảm xúc; nhạc nền piano/guitar nhẹ, lắng
+      đọng; phụ đề theo lời thoại. Mỗi video xoay quanh MỘT điều dễ bị lãng quên trong gia đình, kết bằng một khoảnh
+      khắc lặng và câu kết đọng lại.
+    visual_style_en: >
+      Cinematic anime feature-film style: hand-drawn 2D animation look, expressive anime faces, painterly richly
+      detailed backgrounds, soft warm natural light, gentle film grain, warm gentle color palette, present-day Vietnam
+    era: "Gia đình Việt Nam ngày nay, thị xã miền Bắc"
+    setting_en: >-
+      A present-day Vietnamese family home in a northern town: a small tiled living room with a low wooden sofa and
+      family photos on the wall, a dining table with a rice cooker and simple dishes, a narrow balcony with potted
+      plants, a smartphone on the table, warm lamp light in the evening
+    # Trang phục ngày nay của từng nhân vật (theo key trong cast); mặt, tóc, giọng giữ nguyên như ảnh mẫu.
+    looks:
+      ong: "light-grey polo shirt, dark trousers, reading glasses in his shirt pocket"
+      ba: "soft maroon cardigan over a cream blouse, dark trousers, green jade bracelet"
+      bo: "navy work shirt with rolled sleeves, dark trousers, simple wristwatch"
+      me: "light beige blouse, dark-blue trousers, small stud earrings"
+      be_trai: "white school T-shirt, dark-blue shorts, a small backpack when outside"
+      be_gai: "yellow T-shirt with a small star, light denim skirt"
+
 content:
   target_duration_sec: 24     # độ dài video mong muốn (kênh mẫu: 15–30 giây)
   scenes: 3                   # số cảnh mỗi video (2–6), mỗi cảnh = 1 clip 8 giây: 3 ≈ 24s, 4 ≈ 32s, 5 ≈ 40s. Đổi nhanh: /socanh 4
