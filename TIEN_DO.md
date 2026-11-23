@@ -1,6 +1,6 @@
 # Tiến độ dự án — TikTok Content Agent
 
-_Cập nhật: 20/11/2026_
+_Cập nhật: 23/11/2026_
 
 ## 🔄 Lệnh cập nhật VPS (sao chép và dán vào Termius)
 
@@ -126,7 +126,29 @@ Xây agent tự động cho kênh TikTok ngách **tuổi thơ, kỷ niệm gia �
 - **`/kehoach` hỏi chọn nhân vật bằng ảnh trước:** chưa có ảnh nhân vật → bot hướng dẫn gửi ảnh (chú thích tên – vai) hoặc bấm "✨ Để AI tự tạo nhân vật"; đã có ảnh → lập kế hoạch với đúng các nhân vật đó
 - Đã kiểm thử trong Docker (căn thời gian, phụ đề, bản nghe thử, đổi nhạc/giọng, dùng lại giọng đã duyệt khi ghép) và thử edge-tts thật với giọng tiếng Việt
 
-### 📌 Tóm tắt thay đổi hôm nay (20/11/2026) — Chọn "kéo dài" (1 video, không ghép) hoặc "clip độc lập"; ghép không làm lệch giọng
+### 📌 Tóm tắt thay đổi hôm nay (23/11/2026) — Chọn chủ đề kịch bản: 1 Ký ức tuổi thơ / 2 Gia đình
+- **Yêu cầu của chủ kênh:**
+  - Khi đến bước viết kịch bản hằng ngày, hoặc khi gõ `/kichban`, được chọn chủ đề.
+  - **Chủ đề 1:** ký ức tuổi thơ, làm như hiện tại.
+  - **Chủ đề 2:** những điều cần nhắc nhở trong gia đình (bố mẹ – con cái – ông bà) và những thứ dễ bị lãng quên trong xã hội hiện đại. Mục tiêu là người xem lắng lại, hướng về chân – thiện – mỹ, và muốn chia sẻ cho người thân.
+  - Nhân vật chủ đề 2 có thể điều chỉnh cho hợp, nhưng thoại, hình ảnh, bối cảnh phải nhất quán.
+- **Đã làm (PR #38):**
+  - `/kichban` và lịch 07:00 hỏi chủ đề bằng 2 nút **1️⃣ Ký ức tuổi thơ** / **2️⃣ Gia đình**; gõ nhanh `/kichban 1`, `/kichban 2`.
+  - Đặt `topics: ask: false` thì bot luôn dùng chủ đề 1 như trước.
+  - Chủ đề 1 không đổi gì: vẫn theo kế hoạch 30 ngày, bối cảnh thập niên 1990.
+  - **Chủ đề 2:**
+    - Không cần kế hoạch 30 ngày: mỗi lần lấy trụ cột tiếp theo (8 trụ cột: lời cảm ơn, bữa cơm đủ mặt, thời gian bên ông bà, lắng nghe, điện thoại và sự kết nối, hy sinh của bố mẹ, hiếu thảo, anh chị em).
+    - Claude tự chọn tình huống gia đình ngày nay và tránh trùng các video chủ đề 2 đã làm.
+    - Giọng văn lắng đọng, không giáo điều, kết bằng một hành động nhỏ ấm áp; caption mời chia sẻ cho người thân.
+  - **Nhất quán ở chủ đề 2:**
+    - Cùng gia đình 6 nhân vật: cùng tên, ảnh mẫu khuôn mặt, giọng, cách xưng hô.
+    - Thêm **trang phục ngày nay cố định** cho từng người (`topics.giadinh.looks`) và **một ngôi nhà ngày nay cố định** (`setting_en`), ghi nguyên văn trong mọi prompt clip.
+    - Prompt clip mô tả phim theo chủ đề, không còn câu cố định "1990s childhood memory".
+  - Viết lại kịch bản vẫn giữ đúng chủ đề; tin kịch bản ghi rõ **🕰 Chủ đề 1** hay **👨‍👩‍👧 Chủ đề 2**.
+  - Mọi nội dung chủ đề 2 sửa được trong `config.yaml`, mục `topics:`.
+- **Kiểm thử:** thêm bộ test chủ đề và đã đạt hết. Sửa bộ test tần suất (lịch 07:00 giờ hỏi chủ đề trước). Chạy lại toàn bộ test trước khi merge.
+
+### 📌 Tóm tắt thay đổi 20/11/2026 — Chọn "kéo dài" (1 video, không ghép) hoặc "clip độc lập"; ghép không làm lệch giọng
 - **Yêu cầu của chủ kênh:**
   - Cách kéo dài (Extend) trong Flow đã cho ra một video hoàn chỉnh, rất khó tải từng đoạn về rồi gửi lại theo đúng thứ tự.
   - Muốn chọn giữa kéo dài và clip độc lập. Chọn kéo dài thì chỉ gửi lại 1 video cuối, không cần ghép.
@@ -333,21 +355,22 @@ Xây agent tự động cho kênh TikTok ngách **tuổi thơ, kỷ niệm gia �
 2. **Vẫn còn bước làm tay mỗi ngày:** tạo 3–4 clip trên Google Flow (~5 phút). Tự động hoàn toàn chỉ có qua Gemini API trả phí (key hiện chưa có quyền model video).
 3. **Đăng TikTok chưa chạy thật:** cần tạo app, thêm tài khoản vào Sandbox, kết nối bằng `/tiktok`. `direct` chỉ đăng riêng tư tới khi app qua audit.
 4. **Giọng nhân vật (clip độc lập):** khớp giọng chỉ chỉnh cao độ + âm lượng; nếu Flow tạo hai chất giọng khác hẳn nhau giữa các clip thì vẫn còn khác. Cách **🎞 Kéo dài** tránh được vấn đề này vì cả video do Flow tạo liền.
-5. **Prompt rất dài** được chia thành nhiều phần; chủ kênh phải chép lần lượt và dán nối tiếp vào cùng một ô prompt trong Flow.
-6. **edge-tts lỗi theo đợt** ("No audio was received") — đã có thử lại + nút 🔁 Thử lại trên Telegram.
-7. **Hạn chế đã biết:**
+5. **Ảnh mẫu nhân vật mặc trang phục xưa:** với chủ đề 2, khi thêm ảnh vào Ingredients, Flow có thể bắt chước luôn quần áo cũ. Prompt đã ghi rõ trang phục ngày nay thay cho quần áo trong ảnh, nhưng chưa thử trên Flow thật.
+6. **Prompt rất dài** được chia thành nhiều phần; chủ kênh phải chép lần lượt và dán nối tiếp vào cùng một ô prompt trong Flow.
+7. **edge-tts lỗi theo đợt** ("No audio was received") — đã có thử lại + nút 🔁 Thử lại trên Telegram.
+8. **Hạn chế đã biết:**
    - Độ nhất quán khuôn mặt vẫn phụ thuộc model video (đã có mô tả cố định, ảnh mẫu, khung cuối, prompt nối tiếp, Extend).
    - Đăng vào hộp nháp TikTok: chủ kênh tự chọn ảnh bìa ở giây đầu khi đăng trong app.
    - Còn lại: Telegram chỉ cho bot tải file ≤ 20 MB; chưa hỗ trợ upload TikTok > 64 MB; phụ đề căn thời gian theo ước lượng; số lượt Flow miễn phí do Google quyết định và có thể thay đổi.
 
 ## 📋 Các bước cần cấu hình tiếp
 
-1. **Cập nhật VPS** (lệnh đầu file) để có lựa chọn Kéo dài / Clip độc lập.
+1. **Cập nhật VPS** (lệnh đầu file) để có lựa chọn Kéo dài / Clip độc lập và chọn chủ đề kịch bản.
 2. `/font` → chọn font cho chữ đầu video, phụ đề, câu kết (xem ảnh minh hoạ).
 3. `/giong` → kiểm tra đang chọn **Khớp giọng nhân vật**.
 4. `/nhac` → có ít nhất 1 bài nhạc nền không bản quyền.
 5. `/doithu` → cập nhật kênh đối thủ nếu cần → **🔄 Lập kế hoạch mới** → duyệt.
-6. **Làm trọn 1 video:** `/kichban` → duyệt kịch bản → duyệt nhạc → duyệt chữ → chọn tạo tay/tự động.
+6. **Làm trọn 1 video mỗi chủ đề:** `/kichban 1` (ký ức) và `/kichban 2` (gia đình) → duyệt kịch bản → duyệt nhạc → duyệt chữ → chọn tạo tay/tự động.
    - Tạo tay: ưu tiên **🎞 Kéo dài** → Đoạn 1 dán prompt đầy đủ (thêm ảnh nhân vật ở Ingredients), đoạn sau bấm Extend và dán prompt kéo dài → tải toàn bộ video → trả lời tin **📥 Gửi video kéo dài**.
 7. **Đánh giá video:** ảnh bìa có chữ thông điệp; nhạc liền từ đầu đến cuối; câu kết ở đoạn cuối; giọng mỗi nhân vật giữ nguyên qua các clip; nhân vật giống nhau → gửi nhận xét cho Claude.
 8. **Kết nối TikTok** (`CAI_DAT_CONTABO.md` Bước 7) → `/tiktok` → thử **Duyệt & đăng**.
