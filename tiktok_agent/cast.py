@@ -24,7 +24,8 @@ log = logging.getLogger(__name__)
 
 FILE_NAME = "nhan_vat.yaml"
 KEYS = ["ong", "ba", "bo", "me", "be_trai", "be_gai"]
-FIELDS = ["key", "name", "role", "aliases", "look_en", "voice_en", "speech_vi", "voice_type", "tts", "image"]
+FIELDS = ["key", "name", "role", "aliases", "look_en", "voice_en", "speech_vi", "voice_type", "tts", "image", "modern"]
+MODERN_FIELDS = ("role", "look_en", "speech_vi", "image")  # the present-day version used by topic 2 (same name/voice)
 
 # Words that point to a role when they start a photo caption (accents matter: "bà" ≠ "ba")
 ROLE_ALIASES = {
@@ -46,6 +47,8 @@ HEADER = """# Nhân vật cố định của kênh — dùng NGUYÊN VĂN trong 
 #   tts       : giọng cố định khi ghép video (edge-tts): voice vi-VN-HoaiMyNeural (nữ) / vi-VN-NamMinhNeural (nam),
 #               pitch (+/-Hz: cao/trầm), rate (+/-%: nhanh/chậm)
 #   image     : ảnh mẫu (đường dẫn trong thư mục data/), tự điền khi bạn gửi ảnh qua Telegram
+#   modern    : phiên bản HIỆN ĐẠI cho chủ đề 2 Gia đình (role, look_en, speech_vi, image) — chỉ ghi phần bạn đã sửa;
+#               phần còn lại lấy từ config.yaml (topics → giadinh → cast). Cùng tên và giọng với bản gốc.
 """
 
 
@@ -166,6 +169,8 @@ class Cast:
             "tts": {"voice": norm_voice(tts.get("voice")), "pitch": norm_pitch(tts.get("pitch")),
                     "rate": norm_rate(tts.get("rate"))},
             "image": str(c.get("image") or ""),
+            "modern": {k: " ".join(str(v).split()) for k, v in (c.get("modern") or {}).items()
+                       if k in MODERN_FIELDS and str(v or "").strip()},
         }
 
     def load(self) -> list[dict]:

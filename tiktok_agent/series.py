@@ -124,10 +124,20 @@ class SeriesScript(BaseModel):
 
 # ---------- prompts ----------
 
+DEFAULT_CORE = """- Mỗi video đánh thức MỘT ký ức tuổi thơ 8x 9x thật cụ thể, bằng chi tiết giác quan (âm thanh, mùi vị, cảm giác
+  trên tay, ánh nắng, tiếng gọi) để người xem thốt lên "đúng rồi, ngày xưa mình cũng vậy".
+- Luôn tích cực và tử tế: tình thân, sự hồn nhiên, lễ phép, biết ơn, sẻ chia; kết bằng một cảm xúc ấm áp giúp người
+  xem trân quý gia đình và hiện tại. Không giáo điều, không chê bai thế hệ trẻ hay cuộc sống hiện đại."""
+FILM_EN = "a short nostalgic film about a Vietnamese 1990s childhood memory"
+DEFAULT_CAPTION = "Caption ngắn, gợi nhớ, kết bằng câu hỏi gợi bình luận (vd 'Bạn còn nhớ không?')."
+
+
 def system_prompt(niche: dict) -> str:
     pillars = niche.get("pillars") or ["Tuổi thơ 8x 9x", "Gia đình", "Làng quê", "Trường lớp", "Tết"]
     style = (niche.get("style_reference") or "").strip()
     visual = (niche.get("visual_style_en") or "").strip()
+    core = (" ".join((niche.get("core_values") or "").split())
+            or DEFAULT_CORE)
     return f"""Bạn là biên kịch và chiến lược gia nội dung cho một kênh TikTok tiếng Việt.
 
 Ngách: {niche['name']}
@@ -147,10 +157,7 @@ Hình thức video (bắt buộc):
 - Phong cách hình ảnh cố định: {visual or 'phim hoạt hình anime điện ảnh, nền vẽ tay chi tiết, ánh sáng ấm'}.
 
 Giá trị cốt lõi của kênh:
-- Mỗi video đánh thức MỘT ký ức tuổi thơ 8x 9x thật cụ thể, bằng chi tiết giác quan (âm thanh, mùi vị, cảm giác
-  trên tay, ánh nắng, tiếng gọi) để người xem thốt lên "đúng rồi, ngày xưa mình cũng vậy".
-- Luôn tích cực và tử tế: tình thân, sự hồn nhiên, lễ phép, biết ơn, sẻ chia; kết bằng một cảm xúc ấm áp giúp người
-  xem trân quý gia đình và hiện tại. Không giáo điều, không chê bai thế hệ trẻ hay cuộc sống hiện đại.
+{core}
 
 Nguyên tắc:
 - Học kênh mẫu và đối thủ để hiểu VÌ SAO họ hiệu quả và bắt chước CÁCH TRÌNH BÀY; luôn viết câu chuyện, lời văn,
@@ -247,9 +254,14 @@ def write_script(niche: dict, bible: dict, idea: dict, patterns: list[str], scen
                      f"<previous>\n{json.dumps(previous, ensure_ascii=False)}\n</previous>")
     parts.append("Viết thêm thumb_text (chữ to trên ảnh bìa, 3–7 từ, nêu bật thông điệp) và closing_line (câu kết hiện "
                  "trên màn hình ở cuối video, 6–14 từ, đọng lại cảm xúc của thông điệp; khác câu thoại cuối).")
+    if idea.get("open"):  # topic without a monthly plan: the writer picks the situation itself
+        parts.append(f"Chủ đề lần này: {niche.get('name', '')}. Trụ cột: {idea.get('theme', '')}. TỰ CHỌN một tình huống "
+                     "gia đình cụ thể, đời thường, ngày nay thuộc trụ cột này (đặt title, hook, lesson phù hợp). Tránh "
+                     "trùng các video đã làm:\n<done>\n" + json.dumps(idea.get("avoid") or [], ensure_ascii=False)
+                     + "\n</done>")
     parts.append("Thoại như người Việt nói thật ngoài đời (xưng hô đúng vai: con – mẹ, cháu – bà, anh – em…), có cảm "
-                 "xúc, không văn vẻ, không giảng giải. Caption ngắn, gợi nhớ, kết bằng câu hỏi gợi bình luận "
-                 "(vd 'Bạn còn nhớ không?').")
+                 "xúc, không văn vẻ, không giảng giải. "
+                 + (" ".join((niche.get("caption_hint") or "").split()) or DEFAULT_CAPTION))
     log.info("Claude: viết kịch bản '%s'", idea.get("title"))
     return _parse(system_prompt(niche), "\n\n".join(parts), SeriesScript, effort="high")
 
@@ -343,8 +355,8 @@ def clip_prompt(bible: dict, scene: dict, index: int, total: int, script: dict |
             f"Previous camera: {prev.get('camera_en', 'gentle movement').rstrip('.')}.",
         ]
     parts += [
-        "Vertical 9:16 animated shot, 8 seconds, part of a short nostalgic film about a Vietnamese 1990s childhood "
-        "memory. The same family appears in every shot of this film.",
+        f"Vertical 9:16 animated shot, 8 seconds, part of {bible.get('film_en') or FILM_EN}. The same family appears in "
+        "every shot of this film.",
         f"Visual style (identical in every shot): {bible.get('style_en', '').rstrip('.')}.",
         f"Era and place: {bible.get('era', '')}.",
         f"Setting (same place in every shot): {bible.get('setting_en', '').rstrip('.')}.",
