@@ -140,10 +140,13 @@ Xây agent tự động cho kênh TikTok ngách **tuổi thơ, kỷ niệm gia �
     - Không cần kế hoạch 30 ngày: mỗi lần lấy trụ cột tiếp theo (8 trụ cột: lời cảm ơn, bữa cơm đủ mặt, thời gian bên ông bà, lắng nghe, điện thoại và sự kết nối, hy sinh của bố mẹ, hiếu thảo, anh chị em).
     - Claude tự chọn tình huống gia đình ngày nay và tránh trùng các video chủ đề 2 đã làm.
     - Giọng văn lắng đọng, không giáo điều, kết bằng một hành động nhỏ ấm áp; caption mời chia sẻ cho người thân.
-  - **Nhất quán ở chủ đề 2:**
-    - Cùng gia đình 6 nhân vật: cùng tên, ảnh mẫu khuôn mặt, giọng, cách xưng hô.
-    - Thêm **trang phục ngày nay cố định** cho từng người (`topics.giadinh.looks`) và **một ngôi nhà ngày nay cố định** (`setting_en`), ghi nguyên văn trong mọi prompt clip.
-    - Prompt clip mô tả phim theo chủ đề, không còn câu cố định "1990s childhood memory".
+  - **Nhân vật hiện đại ở chủ đề 2** (chủ kênh nhận xét lần đầu chỉ đổi trang phục là chưa đủ):
+    - Cùng gia đình 6 nhân vật, cùng tên và giọng, nhưng ở **phiên bản hiện đại**: vai, ngoại hình + trang phục, cách nói theo cuộc sống ngày nay (`topics.giadinh.cast`).
+    - Ví dụ: ông bà nghỉ hưu sống cùng con cháu; bố đi làm văn phòng; mẹ nhắc bỏ điện thoại khi ăn cơm; Cu Tí học cấp hai, cầm điện thoại; Bé Na học tiểu học.
+    - **Không dùng ảnh mẫu thời xưa** cho chủ đề 2 (để Flow khỏi chép quần áo cũ). Ảnh mẫu hiện đại riêng: gửi ảnh chú thích `2 Bà` / `Bà hiện đại`.
+    - `/nhanvat 2` hiện thẻ hiện đại kèm prompt tạo ảnh. Trả lời thẻ bằng `Vai/Ngoại hình/Cách nói` để sửa (lưu trong `nhan_vat.yaml`, mục `modern`).
+    - **Một ngôi nhà ngày nay cố định** (`setting_en`), ghi nguyên văn trong mọi prompt clip. Prompt clip mô tả phim theo chủ đề, không còn câu cố định "1990s childhood memory".
+  - Lý do chủ kênh thấy `/kichban` vẫn viết chủ đề ký ức: PR #38 chưa merge nên VPS còn chạy bản cũ (n8n không lỗi). Cần merge rồi cập nhật VPS.
   - Viết lại kịch bản vẫn giữ đúng chủ đề; tin kịch bản ghi rõ **🕰 Chủ đề 1** hay **👨‍👩‍👧 Chủ đề 2**.
   - Mọi nội dung chủ đề 2 sửa được trong `config.yaml`, mục `topics:`.
 - **Kiểm thử:** thêm bộ test chủ đề và đã đạt hết. Sửa bộ test tần suất (lịch 07:00 giờ hỏi chủ đề trước). Chạy lại toàn bộ test trước khi merge.
@@ -355,7 +358,7 @@ Xây agent tự động cho kênh TikTok ngách **tuổi thơ, kỷ niệm gia �
 2. **Vẫn còn bước làm tay mỗi ngày:** tạo 3–4 clip trên Google Flow (~5 phút). Tự động hoàn toàn chỉ có qua Gemini API trả phí (key hiện chưa có quyền model video).
 3. **Đăng TikTok chưa chạy thật:** cần tạo app, thêm tài khoản vào Sandbox, kết nối bằng `/tiktok`. `direct` chỉ đăng riêng tư tới khi app qua audit.
 4. **Giọng nhân vật (clip độc lập):** khớp giọng chỉ chỉnh cao độ + âm lượng; nếu Flow tạo hai chất giọng khác hẳn nhau giữa các clip thì vẫn còn khác. Cách **🎞 Kéo dài** tránh được vấn đề này vì cả video do Flow tạo liền.
-5. **Ảnh mẫu nhân vật mặc trang phục xưa:** với chủ đề 2, khi thêm ảnh vào Ingredients, Flow có thể bắt chước luôn quần áo cũ. Prompt đã ghi rõ trang phục ngày nay thay cho quần áo trong ảnh, nhưng chưa thử trên Flow thật.
+5. **Chủ đề 2 chưa có ảnh mẫu hiện đại:** cần tạo 6 ảnh chân dung hiện đại (prompt trong `/nhanvat 2`) và gửi với chú thích `2 Tên`. Chưa có ảnh thì khuôn mặt giữa các clip chỉ dựa vào mô tả chữ, dễ lệch hơn.
 6. **Prompt rất dài** được chia thành nhiều phần; chủ kênh phải chép lần lượt và dán nối tiếp vào cùng một ô prompt trong Flow.
 7. **edge-tts lỗi theo đợt** ("No audio was received") — đã có thử lại + nút 🔁 Thử lại trên Telegram.
 8. **Hạn chế đã biết:**
@@ -370,8 +373,9 @@ Xây agent tự động cho kênh TikTok ngách **tuổi thơ, kỷ niệm gia �
 3. `/giong` → kiểm tra đang chọn **Khớp giọng nhân vật**.
 4. `/nhac` → có ít nhất 1 bài nhạc nền không bản quyền.
 5. `/doithu` → cập nhật kênh đối thủ nếu cần → **🔄 Lập kế hoạch mới** → duyệt.
-6. **Làm trọn 1 video mỗi chủ đề:** `/kichban 1` (ký ức) và `/kichban 2` (gia đình) → duyệt kịch bản → duyệt nhạc → duyệt chữ → chọn tạo tay/tự động.
+6. **Ảnh mẫu hiện đại:** `/nhanvat 2` → tạo ảnh từng người → gửi ảnh chú thích `2 Ông`, `2 Bà`…
+7. **Làm trọn 1 video mỗi chủ đề:** `/kichban 1` (ký ức) và `/kichban 2` (gia đình) → duyệt kịch bản → duyệt nhạc → duyệt chữ → chọn tạo tay/tự động.
    - Tạo tay: ưu tiên **🎞 Kéo dài** → Đoạn 1 dán prompt đầy đủ (thêm ảnh nhân vật ở Ingredients), đoạn sau bấm Extend và dán prompt kéo dài → tải toàn bộ video → trả lời tin **📥 Gửi video kéo dài**.
-7. **Đánh giá video:** ảnh bìa có chữ thông điệp; nhạc liền từ đầu đến cuối; câu kết ở đoạn cuối; giọng mỗi nhân vật giữ nguyên qua các clip; nhân vật giống nhau → gửi nhận xét cho Claude.
-8. **Kết nối TikTok** (`CAI_DAT_CONTABO.md` Bước 7) → `/tiktok` → thử **Duyệt & đăng**.
-9. Huỷ hoặc gia hạn Contabo trước ngày hết kỳ 1 tháng.
+8. **Đánh giá video:** ảnh bìa có chữ thông điệp; nhạc liền từ đầu đến cuối; câu kết ở đoạn cuối; giọng mỗi nhân vật giữ nguyên qua các clip; nhân vật giống nhau → gửi nhận xét cho Claude.
+9. **Kết nối TikTok** (`CAI_DAT_CONTABO.md` Bước 7) → `/tiktok` → thử **Duyệt & đăng**.
+10. Huỷ hoặc gia hạn Contabo trước ngày hết kỳ 1 tháng.
