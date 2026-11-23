@@ -153,7 +153,7 @@ Xây agent tự động cho kênh TikTok ngách **tuổi thơ, kỷ niệm gia �
 - **Kiểm thử:**
   - Thêm bộ test chủ đề, gồm cả phần nhân vật hiện đại (ảnh chú thích `2 Bà`, sửa thẻ hiện đại, `/nhanvat 2`, chủ đề 2 không dùng ảnh thời xưa); đạt hết.
   - Sửa bộ test tần suất (lịch 07:00 giờ hỏi chủ đề trước).
-  - PR #38 được merge theo yêu cầu khi lượt chạy lại toàn bộ test mới xong một phần; các bộ đã chạy đều đạt, phần còn lại tiếp tục kiểm tra sau khi merge.
+  - PR #38 được merge theo yêu cầu khi lượt chạy lại toàn bộ test mới xong một phần; sau đó cả **12/12 bộ test đều đạt**.
 
 ### 📌 Tóm tắt thay đổi 20/11/2026 — Chọn "kéo dài" (1 video, không ghép) hoặc "clip độc lập"; ghép không làm lệch giọng
 - **Yêu cầu của chủ kênh:**
