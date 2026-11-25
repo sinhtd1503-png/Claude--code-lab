@@ -512,6 +512,24 @@ def safer_prompt(prompt: str, error: str = "") -> SafePrompt:
     return out
 
 
+class RevisedPrompt(BaseModel):
+    prompt_en: str = Field(description="Prompt tiếng Anh đã sửa theo yêu cầu, giữ nguyên cấu trúc và các phần cố định")
+    changes_vi: str = Field(description="Đã sửa những gì, 1–2 câu tiếng Việt")
+
+
+def revise_prompt(prompt: str, request: str) -> RevisedPrompt:
+    """The owner describes what the clip should look / sound like → the same prompt with exactly that changed."""
+    system = ("Bạn là chuyên gia viết prompt video AI (Google Flow / Veo). Sửa prompt theo đúng yêu cầu của chủ kênh về "
+              "hình ảnh, hành động, góc máy, ánh sáng, biểu cảm, âm thanh môi trường hoặc cách nói. GIỮ NGUYÊN: cấu trúc "
+              "prompt, phần mô tả nhân vật (ngoại hình, trang phục, giọng), bối cảnh cố định, phong cách hình ảnh, phần "
+              "nối tiếp clip trước (CONTINUATION / start / end), câu thoại tiếng Việt (trừ khi chủ kênh yêu cầu đổi) và "
+              "câu cấm nhạc / cấm chữ trên hình. Không thêm nhân vật mới.\n\n" + RULES_VI)
+    user = f"Prompt hiện tại:\n<prompt>\n{prompt}\n</prompt>\nYêu cầu của chủ kênh:\n<request>\n{request}\n</request>"
+    out = _parse(system, user, RevisedPrompt, effort="low", max_tokens=4000)
+    out.prompt_en = sanitize(out.prompt_en)
+    return out
+
+
 def character_sheet_prompt(bible: dict) -> str:
     """One-time prompt for a reference image of the cast (used as 'ingredients' in Flow for every clip)."""
     chars = "; ".join(f"{c['name']}: {c['look_en']}" for c in bible.get("characters", []))

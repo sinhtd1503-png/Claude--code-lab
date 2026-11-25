@@ -36,17 +36,34 @@ def image_prompt(script: dict, style_en: str, extra: str = "") -> str:
 
 
 def gemini_image(prompt: str, out: Path, model: str) -> Path:
-    """One 9:16 image from Gemini (Imagen). Raises on any failure (the caller falls back)."""
+    """One 9:16 image from the Gemini API. "gemini-*-image" models work with a normal AI Studio key (Developer
+    API); "imagen-*" models only on Vertex AI. Raises on any failure (the caller offers the manual way)."""
     from google import genai  # reads GEMINI_API_KEY from the environment
     from google.genai import types
     client = genai.Client()
-    res = client.models.generate_images(model=model, prompt=prompt,
-                                        config=types.GenerateImagesConfig(number_of_images=1, aspect_ratio="9:16"))
-    imgs = getattr(res, "generated_images", None) or []
-    if not imgs or not getattr(imgs[0].image, "image_bytes", None):
-        raise RuntimeError("Gemini không trả về ảnh (có thể prompt bị chặn)")
-    out.write_bytes(imgs[0].image.image_bytes)
-    return out
+    if model.startswith("imagen"):
+        res = client.models.generate_images(model=model, prompt=prompt,
+                                            config=types.GenerateImagesConfig(number_of_images=1, aspect_ratio="9:16"))
+        imgs = getattr(res, "generated_images", None) or []
+        if not imgs or not getattr(imgs[0].image, "image_bytes", None):
+            raise RuntimeError("Gemini không trả về ảnh (có thể prompt bị chặn)")
+        out.write_bytes(imgs[0].image.image_bytes)
+        return out
+    try:
+        cfg = types.GenerateContentConfig(response_modalities=["IMAGE"],
+                                          image_config=types.ImageConfig(aspect_ratio="9:16"))
+    except Exception:  # older SDK without ImageConfig: any ratio, cropped to 9:16 afterwards
+        cfg = types.GenerateContentConfig(response_modalities=["IMAGE"])
+    res = client.models.generate_content(model=model, contents=prompt, config=cfg)
+    for cand in getattr(res, "candidates", None) or []:
+        for part in getattr(getattr(cand, "content", None), "parts", None) or []:
+            data = getattr(getattr(part, "inline_data", None), "data", None)
+            if data:
+                out.write_bytes(data)
+                return out
+    why = getattr(getattr(res, "prompt_feedback", None), "block_reason", None) or \
+        next((getattr(c, "finish_reason", None) for c in getattr(res, "candidates", None) or []), None)
+    raise RuntimeError(f"Gemini không trả về ảnh{f' ({why})' if why else ''}")
 
 
 def pixabay_image(api_key: str, query: str, out: Path, skip: int = 0) -> Path:
@@ -113,6 +130,27 @@ def voice_from_text(desc: str, current: dict) -> VoicePick:
     user = f"Giọng hiện tại:\n{json.dumps(current, ensure_ascii=False)}\nMô tả:\n<desc>\n{desc}\n</desc>"
     out = _parse(system, user, VoicePick, effort="low", max_tokens=800)
     out.pitch, out.rate = max(-60, min(60, out.pitch)), max(-40, min(30, out.rate))
+    return out
+
+
+class MusicPick(BaseModel):
+    track: str = Field(description="Tên bài trong thư viện hợp nhất với mô tả (đúng tên trong danh sách), hoặc '' để "
+                                   "giữ bài hiện tại")
+    level_db: float = Field(description="Mức nhạc so với mặc định, dB, -12…+12 (dương = to hơn); giữ như hiện tại nếu "
+                                        "chủ kênh không nhắc tới độ to nhỏ")
+    none: bool = Field(default=False, description="True nếu chủ kênh muốn bỏ nhạc nền")
+    note_vi: str = Field(description="Đã chọn gì, 1 câu tiếng Việt")
+
+
+def music_from_text(desc: str, tracks: list[str], current: dict, mood: str = "") -> MusicPick:
+    system = ("Bạn chọn nhạc nền cho video TikTok theo mô tả của chủ kênh, CHỈ trong thư viện nhạc có sẵn (đoán không khí "
+              "bài qua tên file), và chỉnh mức to nhỏ của nhạc so với giọng. Không bịa tên bài.")
+    user = (f"Thư viện: {json.dumps(tracks, ensure_ascii=False)}\nHiện tại: {json.dumps(current, ensure_ascii=False)}\n"
+            f"Không khí kịch bản gợi ý: {mood}\nMô tả của chủ kênh:\n<desc>\n{desc}\n</desc>")
+    out = _parse(system, user, MusicPick, effort="low", max_tokens=800)
+    out.level_db = max(-12.0, min(12.0, float(out.level_db)))
+    if out.track not in tracks:
+        out.track = ""
     return out
 
 
