@@ -288,8 +288,11 @@ Mỗi lần bạn bấm **Duyệt kịch bản**, hệ thống cập nhật mộ
      nhắc nhở, triết lý sống về các mối quan hệ trong gia đình, **phụ đề chạy theo lời đọc**, nhạc nền nhẹ; video dài
      hơn (~60 giây, chỉnh `topics: loiday: target_sec`). **Không cần tạo clip trên Flow.** Sau khi duyệt kịch bản, bot
      hỏi duyệt lần lượt:
-     1. **🖼 Ảnh nền** — hệ thống tự tạo (Gemini nếu có `GEMINI_API_KEY`, không thì ảnh miễn phí Pixabay). Không ưng:
-        **🔄 Ảnh khác**, hoặc **Trả lời** tin ảnh bằng **ảnh của bạn**, hoặc **Trả lời** bằng chữ **mô tả ảnh** muốn có.
+     1. **🖼 Ảnh nền** — hệ thống tự tạo (Gemini `gemini-2.5-flash-image` nếu có `GEMINI_API_KEY`, không thì ảnh miễn
+        phí Pixabay). Không ưng: **🔄 Ảnh khác**, **✍️ Tự tạo (lấy prompt)**, **Trả lời** tin ảnh bằng **ảnh của bạn**,
+        hoặc **Trả lời** bằng chữ **mô tả ảnh** muốn có. **Tạo ảnh tự động bị lỗi** → bot gửi tin **✋ Tạo ảnh nền
+        bằng tay** kèm lỗi và prompt: dán prompt vào Google Flow (chế độ ảnh, dọc 9:16) / Gemini, rồi **Trả lời đúng
+        tin đó** bằng ảnh vừa tạo (hoặc bấm **🖼 Lấy ảnh Pixabay** / **🔄 Thử tạo tự động lại**).
      2. **🔤 Chữ & phụ đề** — ảnh minh hoạ dựng trên chính ảnh nền: **🔤 Font đầu / phụ đề / kết**, **🎨 Kiểu phụ đề
         khác** (màu, cỡ, nền mờ, vị trí), hoặc **Trả lời** bằng mô tả, vd *phụ đề vàng, chữ to, có nền mờ, font viết
         tay cho câu kết*.
@@ -305,10 +308,13 @@ Mỗi lần bạn bấm **Duyệt kịch bản**, hệ thống cập nhật mộ
    Reply để góp ý. Bot ghi nhớ góp ý cho các kịch bản sau.
 6. **Bước 2/4 – duyệt nhạc nền:** bot gửi bản nghe thử (một bài chạy liền cả video, tắt dần ở cuối).
    **🎵 Đổi nhạc** để nghe bài khác, **✅ Duyệt nhạc nền** khi ưng. Thư viện trống: gửi file mp3 vào bot, bấm
-   **🎧 Nghe thử với bài này**.
+   **🎧 Nghe thử với bài này**. Muốn tả theo ý: **Trả lời** tin nhạc bằng mô tả, vd *nhạc piano buồn hơn*, *nhạc to
+   hơn một chút*, *bỏ nhạc* — bot chọn bài trong thư viện (theo tên file) và chỉnh mức nhạc cho video này.
 7. **Bước 3/4 – duyệt chữ:** bot gửi **ảnh minh hoạ** 3 phần chữ dựng y như video thật: chữ ảnh bìa (đầu video),
    phụ đề, câu kết (cuối video). Bấm **🔤 Font đầu / Font phụ đề / Font kết** để thử font khác (9 font đủ dấu tiếng
-   Việt), ưng thì **✅ Duyệt chữ**. Font đã chọn được nhớ cho các video sau; xem/đổi bất kỳ lúc nào bằng `/font`.
+   Việt), **🎨 Kiểu phụ đề khác** (màu, cỡ, nền mờ, vị trí), hoặc **Trả lời** ảnh bằng mô tả, vd *phụ đề vàng, chữ to
+   hơn, có nền mờ; font viết tay cho câu kết*. Ưng thì **✅ Duyệt chữ**. Lựa chọn được nhớ cho các video sau; xem/đổi
+   bất kỳ lúc nào bằng `/font`.
 8. **Bước 4/4 – chọn cách tạo clip:** lúc này bot mới gửi prompt, tuỳ cách bạn chọn:
    - **🤖 Tự động bằng Gemini** (trả phí, hỏi duyệt ngân sách).
    - **🎞 Tay – Flow kéo dài, gửi 1 video:** bot gửi **prompt đầy đủ cho Đoạn 1** và các **prompt kéo dài** cho
@@ -316,12 +322,17 @@ Mỗi lần bạn bấm **Duyệt kịch bản**, hệ thống cập nhật mộ
      không ghép**, chỉ thêm nhạc nền, phụ đề, chữ ảnh bìa và câu kết. Hình và giọng liền mạch nhất — nên dùng cách này.
    - **🧩 Tay – Flow clip độc lập, gửi từng clip:** bot gửi mỗi cảnh một prompt 8 giây riêng; bạn gửi lại từng clip,
      bot ghép theo thứ tự.
-   Đổi cách làm bất cứ lúc nào bằng nút ở cuối loạt prompt (clip đã gửi theo cách cũ sẽ bị bỏ). Xem mục
+   Đổi cách làm bất cứ lúc nào bằng nút ở cuối loạt prompt (clip đã gửi theo cách cũ sẽ bị bỏ). Muốn đổi **hình ảnh /
+   hành động / âm thanh** của một cảnh (hoặc đoạn kéo dài): **Trả lời** tin prompt đó bằng mô tả, vd *cho cảnh này lúc
+   hoàng hôn, máy quay chậm hơn* — bot viết lại prompt (giữ nguyên nhân vật, thoại, phần nối tiếp). Xem mục
    **"Tạo clip trên iPad"** ngay dưới.
 9. Đủ clip (hoặc nhận video kéo dài) → bot dựng video: nhạc nền xuyên suốt từ đầu đến cuối, phụ đề, **chữ thông điệp
    ở giây đầu (ảnh bìa)**, **câu kết ở đoạn kết**. Bot gửi **🎞 Video** kèm **🖼 ảnh bìa**.
-10. **✅ Duyệt & đăng TikTok** → bot đăng lên các kênh đã kết nối. **🔁 Thay clip** nếu muốn đổi clip.
-   (Đăng vào hộp nháp: khi bấm đăng trong app TikTok, chọn ảnh bìa ở giây đầu – khung có chữ.)
+10. **✅ Duyệt & đăng TikTok** → bot gửi lên các kênh đã kết nối rồi **đọc trạng thái thật từ TikTok** (chờ tối đa
+   `tiktok: status_wait_sec` giây): *📥 đã vào hộp thư TikTok*, *✅ đã đăng*, *⏳ đang xử lý* hoặc *❌ lỗi* kèm lý do
+   và cách sửa (vd hộp thư có quá nhiều bản nháp chưa đăng, phiên đăng nhập hết hạn → `/tiktok`). Sau khi đăng luôn có
+   **🔁 Đăng lại TikTok** và **🔎 Kiểm tra trạng thái**. **🔁 Thay clip** nếu muốn đổi clip.
+   (Đăng vào hộp nháp: mở app TikTok → **Hộp thư** → thông báo bản nháp → hoàn tất đăng; chọn ảnh bìa ở giây đầu.)
 
 ### 🎞 Cách kéo dài (Extend) – gửi 1 video (khuyên dùng)
 

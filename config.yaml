@@ -240,8 +240,8 @@ topics:
       gentle film grain, calm contemplative mood, warm muted color palette
     target_sec: 60            # độ dài lời đọc mong muốn (giây)
     image:
-      model: "imagen-4.0-generate-001"   # tạo ảnh nền bằng Gemini (cần GEMINI_API_KEY); không có key → ảnh Pixabay
-      usd_per_image: 0.04
+      model: "gemini-2.5-flash-image"    # tạo ảnh nền bằng Gemini (cần GEMINI_API_KEY); không có key → ảnh Pixabay
+      usd_per_image: 0.04                # ("imagen-*" chỉ chạy trên Vertex AI, không dùng với khoá AI Studio)
     voice: {voice: "vi-VN-NamMinhNeural", pitch: "-10Hz", rate: "-12%"}   # giọng đọc mặc định (trầm ấm)
     voices:                   # nút "🎙 Giọng khác" xoay vòng các giọng này
       - {label: "Nam trầm ấm", voice: "vi-VN-NamMinhNeural", pitch: "-10Hz", rate: "-12%"}
@@ -363,6 +363,7 @@ tiktok:
   # direct = đăng thẳng (cần app TikTok qua audit, nếu chưa thì chỉ đăng được SELF_ONLY)
   post_mode: "inbox"
   privacy_level: "PUBLIC_TO_EVERYONE"
+  status_wait_sec: 30         # sau khi gửi, chờ tối đa N giây để đọc trạng thái thật từ TikTok (vào hộp thư / lỗi gì)
   # Các kênh TikTok của bạn (tên tự đặt, không dấu, không khoảng trắng). Mỗi kênh kết nối 1 lần bằng lệnh /tiktok.
   # Video được duyệt sẽ được gửi lên TẤT CẢ các kênh đã kết nối.
   accounts:
