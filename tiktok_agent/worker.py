@@ -32,10 +32,10 @@ from fastapi.responses import FileResponse, HTMLResponse
 
 import hashlib
 
-from . import audio, content, dialogue, fonts, gdrive, scraper, series, video
+from . import audio, content, dialogue, fonts, gdrive, scraper, series, video, wisdom
 from .ai_video import AIAuthError, AIBudgetExceeded, AIPolicyError, AIQuotaError, AIVideoSource
 from .budget import LABELS, Budget, BudgetNeeded
-from .cast import Cast, bible_characters, deaccent, parse_edit, parse_voice
+from .cast import Cast, bible_characters, deaccent, norm_pitch, norm_rate, norm_voice, parse_edit, parse_voice
 from .config import load_settings
 from .db import DB
 from .manual_clips import ManualClipSource
@@ -186,7 +186,7 @@ def budget_msg(req: dict) -> dict:
 
 HELP = ("🤖 <b>Trợ lý kênh TikTok</b>\n\n"
         "/kehoach – lập kế hoạch 30 ngày mới\n"
-        "/kichban – viết kịch bản (chọn chủ đề 1 Ký ức / 2 Gia đình; gõ nhanh /kichban 2)\n"
+        "/kichban – viết kịch bản (chọn chủ đề 1 Ký ức / 2 Gia đình / 3 Lời răn dạy; gõ nhanh /kichban 3)\n"
         "/clip – gửi lại prompt clip đang chờ (/clip 2 = riêng cảnh 2)\n"
         "/tansuat – tần suất ra video (vd /tansuat 2 = 2 ngày 1 video, áp dụng từ ngày mai)\n"
         "/socanh – số cảnh mỗi video (vd /socanh 4 ≈ 32 giây)\n"
@@ -259,10 +259,11 @@ def fix_bible(bible: dict) -> dict:
 
 # ---------------------------------------------------------------- topics (1 = childhood memories, 2 = family reminders)
 
-TOPICS = {1: "kyuc", 2: "giadinh"}
-TOPIC_LABEL = {"kyuc": "🕰 Chủ đề 1 · Ký ức tuổi thơ", "giadinh": "👨‍👩‍👧 Chủ đề 2 · Gia đình"}
+TOPICS = {1: "kyuc", 2: "giadinh", 3: "loiday"}
+TOPIC_LABEL = {"kyuc": "🕰 Chủ đề 1 · Ký ức tuổi thơ", "giadinh": "👨‍👩‍👧 Chủ đề 2 · Gia đình",
+               "loiday": "📜 Chủ đề 3 · Lời răn dạy"}
 TOPIC_KEYS = ("name", "description", "audience", "tone", "pillars", "core_values", "caption_hint", "style_reference",
-              "visual_style_en")
+              "visual_style_en", "format_vi")
 
 
 def topics_cfg() -> dict:
@@ -271,19 +272,24 @@ def topics_cfg() -> dict:
 
 def ask_topic() -> bool:
     t = topics_cfg()
-    return bool(t.get("ask", True)) and bool(t.get("giadinh"))
+    return bool(t.get("ask", True)) and bool(t.get("giadinh") or t.get("loiday"))
 
 
 def topic_of(idea: dict | None) -> str:
-    return "giadinh" if (idea or {}).get("topic") == "giadinh" else "kyuc"
+    t = (idea or {}).get("topic")
+    return t if t in ("giadinh", "loiday") else "kyuc"
+
+
+def is_wisdom(script: dict | None) -> bool:
+    return (script or {}).get("kind") == "wisdom"
 
 
 def topic_niche(topic: str) -> dict:
     """The writer's brief: the channel niche (topic 1), or the same channel with topic 2's brief on top."""
     base = niche()
-    if topic != "giadinh":
+    if topic not in ("giadinh", "loiday"):
         return base
-    t = topics_cfg().get("giadinh") or {}
+    t = topics_cfg().get(topic) or {}
     return {**base, **{k: t[k] for k in TOPIC_KEYS if t.get(k)}}
 
 
@@ -321,13 +327,21 @@ def content_bible(item: dict) -> dict:
 
 def topic_choice_msg(daily: bool = False) -> dict:
     t = topics_cfg().get("giadinh") or {}
+    w = topics_cfg().get("loiday") or {}
     head = "☀️ <b>Đến giờ viết kịch bản hôm nay.</b> " if daily else ""
-    return msg(f"{head}📝 <b>Chọn chủ đề kịch bản:</b>\n"
-               "1️⃣ <b>Ký ức tuổi thơ 8x 9x</b> — theo kế hoạch 30 ngày như hiện tại.\n"
-               f"2️⃣ <b>{esc(t.get('name') or 'Gia đình')}</b> — tình huống gia đình ngày nay, nhắc nhở nhẹ nhàng điều dễ "
-               "bị lãng quên; cùng gia đình nhân vật (cùng mặt, cùng giọng), trang phục và bối cảnh hiện đại.\n\n"
-               "<i>Gõ nhanh: /kichban 1 hoặc /kichban 2</i>",
-               kb([("1️⃣ Ký ức tuổi thơ", "tp:1"), ("2️⃣ Gia đình", "tp:2")]))
+    lines = [f"{head}📝 <b>Chọn chủ đề kịch bản:</b>",
+             "1️⃣ <b>Ký ức tuổi thơ 8x 9x</b> — theo kế hoạch 30 ngày như hiện tại."]
+    rows = [("1️⃣ Ký ức tuổi thơ", "tp:1")]
+    if t:
+        lines.append(f"2️⃣ <b>{esc(t.get('name') or 'Gia đình')}</b> — tình huống gia đình ngày nay, nhắc nhở nhẹ nhàng "
+                     "điều dễ bị lãng quên; cùng gia đình nhân vật ở phiên bản hiện đại.")
+        rows.append(("2️⃣ Gia đình", "tp:2"))
+    if w:
+        lines.append(f"3️⃣ <b>{esc(w.get('name') or 'Lời răn dạy')}</b> — không thoại: một ảnh nền, giọng đọc trầm ấm "
+                     f"những triết lý sống trong gia đình, phụ đề theo lời đọc (~{int(w.get('target_sec', 60))} giây).")
+        rows.append(("3️⃣ Lời răn dạy", "tp:3"))
+    lines += ["", "<i>Gõ nhanh: /kichban 1, /kichban 2" + (", /kichban 3" if w else "") + "</i>"]
+    return msg("\n".join(lines), kb(rows))
 
 
 def choose_topic(n: int, mid: int | None) -> dict:
@@ -339,7 +353,7 @@ def choose_topic(n: int, mid: int | None) -> dict:
 
 
 def kichban_cmd(text: str) -> dict:
-    m = re.search(r"\b([12])\b", text.partition(" ")[2])
+    m = re.search(r"\b([123])\b", text.partition(" ")[2])
     if m:
         return choose_topic(int(m.group(1)), None)
     if ask_topic():
@@ -557,10 +571,32 @@ def closing_line(sc: dict) -> str:
     return (sc.get("closing_line") or sc.get("lesson") or "").strip()
 
 
+def wisdom_script_messages(cid: int, item: dict) -> list[dict]:
+    sc, idea = item["script"], item["idea"]
+    lines = [f"📝 <b>Kịch bản #{cid}</b> · {TOPIC_LABEL['loiday']} · <i>{esc(idea.get('theme', ''))}</i>",
+             f"<b>{esc(sc['title'])}</b>", "", "🎙 <b>Lời đọc:</b>"]
+    lines += [f"{i}. {esc(s['narration'])}" for i, s in enumerate(sc["scenes"], 1)]
+    words = sum(len(s["narration"].split()) for s in sc["scenes"])
+    lines += ["", f"⏱ ≈ {words} từ ≈ {words / 2.3:.0f} giây đọc chậm",
+              f"🖼 <b>Ý tưởng ảnh nền:</b> <i>{esc(sc.get('image_prompt_en', ''))}</i>"]
+    if sc.get("music_mood"):
+        lines.append(f"🎵 <b>Không khí nhạc gợi ý:</b> {esc(sc['music_mood'])}")
+    lines += [f"💡 <b>Thông điệp:</b> {esc(sc['lesson'])}",
+              f"🖼 <b>Chữ trên ảnh bìa:</b> {esc(thumb_text(sc))}",
+              f"🔚 <b>Câu kết (hiện ở cuối):</b> {esc(closing_line(sc))}", "",
+              f"📣 <b>Caption:</b> {esc(item['caption'])}", "",
+              "👉 Duyệt kịch bản → duyệt <b>ảnh nền</b> → duyệt <b>chữ & phụ đề</b> → duyệt <b>giọng đọc</b> → bot dựng "
+              "video (không cần tạo clip). Muốn sửa lời: <b>Trả lời (Reply)</b> tin này và gõ góp ý."]
+    return long_msg("\n".join(lines), kb([("✅ Duyệt kịch bản", f"sa:{cid}")],
+                                         [("🔄 Viết bản khác", f"sr:{cid}"), ("❌ Bỏ", f"sx:{cid}")]))
+
+
 def script_messages(cid: int) -> list[dict]:
     item = DB_.get_content(cid)
     sc, idea = item["script"], item["idea"]
-    day = "" if topic_of(idea) == "giadinh" else f" · Ngày {idea.get('day', '?')}/{PLAN_DAYS}"
+    if is_wisdom(sc):
+        return wisdom_script_messages(cid, item)
+    day = "" if topic_of(idea) != "kyuc" else f" · Ngày {idea.get('day', '?')}/{PLAN_DAYS}"
     lines = [f"📝 <b>Kịch bản #{cid}</b> · {TOPIC_LABEL[topic_of(idea)]}{day} · <i>{esc(idea.get('theme', ''))}</i>",
              f"<b>{esc(sc['title'])}</b>", "", f"🎣 <b>Hook:</b> {esc(sc['hook'])}", ""]
     for i, s in enumerate(sc["scenes"], 1):
@@ -916,6 +952,8 @@ def next_script(scheduled: bool = False, topic: str | None = None) -> dict:
                 return reply(topic_choice_msg(daily=True))
     if topic == "giadinh":
         return family_script()
+    if topic == "loiday":
+        return wisdom_script()
     with LOCK:
         if not plan:
             lp = latest_plan()
@@ -976,6 +1014,407 @@ def family_script() -> dict:
         BUSY.discard("family")
 
 
+# ---------------------------------------------------------------- topic 3: Những lời răn dạy (image + reading voice)
+
+WSTYLE_KEY, WVOICE_KEY = "style_loiday", "voice_loiday"
+WISDOM_FONTS = {"cover": "prata", "subtitle": "bvp", "ending": "prata"}
+
+
+def wcfg() -> dict:
+    return topics_cfg().get("loiday") or {}
+
+
+def _write_wisdom(idea: dict, feedback=None, previous=None) -> tuple[dict, str]:
+    w = series.write_wisdom(topic_niche("loiday"), idea, int(wcfg().get("target_sec", 60)), owner_notes(),
+                            feedback=feedback, previous=previous).model_dump()
+    lines = [ln.strip() for ln in w.pop("lines") if ln.strip()]
+    script = {"kind": "wisdom", **w, "scenes": [{"narration": ln} for ln in lines]}
+    if previous and previous.get("wisdom"):  # keep the owner's picks (style/voice) across rewrites
+        script["wisdom"] = {k: v for k, v in previous["wisdom"].items() if k in ("style", "voice")}
+    caption = script["caption"] + "\n\n" + " ".join(f"#{h.lstrip('#')}" for h in script["hashtags"])
+    return script, caption
+
+
+def wisdom_script() -> dict:
+    pillars = wcfg().get("pillars") or ["Gia đình"]
+    with LOCK:
+        svc = (S.raw.get("budget") or {}).get("services", {})
+        BUDGET.ensure("claude", float(svc.get("claude", {}).get("est_script_usd", 0.15)),
+                      "Viết lời răn dạy.", resume={"action": "script", "topic": "loiday"})
+        if "wisdom" in BUSY:
+            return reply(msg("⏳ Đang viết kịch bản…"))
+        BUSY.add("wisdom")
+        k = int((DB_.kv_get("loiday_pillar") or {}).get("i") or 0)
+        DB_.kv_set("loiday_pillar", {"i": k + 1})
+        avoid = topic_titles("loiday")
+    try:
+        idea = {"topic": "loiday", "theme": pillars[k % len(pillars)], "avoid": avoid}
+        script, caption = _write_wisdom(idea)
+        idea["title"] = script["title"]
+        with LOCK:
+            cid = DB_.create_content(idea)
+            DB_.update_content(cid, script=script, caption=caption, status="script_review")
+        return reply(script_messages(cid))
+    finally:
+        BUSY.discard("wisdom")
+
+
+def _wdir(cid: int) -> Path:
+    d = DATA / "wisdom" / str(cid)
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _wsave(cid: int, **fields) -> dict:
+    with LOCK:
+        item = DB_.get_content(cid)
+        sc = item["script"]
+        sc.setdefault("wisdom", {}).update(fields)
+        DB_.update_content(cid, script=sc)
+    return sc
+
+
+def wisdom_image(cid: int, extra: str = "") -> dict:
+    """Make (another) background image: Gemini if there is a key, else a Pixabay photo; `extra` = owner's description."""
+    with LOCK:
+        item = DB_.get_content(cid)
+    if not item or not is_wisdom(item["script"]) or item["status"] != "image_review":
+        return reply(msg(f"#{cid} không ở bước duyệt ảnh nền."))
+    sc = item["script"]
+    ws = sc.get("wisdom") or {}
+    tries = int(ws.get("image_tries", 0)) + 1
+    style = " ".join(str(wcfg().get("visual_style_en") or niche().get("visual_style_en") or "").split())
+    prompt = wisdom.image_prompt(sc, style, extra)
+    d = _wdir(cid)
+    raw, src, err = d / f"raw_{now_ts()}.img", "", ""
+    icfg = wcfg().get("image") or {}
+    if os.getenv("GEMINI_API_KEY"):
+        usd = float(icfg.get("usd_per_image", 0.04))
+        with LOCK:
+            BUDGET.ensure("gemini_image", usd, f"Tạo ảnh nền cho lời răn dạy #{cid} (≈ ${usd:.2f}/ảnh).",
+                          resume={"action": "wimage", "id": cid, "extra": extra})
+        try:
+            wisdom.gemini_image(prompt, raw, icfg.get("model") or "imagen-4.0-generate-001")
+            with LOCK:
+                BUDGET.record("gemini_image", usd, f"#{cid} ảnh nền")
+            src = "Gemini (AI)"
+        except Exception as e:
+            err = str(e)[:200]
+            log.warning("Gemini ảnh #%s lỗi → thử Pixabay: %s", cid, e)
+    if not src and S.pixabay_api_key:
+        try:
+            q = extra[:80] if extra and re.fullmatch(r"[A-Za-z0-9 ,'-]+", extra) else sc.get("image_query_en") or "family"
+            wisdom.pixabay_image(S.pixabay_api_key, q, raw, skip=tries - 1)
+            src = "Pixabay (ảnh miễn phí)"
+        except Exception as e:
+            err = err or str(e)[:200]
+            log.warning("Pixabay ảnh #%s lỗi: %s", cid, e)
+    if not src:
+        _wsave(cid, image_prompt=prompt, image_tries=tries)
+        return reply(image_review_msg(cid, note=f"⚠️ Chưa tạo được ảnh tự động{f' ({esc(err)})' if err else ''}."))
+    img = wisdom.normalize_image(raw, d / f"bg_{now_ts()}_{secrets.token_hex(2)}.jpg")
+    raw.unlink(missing_ok=True)
+    _wsave(cid, image=rel(img), image_source=src, image_prompt=prompt, image_tries=tries)
+    return reply(image_review_msg(cid))
+
+
+def image_review_msg(cid: int, note: str = "") -> dict:
+    item = DB_.get_content(cid)
+    ws = item["script"].get("wisdom") or {}
+    img = DATA / ws["image"] if ws.get("image") else None
+    head = f"🖼 <b>#{cid} · Bước 2/4 – duyệt ảnh nền</b> [ANH:{cid}]"
+    how = ("Không ưng thì:\n• bấm <b>🔄 Ảnh khác</b>;\n• hoặc <b>Trả lời</b> tin này bằng <b>ảnh của bạn</b> (ảnh dọc "
+           "đẹp nhất);\n• hoặc <b>Trả lời</b> bằng chữ <b>mô tả ảnh</b> bạn muốn, vd <i>bàn tay mẹ già nắm tay con bên "
+           "hiên nhà lúc hoàng hôn</i>.")
+    p = ws.get("image_prompt") or ""
+    if img and img.is_file():
+        cap = f"{head}\nNguồn: {esc(ws.get('image_source', ''))}\n{note}\n{how}".replace("\n\n\n", "\n\n")
+        return media("photo", img, cap[:1000], kb([("✅ Duyệt ảnh nền", f"ia:{cid}"), ("🔄 Ảnh khác", f"ir:{cid}")]))
+    return msg(f"{head}\n{note}\nTự tạo ảnh: dán prompt dưới vào Google Flow (chế độ <i>ảnh</i>, khung dọc 9:16) "
+               "hoặc Gemini, rồi <b>Trả lời</b> tin này bằng ảnh đó. Hoặc gửi bất kỳ ảnh dọc nào của bạn."
+               + (f"\n\n<code>{code_esc(p)}</code>" if p else ""), kb([("🔄 Thử tạo lại", f"ir:{cid}")]))
+
+
+def wisdom_owner_image(cid: int, src: Path) -> dict:
+    with LOCK:
+        item = DB_.get_content(cid)
+    if not item or not is_wisdom(item["script"]) or item["status"] != "image_review":
+        return reply(msg(f"#{cid} không còn ở bước duyệt ảnh nền."))
+    img = wisdom.normalize_image(src, _wdir(cid) / f"bg_{now_ts()}_{secrets.token_hex(2)}.jpg")
+    _wsave(cid, image=rel(img), image_source="ảnh của bạn")
+    return reply(msg("📥 Đã nhận ảnh của bạn (cắt khung dọc 9:16 như video)."), image_review_msg(cid))
+
+
+def approve_wisdom_image(cid: int, mid: int | None) -> dict:
+    with LOCK:
+        item = DB_.get_content(cid)
+        if not item or item["status"] != "image_review":
+            return reply(clear_buttons(mid), msg(f"#{cid} không ở bước duyệt ảnh nền."))
+        if not (item["script"].get("wisdom") or {}).get("image"):
+            return reply(msg("Chưa có ảnh nền. Trả lời tin ảnh nền bằng một ảnh, hoặc bấm 🔄."))
+        DB_.update_content(cid, status="font_review")
+    return reply(clear_buttons(mid), msg(f"✅ Đã duyệt ảnh nền #{cid}."), wisdom_font_msg(cid))
+
+
+def wisdom_style() -> dict:
+    """Fonts + subtitle look for topic 3 (remembered for the next topic-3 videos)."""
+    with LOCK:
+        kv = DB_.kv_get(WSTYLE_KEY) or {}
+    f = {**WISDOM_FONTS, **(wcfg().get("fonts") or {}), **(kv.get("fonts") or {})}
+    f = {r: (k if k in fonts.available() else fonts.DEFAULTS[r]) for r, k in f.items() if r in fonts.ROLES}
+    sub = {**fonts.SUB_PRESETS[1], **(wcfg().get("sub") or {}), **(kv.get("sub") or {})}
+    sub.pop("label", None)
+    return {"fonts": f, "sub": sub}
+
+
+def set_wisdom_style(fonts_: dict | None = None, sub: dict | None = None) -> None:
+    with LOCK:
+        kv = DB_.kv_get(WSTYLE_KEY) or {}
+        if fonts_:
+            kv["fonts"] = {**(kv.get("fonts") or {}), **fonts_}
+        if sub:
+            kv["sub"] = {k: v for k, v in sub.items() if k != "label"}
+        DB_.kv_set(WSTYLE_KEY, kv)
+
+
+def wisdom_font_msg(cid: int, note: str = "") -> dict:
+    item = DB_.get_content(cid)
+    sc = item["script"]
+    st = wisdom_style()
+    ws = sc.get("wisdom") or {}
+    bg = DATA / ws["image"] if ws.get("image") else None
+    first = sc["scenes"][0]["narration"] if sc.get("scenes") else fonts.SAMPLE["subtitle"]
+    words = first.split()
+    texts = {"cover": thumb_text(sc), "subtitle": " ".join(words[:7]), "ending": closing_line(sc)}
+    cap = (f"🔤 <b>#{cid} · Bước 3/4 – duyệt chữ & phụ đề</b> [CHU:{cid}]\n"
+           + "\n".join(f"• {fonts.ROLE_LABEL[r]}: <b>{esc(fonts.CATALOG[st['fonts'][r]]['label'])}</b>" for r in fonts.ROLES)
+           + f"\n• Kiểu phụ đề: <b>{esc(fonts.sub_label(st['sub']))}</b>"
+           + (f"\n{note}" if note else "")
+           + "\n\nBấm 🔤 / 🎨 để thử kiểu khác, hoặc <b>Trả lời</b> tin này bằng chữ mô tả, vd <i>phụ đề vàng, chữ to, "
+             "có nền mờ, font viết tay cho câu kết</i>.")
+    rows = [[("✅ Duyệt chữ & phụ đề", f"fa:{cid}")],
+            [("🔤 Font đầu", f"wf:{cid * 10}"), ("🔤 Font phụ đề", f"wf:{cid * 10 + 1}"), ("🔤 Font kết", f"wf:{cid * 10 + 2}")],
+            [("🎨 Kiểu phụ đề khác", f"sb:{cid}")]]
+    try:
+        d = DATA / "fonts_preview"
+        d.mkdir(parents=True, exist_ok=True)
+        for old in d.glob(f"w{cid}_*.jpg"):
+            old.unlink(missing_ok=True)
+        f = fonts.preview({"fonts": st["fonts"], "sub_style": st["sub"]}, texts, bg if bg and bg.is_file() else None,
+                          d / "work", d / f"w{cid}_{now_ts()}.jpg")
+        return media("photo", f, cap[:1000], kb(*rows))
+    except Exception as e:
+        log.warning("wisdom font preview #%s: %s", cid, e)
+        return msg(cap + f"\n⚠️ Chưa tạo được ảnh minh hoạ ({esc(str(e)[:150])}).", kb(*rows))
+
+
+def _in_font_review(cid: int) -> bool:
+    with LOCK:
+        item = DB_.get_content(cid)
+    return bool(item) and is_wisdom(item["script"]) and item["status"] == "font_review"
+
+
+def cycle_wisdom_font(n: int, mid: int | None) -> dict:
+    cid, r = divmod(n, 10)
+    if r >= len(fonts.ROLES) or not _in_font_review(cid):
+        return reply(clear_buttons(mid))
+    role = fonts.ROLES[r]
+    set_wisdom_style(fonts_={role: fonts.next_key({"fonts": wisdom_style()["fonts"]}, role)})
+    return reply(clear_buttons(mid), wisdom_font_msg(cid))
+
+
+def cycle_wisdom_sub(cid: int, mid: int | None) -> dict:
+    if not _in_font_review(cid):
+        return reply(clear_buttons(mid))
+    cur = wisdom_style()["sub"]
+    keys = ("color", "size", "box", "position")
+    idx = next((i for i, p in enumerate(fonts.SUB_PRESETS) if all(cur.get(k) == p[k] for k in keys)), -1)
+    set_wisdom_style(sub=fonts.SUB_PRESETS[(idx + 1) % len(fonts.SUB_PRESETS)])
+    return reply(clear_buttons(mid), wisdom_font_msg(cid))
+
+
+def wisdom_style_text(cid: int, text: str) -> dict:
+    if not _in_font_review(cid):
+        return reply(msg(f"#{cid} không còn ở bước duyệt chữ."))
+    est = float(((S.raw.get("budget") or {}).get("services", {}).get("claude", {})).get("est_fix_usd", 0.03))
+    with LOCK:
+        BUDGET.ensure("claude", est, "Chọn font & kiểu phụ đề theo mô tả.", resume={"action": "wstyle", "id": cid,
+                                                                                   "text": text})
+    cur = wisdom_style()
+    pick = wisdom.style_from_text(text, cur)
+    set_wisdom_style(fonts_={"cover": pick.cover, "subtitle": pick.subtitle, "ending": pick.ending},
+                     sub={"color": pick.color, "size": round(pick.size, 2), "box": pick.box, "position": pick.position})
+    return reply(wisdom_font_msg(cid, note=f"✍️ <i>{esc(pick.note_vi)}</i>"))
+
+
+def wisdom_voice_default() -> dict:
+    with LOCK:
+        kv = DB_.kv_get(WVOICE_KEY) or {}
+    base = wcfg().get("voice") or {"voice": "vi-VN-NamMinhNeural", "pitch": "-10Hz", "rate": "-12%"}
+    v = {**base, **{k: kv[k] for k in ("voice", "pitch", "rate") if kv.get(k)}}
+    return {"voice": norm_voice(v["voice"]), "pitch": norm_pitch(v["pitch"]), "rate": norm_rate(v["rate"])}
+
+
+def voice_label(v: dict) -> str:
+    for p in wcfg().get("voices") or []:
+        if (norm_voice(p.get("voice")), norm_pitch(p.get("pitch")), norm_rate(p.get("rate"))) == \
+                (v["voice"], v["pitch"], v["rate"]):
+            return p.get("label") or ""
+    return f"{VOICE_LABELS.get(v['voice'], v['voice'])}, cao độ {v['pitch']}, tốc độ {v['rate']}"
+
+
+def prepare_wisdom_audio(cid: int, voice: dict | None = None, music: str | None = None) -> dict:
+    with LOCK:
+        item = DB_.get_content(cid)
+    sc = item["script"]
+    ws = sc.get("wisdom") or {}
+    a = sc.get("audio") or {}
+    voice = voice or ws.get("voice") or wisdom_voice_default()
+    if music is None:
+        if "music" in a:
+            music = a["music"]
+        else:
+            m = pick_music(cid)
+            music = (rel(Path(m)) if Path(m).resolve().is_relative_to(DATA) else str(Path(m).resolve())) if m else ""
+    d = DATA / "audio" / str(cid) / "wisdom"
+    d.mkdir(parents=True, exist_ok=True)
+    h = _narr_hash(json.dumps(voice, sort_keys=True), "", wisdom.narrations(sc))
+    mf = d / "narration.json"
+    if a.get("hash") == h and mf.is_file() and (d / "narration.mp3").is_file():
+        meta = {**json.loads(mf.read_text(encoding="utf-8")), "path": str(d / "narration.mp3")}
+    else:
+        meta = wisdom.voice_track(sc, voice, d)
+    mpath = (str(DATA / music) if music and not Path(music).is_absolute() else music) or None
+    prev = wisdom.preview(meta, mpath, S.raw, d / f"preview_{now_ts()}.mp3")
+    for old in d.glob("preview_*.mp3"):
+        if old != prev:
+            old.unlink(missing_ok=True)
+    sc["audio"] = {"mode": "wisdom", "music": music, "hash": h, "preview": rel(prev),
+                   "total": round(wisdom.total_sec(meta), 2)}
+    sc.setdefault("wisdom", {})["voice"] = voice
+    with LOCK:
+        DB_.update_content(cid, script=sc)
+    return sc["audio"]
+
+
+def voice_review_msg(cid: int, note: str = "") -> dict:
+    item = DB_.get_content(cid)
+    sc = item["script"]
+    a = sc.get("audio") or {}
+    v = (sc.get("wisdom") or {}).get("voice") or wisdom_voice_default()
+    music = esc(Path(a["music"]).stem) if a.get("music") else "chưa có nhạc (gửi mp3 vào bot để thêm)"
+    cap = (f"🎙 <b>#{cid} · Bước 4/4 – duyệt giọng đọc</b> [GIONGDOC:{cid}] ({a.get('total', 0):.0f}s)\n"
+           f"🗣 Giọng: <b>{esc(voice_label(v))}</b>\n🎵 Nhạc: {music}\n" + (f"{note}\n" if note else "")
+           + "\nĐây chính là âm thanh của video. Muốn chỉnh: bấm <b>🎙 Giọng khác</b>, hoặc <b>Trả lời</b> tin này bằng "
+             "mô tả, vd <i>trầm hơn, chậm hơn</i>, <i>giọng nữ ấm áp</i>, <code>pitch -15 rate -20</code>.")
+    rows = [[("✅ Duyệt giọng đọc & dựng video", f"na:{cid}")],
+            [("🎙 Giọng khác", f"nv:{cid}"), ("🎵 Đổi nhạc", f"nm:{cid}")]]
+    if a.get("preview") and (DATA / a["preview"]).is_file():
+        return media("audio", DATA / a["preview"], cap[:1000], kb(*rows))
+    return msg(cap + "\n⚠️ Chưa có bản nghe thử.", kb(*rows))
+
+
+def wisdom_voice_step(cid: int, preset=None, music=None, text=None) -> dict:
+    """Build / change the reading voice preview: a preset ("next"), the next music track, or the owner's words."""
+    with LOCK:
+        item = DB_.get_content(cid)
+    if not item or not is_wisdom(item["script"]) or item["status"] != "voice_review":
+        return reply(msg(f"#{cid} không ở bước duyệt giọng đọc."))
+    sc = item["script"]
+    cur = (sc.get("wisdom") or {}).get("voice") or wisdom_voice_default()
+    voice, mus, note = None, None, ""
+    if preset == "next":
+        ps = [{"voice": norm_voice(p.get("voice")), "pitch": norm_pitch(p.get("pitch")), "rate": norm_rate(p.get("rate"))}
+              for p in wcfg().get("voices") or []] or [wisdom_voice_default()]
+        voice = ps[(ps.index(cur) + 1) % len(ps)] if cur in ps else ps[0]
+    if music == "next":
+        opts = [rel(t) for t in music_tracks()]
+        if not opts:
+            return reply(msg("🎵 Thư viện nhạc đang trống. Gửi file mp3/m4a vào đây rồi bấm 🎵 Đổi nhạc."))
+        cm = (sc.get("audio") or {}).get("music", "")
+        mus = opts[(opts.index(cm) + 1) % len(opts)] if cm in opts else opts[0]
+    if text:
+        got = parse_voice(text, cur)
+        if got:
+            voice, notes = got
+            note = "✍️ <i>" + esc("; ".join(notes) or "giữ như cũ") + "</i>"
+        else:
+            est = float(((S.raw.get("budget") or {}).get("services", {}).get("claude", {})).get("est_fix_usd", 0.03))
+            with LOCK:
+                BUDGET.ensure("claude", est, "Chỉnh giọng đọc theo mô tả.",
+                              resume={"action": "wvoice", "id": cid, "text": text})
+            pick = wisdom.voice_from_text(text, cur)
+            voice = {"voice": pick.voice, "pitch": norm_pitch(pick.pitch), "rate": norm_rate(pick.rate)}
+            note = f"✍️ <i>{esc(pick.note_vi)}</i>"
+    if voice:
+        with LOCK:
+            DB_.kv_set(WVOICE_KEY, voice)  # remembered for the next topic-3 videos
+    prepare_wisdom_audio(cid, voice=voice, music=mus)
+    return reply(voice_review_msg(cid, note))
+
+
+def approve_wisdom_voice(cid: int, mid: int | None) -> dict:
+    with LOCK:
+        item = DB_.get_content(cid)
+        if not item or item["status"] != "voice_review":
+            return reply(clear_buttons(mid), msg(f"#{cid} không ở bước duyệt giọng đọc."))
+        DB_.update_content(cid, status="rendering")
+    return reply(clear_buttons(mid), msg(f"✅ Đã duyệt giọng đọc #{cid}. ⏳ Đang dựng video (1–3 phút)…"),
+                 next_step={"action": "render", "id": cid})
+
+
+def render_wisdom(cid: int) -> dict:
+    if not HEAVY.acquire(timeout=1800):
+        return reply(msg("⏳ Máy đang bận dựng video khác, thử lại sau ít phút."))
+    try:
+        with LOCK:
+            item = DB_.get_content(cid)
+        sc = item["script"]
+        ws = sc.get("wisdom") or {}
+        img = DATA / ws.get("image", "")
+        if not ws.get("image") or not img.is_file():
+            raise RuntimeError("chưa có ảnh nền đã duyệt")
+        d = DATA / "audio" / str(cid) / "wisdom"
+        mf = d / "narration.json"
+        a = sc.get("audio") or {}
+        voice = ws.get("voice") or wisdom_voice_default()
+        h = _narr_hash(json.dumps(voice, sort_keys=True), "", wisdom.narrations(sc))
+        if a.get("hash") == h and mf.is_file() and (d / "narration.mp3").is_file():
+            meta = {**json.loads(mf.read_text(encoding="utf-8")), "path": str(d / "narration.mp3")}
+        else:
+            meta = wisdom.voice_track(sc, voice, d)
+        music = a.get("music") if "music" in a else rel(Path(pick_music(cid))) if pick_music(cid) else ""
+        mpath = (str(DATA / music) if music and not Path(music).is_absolute() else music) or ""
+        st = ws.get("style") or wisdom_style()
+        cfg = {**S.raw, "video": {**S.raw.get("video", {}), "background_music": mpath, "fonts": st["fonts"],
+                                  "sub_style": st["sub"]}}
+        path = wisdom.render(sc, img, meta, DATA / "videos" / f"{cid}_{now_ts()}", cfg)
+        with LOCK:
+            DB_.update_content(cid, video_path=str(path), status="video_review", error=None)
+        dur = video._duration(path)
+        drive_note = upload_video_drive(cid, path)
+        cap = (f"🎞 <b>Video #{cid}</b> · {esc(sc['title'])} · {dur:.0f}s{drive_note}\n\n{esc(item['caption'])}")
+        out = [media("video", path, cap, kb([("✅ Duyệt & đăng TikTok", f"va:{cid}")],
+                                            [("🔁 Làm lại ảnh/chữ/giọng", f"vc:{cid}"), ("❌ Bỏ", f"vx:{cid}")]))]
+        thumb = Path(path).parent / "thumbnail.jpg"
+        if thumb.is_file():
+            out.append(media("photo", thumb, f"🖼 <b>Ảnh bìa #{cid}</b>: “{esc(thumb_text(sc))}”\n"
+                                             f"🔚 Câu kết: “{esc(closing_line(sc))}”"))
+        rep_file = Path(path).parent / "mix_report.json"
+        warns = json.loads(rep_file.read_text(encoding="utf-8")).get("warnings", []) if rep_file.is_file() else []
+        if warns:
+            out.append(msg(f"🎵 <b>Kiểm tra âm thanh #{cid}:</b>\n" + "\n".join(f"• {esc(w)}" for w in warns)))
+        return reply(out)
+    except Exception as e:
+        log.exception("render wisdom #%s failed", cid)
+        with LOCK:
+            DB_.update_content(cid, status="failed", error=str(e)[:2000])
+        return reply(msg(f"⚠️ Dựng video #{cid} lỗi: {esc(str(e)[:400])}",
+                         kb([("🔁 Thử lại", f"rr:{cid}"), ("🔁 Làm lại ảnh/chữ/giọng", f"vc:{cid}")])))
+    finally:
+        HEAVY.release()
+
+
 def rewrite_script(cid: int, feedback: str | None, message_id: int | None = None) -> dict:
     with LOCK:
         item = DB_.get_content(cid)
@@ -988,6 +1427,11 @@ def rewrite_script(cid: int, feedback: str | None, message_id: int | None = None
             return reply(msg("⏳ Đang viết lại…"))
         BUSY.add(f"c{cid}")
     try:
+        if is_wisdom(item["script"]):
+            script, caption = _write_wisdom(item["idea"], feedback=feedback, previous=item["script"])
+            with LOCK:
+                DB_.update_content(cid, script=script, caption=caption, feedback=feedback or item["feedback"])
+            return reply(clear_buttons(message_id), msg("✍️ Bản mới:"), script_messages(cid))
         plan = get_plan(item["idea"]["plan_id"]) if item["idea"].get("plan_id") else active_plan()
         script, caption = _write(item["idea"], content_bible(item), (plan or {}).get("data", {}).get("patterns") or [],
                                  feedback=feedback, previous=item["script"])
@@ -1213,6 +1657,17 @@ def approve_script(cid: int, message_id: int | None) -> dict:
         item = DB_.get_content(cid)
         if not item or item["status"] != "script_review":
             return reply(clear_buttons(message_id), msg(f"Kịch bản #{cid} không còn chờ duyệt."))
+        if is_wisdom(item["script"]):
+            sc = item["script"]
+            sc["approved_at"] = now_ts()
+            DB_.update_content(cid, status="image_review", script=sc)
+    if is_wisdom(item["script"]):
+        saved = sync_drive()
+        return reply(clear_buttons(message_id),
+                     msg(f"✅ Đã duyệt kịch bản #{cid}.{saved}\n🖼 <b>Bước 2/4 – ảnh nền:</b> đang tạo ảnh (≈ 20 giây)…"),
+                     next_step={"action": "wimage", "id": cid})
+    with LOCK:
+        item = DB_.get_content(cid)
         bible = content_bible(item)
         scenes = item["script"]["scenes"]
         shots = [{"scene": i + 1, "shot": 1, "seconds": CLIP_SEC,
@@ -1346,6 +1801,13 @@ def approve_fonts(cid: int, mid: int | None) -> dict:
         item = DB_.get_content(cid)
         if not item or item["status"] != "font_review":
             return reply(clear_buttons(mid), msg(f"#{cid} không ở bước duyệt chữ."))
+        if is_wisdom(item["script"]):
+            sc = item["script"]
+            sc.setdefault("wisdom", {})["style"] = wisdom_style()
+            DB_.update_content(cid, status="voice_review", script=sc)
+            return reply(clear_buttons(mid), msg(f"✅ Đã duyệt chữ & phụ đề cho #{cid}.\n🎙 <b>Bước 4/4 – giọng đọc:</b> "
+                                                 "đang đọc thử kèm nhạc nền (≈ 30 giây)…"),
+                         next_step={"action": "wvoice", "id": cid})
         DB_.update_content(cid, status="awaiting_clips")
     return reply(clear_buttons(mid), msg(f"✅ Đã duyệt chữ cho #{cid}."), clip_mode_msg(cid))
 
@@ -1420,7 +1882,8 @@ def choose_manual(cid: int, mid: int | None, mode: str = "independent") -> dict:
 
 # ---------------------------------------------------------------- Google Drive: one doc with every approved script
 
-APPROVED = ("awaiting_clips", "rendering", "video_review", "publishing", "posted", "failed", "video_rejected")
+APPROVED = ("music_review", "font_review", "image_review", "voice_review", "awaiting_clips", "rendering",
+            "video_review", "publishing", "posted", "failed", "video_rejected")
 
 
 def approved_doc_html() -> str:
@@ -1439,7 +1902,8 @@ def approved_doc_html() -> str:
         if sc.get("hook"):
             parts.append(f"<p><b>Mở đầu:</b> {esc(sc['hook'])}</p>")
         for i, s in enumerate(sc.get("scenes", []), 1):
-            parts.append(f"<h3>Cảnh {i}: {esc(s.get('visual_vi', ''))}</h3>")
+            if s.get("visual_vi"):
+                parts.append(f"<h3>Cảnh {i}: {esc(s['visual_vi'])}</h3>")
             if "lines" in s:
                 lines = [f"<li><b>{esc(ln['speaker'])}</b> <i>({esc(ln.get('emotion_vi', ''))})</i>: "
                          f"“{esc(ln['text'])}”</li>" for ln in s["lines"]]
@@ -1683,6 +2147,8 @@ def receive_photo(body: dict) -> dict:
     dst = d / f"nv_{now_ts()}_{secrets.token_hex(3)}{ext}"
     _tg_download(str(body["file_id"]), dst)
     caption = str(body.get("caption") or "").strip()[:300]
+    if m := re.search(r"\[ANH:(\d+)\]", str(body.get("reply_to_text") or "")):
+        return wisdom_owner_image(int(m.group(1)), dst)
     tag2 = re.search(r"\[NV2:([\w-]+)\]", str(body.get("reply_to_text") or ""))
     mcap = MODERN_RX.match(caption) or MODERN_RX2.search(caption)
     if tag2 or mcap:  # photo of a character's present-day version (topic 2)
@@ -2210,6 +2676,10 @@ def receive_clip(body: dict) -> dict:
 def reset_clips(cid: int, message_id: int | None) -> dict:
     with LOCK:
         item = DB_.get_content(cid)
+        if item and is_wisdom(item["script"]) and item["status"] in ("video_review", "failed"):
+            DB_.update_content(cid, status="image_review")
+            return reply(clear_buttons(message_id), msg(f"🔁 Làm lại #{cid}: duyệt lại ảnh nền → chữ → giọng đọc."),
+                         image_review_msg(cid))
         m = manual().load(cid)
         if not item or not m or item["status"] not in ("video_review", "failed", "awaiting_clips"):
             return reply(clear_buttons(message_id), msg(f"Không thay clip được cho #{cid} lúc này."))
@@ -2268,6 +2738,10 @@ def approved_music(item: dict) -> str:
 
 
 def do_render(cid: int, paid: bool = False) -> dict:
+    with LOCK:
+        it = DB_.get_content(cid)
+    if it and is_wisdom(it["script"]):
+        return render_wisdom(cid)
     if not HEAVY.acquire(timeout=1800):
         return reply(msg("⏳ Máy đang bận ghép video khác, thử lại sau ít phút."))
     try:
@@ -2461,7 +2935,8 @@ def status_text() -> str:
         lp = latest_plan()
         rows = DB_.conn.execute("SELECT status, COUNT(*) n FROM content GROUP BY status").fetchall()
         waiting = DB_.conn.execute("SELECT id, status FROM content WHERE status IN "
-                                   "('script_review','music_review','font_review','awaiting_clips','rendering','video_review') ORDER BY id").fetchall()
+                                   "('script_review','music_review','font_review','image_review','voice_review','awaiting_clips','rendering',"
+                                   "'video_review') ORDER BY id").fetchall()
         rem = remaining_days()
     lines = ["📊 <b>Tình trạng</b>", ""]
     lines.append(f"Kế hoạch: #KH{lp['id']} ({lp['status']}), còn {rem} ý tưởng chưa viết" if lp else "Kế hoạch: chưa có")
@@ -2470,6 +2945,7 @@ def status_text() -> str:
     lines.append(f"Tần suất: {freq_label(freq_on(today)['days'])} · kịch bản tới: "
                  + ", ".join(d.strftime("%d/%m") for d in next_due_days(today, 3)) + " (/tansuat để đổi)")
     names = {"script_review": "chờ duyệt kịch bản", "music_review": "chờ duyệt nhạc nền", "font_review": "chờ duyệt chữ",
+             "image_review": "chờ duyệt ảnh nền", "voice_review": "chờ duyệt giọng đọc",
              "awaiting_clips": "chờ clip",
              "rendering": "đang ghép",
              "video_review": "chờ duyệt video"}
@@ -2687,6 +3163,15 @@ def tg_button(body: dict = BODY, x_worker_token: str = TOKEN) -> dict:
         "cm": lambda: choose_manual(n, mid, "independent"),
         "ce": lambda: choose_manual(n, mid, "extend"),
         "tp": lambda: choose_topic(n, mid),
+        "ia": lambda: approve_wisdom_image(n, mid),
+        "ir": lambda: reply(clear_buttons(mid), msg("⏳ Đang tạo ảnh khác…"), next_step={"action": "wimage", "id": n}),
+        "wf": lambda: cycle_wisdom_font(n, mid),
+        "sb": lambda: cycle_wisdom_sub(n, mid),
+        "na": lambda: approve_wisdom_voice(n, mid),
+        "nv": lambda: reply(clear_buttons(mid), msg("⏳ Đang đọc thử giọng khác…"),
+                            next_step={"action": "wvoice", "id": n, "preset": "next"}),
+        "nm": lambda: reply(clear_buttons(mid), msg("⏳ Đang đổi nhạc…"),
+                            next_step={"action": "wvoice", "id": n, "music": "next"}),
         "va": lambda: publish(n, mid),
         "vc": lambda: reset_clips(n, mid),
         "vx": lambda: _set_status(n, "video_review", "video_rejected", mid, f"❌ Đã bỏ video #{n}."),
@@ -2735,7 +3220,7 @@ def _set_status(cid: int, expect: str, new: str, mid: int | None, text: str) -> 
 def _retry_render(cid: int, mid: int | None) -> dict:
     with LOCK:
         item = DB_.get_content(cid)
-        if not item or item["status"] != "failed" or not manual().load(cid):
+        if not item or item["status"] != "failed" or not (manual().load(cid) or is_wisdom(item["script"])):
             return reply(clear_buttons(mid), msg(f"#{cid} không thể ghép lại lúc này."))
         DB_.update_content(cid, status="rendering")
     return reply(clear_buttons(mid), msg(f"⏳ Ghép lại video #{cid}…"), next_step={"action": "render", "id": cid})
@@ -2780,6 +3265,15 @@ def tg_text(body: dict = BODY, x_worker_token: str = TOKEN) -> dict:
     ref, text = body.get("reply_to_text") or "", str(body.get("text", "")).strip()
     if m := re.search(r"\[GIONG:([\w-]+)\]", ref):
         return _safe(apply_voice, m.group(1), text)
+    if m := re.search(r"\[ANH:(\d+)\]", ref):
+        return reply(msg("⏳ Đang tạo ảnh nền theo mô tả của bạn…"),
+                     next_step={"action": "wimage", "id": int(m.group(1)), "extra": text})
+    if m := re.search(r"\[CHU:(\d+)\]", ref):
+        return reply(msg("⏳ Đang chọn font & kiểu phụ đề theo mô tả…"),
+                     next_step={"action": "wstyle", "id": int(m.group(1)), "text": text})
+    if m := re.search(r"\[GIONGDOC:(\d+)\]", ref):
+        return reply(msg("⏳ Đang chỉnh giọng đọc theo yêu cầu…"),
+                     next_step={"action": "wvoice", "id": int(m.group(1)), "text": text})
     if m := re.search(r"\[NV2:([\w-]+)\]", ref):
         return _safe(edit_modern, m.group(1), text)
     if m := re.search(r"\[NV:([\w-]+)\]", ref):
@@ -2863,6 +3357,12 @@ def cont(body: dict = BODY, x_worker_token: str = TOKEN) -> dict:
         return _safe(create_plan, body.get("feedback") or "Làm một kế hoạch khác hẳn.", p["data"] if p else None)
     if action == "script":
         return _safe(next_script, False, body.get("topic"))
+    if action == "wimage":
+        return _safe(wisdom_image, int(n), str(body.get("extra") or "")[:1500])
+    if action == "wvoice":
+        return _safe(wisdom_voice_step, int(n), body.get("preset"), body.get("music"), body.get("text"))
+    if action == "wstyle":
+        return _safe(wisdom_style_text, int(n), str(body.get("text") or "")[:1000])
     if action == "rewrite":
         return _safe(rewrite_script, int(n), body.get("feedback"))
     if action == "fixprompt":

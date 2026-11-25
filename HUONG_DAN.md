@@ -284,7 +284,22 @@ Mỗi lần bạn bấm **Duyệt kịch bản**, hệ thống cập nhật mộ
        cho chủ đề 1.
      - **Trả lời** thẻ hiện đại, gõ `Vai: …` / `Ngoại hình: …` / `Cách nói: …` để sửa.
      Giá trị ban đầu trong `config.yaml`, mục `topics: giadinh:` (`cast`, `setting_en`, `pillars`).
-   Gõ nhanh: `/kichban 1` hoặc `/kichban 2`. Không muốn bị hỏi: đặt `topics: ask: false` (luôn chủ đề 1).
+   - **3️⃣ Những lời răn dạy** — **không thoại nhân vật**: một **ảnh nền**, một **giọng đọc trầm ấm** đọc những lời
+     nhắc nhở, triết lý sống về các mối quan hệ trong gia đình, **phụ đề chạy theo lời đọc**, nhạc nền nhẹ; video dài
+     hơn (~60 giây, chỉnh `topics: loiday: target_sec`). **Không cần tạo clip trên Flow.** Sau khi duyệt kịch bản, bot
+     hỏi duyệt lần lượt:
+     1. **🖼 Ảnh nền** — hệ thống tự tạo (Gemini nếu có `GEMINI_API_KEY`, không thì ảnh miễn phí Pixabay). Không ưng:
+        **🔄 Ảnh khác**, hoặc **Trả lời** tin ảnh bằng **ảnh của bạn**, hoặc **Trả lời** bằng chữ **mô tả ảnh** muốn có.
+     2. **🔤 Chữ & phụ đề** — ảnh minh hoạ dựng trên chính ảnh nền: **🔤 Font đầu / phụ đề / kết**, **🎨 Kiểu phụ đề
+        khác** (màu, cỡ, nền mờ, vị trí), hoặc **Trả lời** bằng mô tả, vd *phụ đề vàng, chữ to, có nền mờ, font viết
+        tay cho câu kết*.
+     3. **🎙 Giọng đọc** — nghe thử đúng âm thanh video (giọng + nhạc): **🎙 Giọng khác** (nam trầm ấm, nam sâu lắng,
+        nữ dịu dàng, nữ trầm ấm), **🎵 Đổi nhạc**, hoặc **Trả lời** bằng mô tả, vd *trầm hơn, chậm hơn*, *giọng nữ ấm
+        áp*, `pitch -15 rate -20`.
+     4. **✅ Duyệt giọng đọc** → bot dựng video (ảnh zoom rất chậm + giọng + phụ đề + chữ ảnh bìa + câu kết) và gửi
+        duyệt như thường. **🔁 Làm lại ảnh/chữ/giọng** để quay lại bước ảnh nền.
+     Font, kiểu phụ đề và giọng đã chọn được nhớ cho các video chủ đề 3 sau.
+   Gõ nhanh: `/kichban 1`, `/kichban 2`, `/kichban 3`. Không muốn bị hỏi: đặt `topics: ask: false` (luôn chủ đề 1).
    Sau đó bot gửi **📝 Kịch bản**: thoại từng cảnh, **chữ trên ảnh bìa**
    (thông điệp) và **câu kết** (hiện ở clip cuối). **✅ Duyệt kịch bản** / **🔄 Viết bản khác** / **❌ Bỏ** — hoặc
    Reply để góp ý. Bot ghi nhớ góp ý cho các kịch bản sau.
@@ -392,7 +407,7 @@ Mỗi lần bạn bấm **Duyệt kịch bản**, hệ thống cập nhật mộ
 | Lệnh | Tác dụng |
 |---|---|
 | `/kehoach` | Lập kế hoạch 30 ngày mới (tự chạy khi kế hoạch cũ còn ≤ 2 ngày) |
-| `/kichban` | Viết kịch bản: chọn chủ đề 1 Ký ức / 2 Gia đình (gõ nhanh `/kichban 1`, `/kichban 2`; bình thường bot hỏi lúc 07:00) |
+| `/kichban` | Viết kịch bản: chọn chủ đề 1 Ký ức / 2 Gia đình / 3 Lời răn dạy (gõ nhanh `/kichban 3`; bình thường bot hỏi lúc 07:00) |
 | `/clip` | Gửi lại tất cả prompt clip; `/clip 2` gửi riêng cảnh 2 (khi thiếu tin) |
 | `/tansuat N` | Tần suất ra video: N ngày 1 kịch bản (vd `/tansuat 2`), áp dụng từ ngày mai; `/tansuat` xem lịch |
 | `/socanh N` | Số cảnh mỗi video (2–6; mỗi cảnh 8 giây), vd `/socanh 4` ≈ 32 giây; áp dụng từ kịch bản tiếp theo |

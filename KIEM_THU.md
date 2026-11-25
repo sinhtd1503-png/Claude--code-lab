@@ -90,6 +90,10 @@ Trong Telegram, gửi cho bot:
    khi tạo clip, prompt mô tả nhân vật phiên bản hiện đại (vd Bà mặc áo len đỏ mận, Cu Tí mặc đồng phục cầm điện
    thoại) và nhà ngày nay. Gửi `/nhanvat 2` → thẻ hiện đại kèm prompt ảnh; gửi ảnh chú thích `2 Bà` → bot lưu ảnh
    mẫu hiện đại (chủ đề 1 vẫn dùng ảnh cũ).
+   Thử `/kichban 3` → kịch bản ghi **📜 Chủ đề 3 · Lời răn dạy**, là danh sách câu đọc (không có cảnh, không thoại).
+   Duyệt → **🖼 ảnh nền** (thử 🔄, thử Trả lời bằng một ảnh của bạn) → **🔤 chữ & phụ đề** (thử 🎨, thử Trả lời
+   "phụ đề vàng có nền mờ") → **🎙 giọng đọc** (thử 🎙 Giọng khác, thử Trả lời "trầm hơn") → video ~60 giây: ảnh
+   zoom chậm, phụ đề hiện đúng câu đang đọc, giọng không bị méo, nhạc nhỏ phía dưới, có chữ ảnh bìa và câu kết.
 7. Test viết lại: **Trả lời** vào tin kịch bản, gõ góp ý (ví dụ "Lời đọc ngắn hơn") → gửi.
    **Kết quả đúng:** bot gửi kịch bản mới.
 8. Kịch bản là **thoại giữa các nhân vật**, có dòng **🖼 Chữ trên ảnh bìa** và **🔚 Câu kết**. Bấm **✅ Duyệt kịch bản**.

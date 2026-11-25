@@ -34,9 +34,9 @@ def _norm(s: str) -> str:
     return "".join(ch for ch in s if ch.isalnum())
 
 
-async def _stream(text: str, voice: str, rate: str, out: Path) -> list[dict]:
+async def _stream(text: str, voice: str, rate: str, out: Path, pitch: str = "+0Hz") -> list[dict]:
     words: list[dict] = []
-    com = edge_tts.Communicate(text, voice, rate=rate, boundary="WordBoundary")
+    com = edge_tts.Communicate(text, voice, rate=rate, pitch=pitch, boundary="WordBoundary")
     with out.open("wb") as fh:
         async for chunk in com.stream():
             if chunk["type"] == "audio":
@@ -47,10 +47,10 @@ async def _stream(text: str, voice: str, rate: str, out: Path) -> list[dict]:
     return words
 
 
-def _tts_words(text: str, voice: str, rate: str, out: Path) -> list[dict]:
+def _tts_words(text: str, voice: str, rate: str, out: Path, pitch: str = "+0Hz") -> list[dict]:
     for attempt in range(len(TTS_BACKOFF_SEC) + 1):
         try:
-            words = asyncio.run(_stream(text, voice, rate, out))
+            words = asyncio.run(_stream(text, voice, rate, out, pitch))
             if out.stat().st_size == 0:
                 raise edge_tts.exceptions.NoAudioReceived("empty audio")
             return words
@@ -117,12 +117,12 @@ def _cues(words: list[dict], scene_of: list[int], texts: list[str]) -> list[dict
     return cues
 
 
-def narration_track(narrations: list[str], voice: str, rate: str, workdir: Path) -> dict:
+def narration_track(narrations: list[str], voice: str, rate: str, workdir: Path, pitch: str = "+0Hz") -> dict:
     """Read all scenes in one pass. Returns {"file", "duration", "scenes": [{start, end}], "cues": [...]}."""
     workdir.mkdir(parents=True, exist_ok=True)
     out = workdir / "narration.mp3"
     texts = [n.strip() if re.search(r"[.!?…]$", n.strip()) else n.strip() + "." for n in narrations]
-    words = _tts_words(" ".join(texts), voice, rate, out)
+    words = _tts_words(" ".join(texts), voice, rate, out, pitch)
     dur = _duration(out)
     if not words:  # no timings (should not happen) → split evenly by text length
         lens = [max(1, len(t)) for t in texts]
@@ -143,7 +143,8 @@ def narration_track(narrations: list[str], voice: str, rate: str, workdir: Path)
                 prev = scenes[k - 1]["end"] if k and scenes[k - 1] else 0.0
                 scenes[k] = {"start": prev, "end": prev}
         cues = _cues(words, scene_of, texts)
-    meta = {"file": out.name, "duration": dur, "voice": voice, "rate": rate, "scenes": scenes, "cues": cues}
+    meta = {"file": out.name, "duration": dur, "voice": voice, "rate": rate, "pitch": pitch, "scenes": scenes,
+            "cues": cues}
     (workdir / "narration.json").write_text(json.dumps(meta, ensure_ascii=False), encoding="utf-8")
     return meta
 

@@ -128,6 +128,12 @@ DEFAULT_CORE = """- Mỗi video đánh thức MỘT ký ức tuổi thơ 8x 9x t
   trên tay, ánh nắng, tiếng gọi) để người xem thốt lên "đúng rồi, ngày xưa mình cũng vậy".
 - Luôn tích cực và tử tế: tình thân, sự hồn nhiên, lễ phép, biết ơn, sẻ chia; kết bằng một cảm xúc ấm áp giúp người
   xem trân quý gia đình và hiện tại. Không giáo điều, không chê bai thế hệ trẻ hay cuộc sống hiện đại."""
+DEFAULT_FORMAT = ("KHÔNG có người dẫn chuyện, KHÔNG có giọng đọc thuyết minh. Câu chuyện kể hoàn toàn bằng THOẠI tự "
+                  "nhiên, có cảm xúc\n  giữa các nhân vật (trêu đùa, hỏi han, thì thầm, reo lên, nghẹn ngào…), kèm âm "
+                  "thanh môi trường và nhạc nền nhẹ.")
+DEFAULT_TAIL = ("- Video là phim ngắn dựng bằng AI: vài clip 8 giây, nhân vật nói thoại (video AI tự lồng tiếng, khớp "
+                "khẩu hình) +\n  nhạc nền + phụ đề; nhân vật, giọng nói và bối cảnh cố định suốt series để người xem "
+                "nhận ra \"gia đình\" của kênh.")
 FILM_EN = "a short nostalgic film about a Vietnamese 1990s childhood memory"
 DEFAULT_CAPTION = "Caption ngắn, gợi nhớ, kết bằng câu hỏi gợi bình luận (vd 'Bạn còn nhớ không?')."
 
@@ -138,6 +144,9 @@ def system_prompt(niche: dict) -> str:
     visual = (niche.get("visual_style_en") or "").strip()
     core = (" ".join((niche.get("core_values") or "").split())
             or DEFAULT_CORE)
+    custom_fmt = " ".join((niche.get("format_vi") or "").split())
+    fmt = custom_fmt or DEFAULT_FORMAT
+    tail = "" if custom_fmt else DEFAULT_TAIL
     return f"""Bạn là biên kịch và chiến lược gia nội dung cho một kênh TikTok tiếng Việt.
 
 Ngách: {niche['name']}
@@ -152,8 +161,7 @@ Phong cách trình bày phải theo sát kênh mẫu (hình ảnh, nhịp, cách
 </style_reference>
 
 Hình thức video (bắt buộc):
-- KHÔNG có người dẫn chuyện, KHÔNG có giọng đọc thuyết minh. Câu chuyện kể hoàn toàn bằng THOẠI tự nhiên, có cảm xúc
-  giữa các nhân vật (trêu đùa, hỏi han, thì thầm, reo lên, nghẹn ngào…), kèm âm thanh môi trường và nhạc nền nhẹ.
+- {fmt}
 - Phong cách hình ảnh cố định: {visual or 'phim hoạt hình anime điện ảnh, nền vẽ tay chi tiết, ánh sáng ấm'}.
 
 Giá trị cốt lõi của kênh:
@@ -166,8 +174,7 @@ Nguyên tắc:
   hay bạo lực với trẻ em, không quảng cáo sản phẩm, không nhắc tên thương hiệu thật.
 
 {RULES_VI}
-- Video là phim ngắn dựng bằng AI: vài clip 8 giây, nhân vật nói thoại (video AI tự lồng tiếng, khớp khẩu hình) +
-  nhạc nền + phụ đề; nhân vật, giọng nói và bối cảnh cố định suốt series để người xem nhận ra "gia đình" của kênh."""
+{tail}"""
 
 
 def _compact(videos: list[dict]) -> list[dict]:
@@ -264,6 +271,55 @@ def write_script(niche: dict, bible: dict, idea: dict, patterns: list[str], scen
                  + (" ".join((niche.get("caption_hint") or "").split()) or DEFAULT_CAPTION))
     log.info("Claude: viết kịch bản '%s'", idea.get("title"))
     return _parse(system_prompt(niche), "\n\n".join(parts), SeriesScript, effort="high")
+
+
+class WisdomScript(BaseModel):
+    title: str = Field(description="Tiêu đề ngắn, tiếng Việt")
+    hook: str = Field(description="Câu mở đầu chạm thẳng vào lòng người (chính là câu đọc đầu tiên)")
+    lines: list[str] = Field(description="Lời đọc, theo thứ tự: mỗi phần tử là MỘT câu hoặc một ý ngắn (6–22 từ), "
+                                         "tiếng Việt, câu đầu = hook")
+    lesson: str = Field(description="Thông điệp, 1 câu")
+    image_prompt_en: str = Field(description="TIẾNG ANH, 40–80 từ. MỘT hình ảnh nền tĩnh, giàu biểu tượng, gợi đúng "
+                                             "thông điệp (vd đôi tay già nắm tay trẻ nhỏ bên hiên nhà; mâm cơm còn "
+                                             "trống một chỗ ngồi): ai/vật gì, ở đâu, ánh sáng, cảm xúc. Không chữ, "
+                                             "không mô tả khuôn mặt người thật, mọi người mặc đủ quần áo")
+    image_query_en: str = Field(description="TIẾNG ANH, 2–4 từ để tìm ảnh dọc trên Pixabay nếu không tạo được ảnh AI, "
+                                            "vd 'old hands holding child'")
+    music_mood: str = Field(default="", description="Kiểu nhạc nền, tiếng Việt, vd 'piano chậm, sâu lắng'")
+    thumb_text: str = Field(description="Chữ to trên ẢNH BÌA, 3–7 từ, nêu bật lời răn. Không dấu chấm, không emoji")
+    closing_line: str = Field(description="CÂU KẾT hiện trên màn hình ở cuối video, 6–14 từ, đọng lại; khác câu đọc cuối")
+    caption: str = Field(description="Caption TikTok tiếng Việt")
+    hashtags: list[str] = Field(description="5–8 hashtag, không có dấu #")
+
+
+def write_wisdom(niche: dict, idea: dict, target_sec: int, owner_notes: list[str], feedback: str | None = None,
+                 previous: dict | None = None) -> WisdomScript:
+    words = int(target_sec * 2.3)  # a calm, slow reading voice ≈ 2.3 Vietnamese words per second
+    parts = [
+        f"Viết lời đọc cho MỘT video TikTok ~{target_sec} giây thuộc chủ đề '{niche.get('name', '')}', trụ cột: "
+        f"{idea.get('theme', '')}. Tự chọn MỘT góc cạnh cụ thể của mối quan hệ trong gia đình thuộc trụ cột này.",
+        f"Độ dài: khoảng {words - 15}–{words + 10} từ, chia thành 8–14 câu ngắn (mỗi câu là một phần tử của lines, "
+        "đọc chậm, có nhịp nghỉ). Cấu trúc: (1) hook chạm vào lòng người; (2) một hình ảnh đời thường ai cũng nhận ra; "
+        "(3) sự thật ta hay quên; (4) một lời nhắc nhẹ nhàng để làm ngay hôm nay. Văn nói, giàu hình ảnh, không văn "
+        "vẻ sáo rỗng, không giáo điều, không phán xét; xưng 'ta', 'chúng ta' hoặc nói trống.",
+        "KHÔNG có thoại nhân vật, không tên nhân vật. Không trích dẫn hay gán câu nói cho danh nhân, tôn giáo hay sách "
+        "cụ thể.",
+        "Tránh trùng các video đã làm:\n<done>\n" + json.dumps(idea.get("avoid") or [], ensure_ascii=False) + "\n</done>",
+        "Viết image_prompt_en cho MỘT ảnh nền dọc 9:16 gợi đúng thông điệp (để trống phần dưới cho phụ đề), "
+        "image_query_en, thumb_text, closing_line, music_mood.",
+    ]
+    if owner_notes:
+        parts.append("Góp ý chủ kênh trước đây (tiếp tục tôn trọng):\n<notes>\n" + "\n".join(f"- {n}" for n in owner_notes)
+                     + "\n</notes>")
+    if previous and feedback:
+        parts.append(f"Bản trước:\n<previous>\n{json.dumps(previous, ensure_ascii=False)}\n</previous>\n"
+                     f"Chủ kênh góp ý, hãy sửa theo:\n<feedback>\n{feedback}\n</feedback>")
+    elif previous:
+        parts.append("Chủ kênh muốn một phiên bản KHÁC hẳn (hook và hình ảnh khác), vẫn cùng trụ cột:\n"
+                     f"<previous>\n{json.dumps(previous, ensure_ascii=False)}\n</previous>")
+    parts.append(" ".join((niche.get("caption_hint") or "").split()) or DEFAULT_CAPTION)
+    log.info("Claude: viết lời răn dạy (%s)", idea.get("theme"))
+    return _parse(system_prompt(niche), "\n\n".join(parts), WisdomScript, effort="high")
 
 
 def beats(n: int) -> str:

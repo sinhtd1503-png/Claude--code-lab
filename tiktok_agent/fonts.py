@@ -62,11 +62,41 @@ def size(vid: dict, role: str, base: float) -> int:
     return int(round(base * choice(vid, role)["size"]))
 
 
+# Subtitle looks (Lời răn dạy can pick one, or the owner describes one): colour (RGB hex), size factor, translucent
+# box behind the text, position (bottom / lower third / middle of the frame)
+SUB_PRESETS = [
+    {"label": "Trắng viền đen, phía dưới", "color": "FFFFFF", "size": 1.0, "box": False, "position": "bottom"},
+    {"label": "Chữ lớn, 1/3 dưới", "color": "FFFFFF", "size": 1.3, "box": False, "position": "lower"},
+    {"label": "Nền mờ, 1/3 dưới", "color": "FFFFFF", "size": 1.15, "box": True, "position": "lower"},
+    {"label": "Vàng ấm, 1/3 dưới", "color": "FFE8A3", "size": 1.25, "box": False, "position": "lower"},
+    {"label": "Chữ lớn giữa màn hình", "color": "FFFFFF", "size": 1.4, "box": False, "position": "middle"},
+]
+# libass lays SRT subtitles out on a 288-unit-high canvas: MarginV 70 ≈ a quarter of the height above the bottom
+POSITIONS = {"bottom": (2, 70), "lower": (2, 100), "middle": (10, 0)}  # force_style uses SSA numbering: 10 = centre
+
+
+def sub_label(sub: dict | None) -> str:
+    sub = sub or {}
+    hit = next((p["label"] for p in SUB_PRESETS if all(sub.get(k) == p[k] for k in ("color", "size", "box", "position"))),
+               None)
+    return hit or (f"màu #{sub.get('color', 'FFFFFF')}, cỡ ×{float(sub.get('size', 1)):.2f}"
+                   + (", nền mờ" if sub.get("box") else "") + f", vị trí {sub.get('position', 'bottom')}")
+
+
+def _ass_colour(rgb: str) -> str:
+    h = (str(rgb or "FFFFFF").lstrip("#").upper() + "FFFFFF")[:6]
+    return f"&H00{h[4:6]}{h[2:4]}{h[0:2]}"
+
+
 def subtitle_style(vid: dict) -> str:
     c = choice(vid, "subtitle")
-    return (f"FontName={c['family']},FontSize={size(vid, 'subtitle', 13)},PrimaryColour=&H00FFFFFF,"
-            f"OutlineColour=&H80000000,BorderStyle=1,Outline=2,Shadow=0,Bold={1 if c['bold'] else 0},Alignment=2,"
-            "MarginV=70")
+    sub = (vid or {}).get("sub_style") or {}
+    align, margin = POSITIONS.get(sub.get("position") or "bottom", POSITIONS["bottom"])
+    fs = size(vid, "subtitle", 13 * max(0.6, min(2.0, float(sub.get("size") or 1.0))))
+    border = "BorderStyle=3,Outline=1,BackColour=&H80000000" if sub.get("box") else "BorderStyle=1,Outline=2"
+    return (f"FontName={c['family']},FontSize={fs},PrimaryColour={_ass_colour(sub.get('color'))},"
+            f"OutlineColour=&H80000000,{border},Shadow=0,Bold={1 if c['bold'] else 0},Alignment={align},"
+            f"MarginV={margin}")
 
 
 def subtitles_filter(vid: dict, srt: str = "subs.srt") -> str:
