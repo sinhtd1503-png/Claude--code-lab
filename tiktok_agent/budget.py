@@ -27,7 +27,8 @@ CREATE TABLE IF NOT EXISTS budget_requests (
 
 LABELS = {"claude": "Claude API (viết kế hoạch & kịch bản)",
           "apify": "Apify (quét kênh đối thủ)",
-          "gemini_video": "Gemini API (tạo clip AI tự động)"}
+          "gemini_video": "Gemini API (tạo clip AI tự động)",
+          "gemini_image": "Gemini API (tạo ảnh nền – Lời răn dạy)"}
 
 
 class BudgetNeeded(Exception):
