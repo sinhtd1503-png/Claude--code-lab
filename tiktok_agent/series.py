@@ -277,7 +277,7 @@ class WisdomScript(BaseModel):
     title: str = Field(description="Tiêu đề ngắn, tiếng Việt")
     hook: str = Field(description="Câu mở đầu chạm thẳng vào lòng người (chính là câu đọc đầu tiên)")
     lines: list[str] = Field(description="Lời đọc, theo thứ tự: mỗi phần tử là MỘT câu hoặc một ý ngắn (6–22 từ), "
-                                         "tiếng Việt, câu đầu = hook")
+                                         "tiếng Việt, câu đầu = hook; tổng số từ đúng theo thời lượng yêu cầu")
     lesson: str = Field(description="Thông điệp, 1 câu")
     image_prompt_en: str = Field(description="TIẾNG ANH, 40–80 từ. MỘT hình ảnh nền tĩnh, giàu biểu tượng, gợi đúng "
                                              "thông điệp (vd đôi tay già nắm tay trẻ nhỏ bên hiên nhà; mâm cơm còn "
@@ -298,8 +298,9 @@ def write_wisdom(niche: dict, idea: dict, target_sec: int, owner_notes: list[str
     parts = [
         f"Viết lời đọc cho MỘT video TikTok ~{target_sec} giây thuộc chủ đề '{niche.get('name', '')}', trụ cột: "
         f"{idea.get('theme', '')}. Tự chọn MỘT góc cạnh cụ thể của mối quan hệ trong gia đình thuộc trụ cột này.",
-        f"Độ dài: khoảng {words - 15}–{words + 10} từ, chia thành 8–14 câu ngắn (mỗi câu là một phần tử của lines, "
-        "đọc chậm, có nhịp nghỉ). Cấu trúc: (1) hook chạm vào lòng người; (2) một hình ảnh đời thường ai cũng nhận ra; "
+        f"Độ dài: video {target_sec} giây → khoảng {max(20, words - 12)}–{words + 8} từ (KHÔNG vượt quá), chia thành "
+        f"{max(3, words // 15)}–{max(5, words // 9)} câu ngắn (mỗi câu là một phần tử của lines, đọc chậm, có nhịp "
+        "nghỉ). Cấu trúc: (1) hook chạm vào lòng người; (2) một hình ảnh đời thường ai cũng nhận ra; "
         "(3) sự thật ta hay quên; (4) một lời nhắc nhẹ nhàng để làm ngay hôm nay. Văn nói, giàu hình ảnh, không văn "
         "vẻ sáo rỗng, không giáo điều, không phán xét; xưng 'ta', 'chúng ta' hoặc nói trống.",
         "KHÔNG có thoại nhân vật, không tên nhân vật. Không trích dẫn hay gán câu nói cho danh nhân, tôn giáo hay sách "

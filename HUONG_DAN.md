@@ -284,23 +284,31 @@ Mỗi lần bạn bấm **Duyệt kịch bản**, hệ thống cập nhật mộ
        cho chủ đề 1.
      - **Trả lời** thẻ hiện đại, gõ `Vai: …` / `Ngoại hình: …` / `Cách nói: …` để sửa.
      Giá trị ban đầu trong `config.yaml`, mục `topics: giadinh:` (`cast`, `setting_en`, `pillars`).
-   - **3️⃣ Những lời răn dạy** — **không thoại nhân vật**: một **ảnh nền**, một **giọng đọc trầm ấm** đọc những lời
-     nhắc nhở, triết lý sống về các mối quan hệ trong gia đình, **phụ đề chạy theo lời đọc**, nhạc nền nhẹ; video dài
-     hơn (~60 giây, chỉnh `topics: loiday: target_sec`). **Không cần tạo clip trên Flow.** Sau khi duyệt kịch bản, bot
-     hỏi duyệt lần lượt:
+   - **3️⃣ Những lời răn dạy** — **không thoại nhân vật**: một **ảnh nền**, một **giọng đọc** đọc những lời nhắc nhở,
+     triết lý sống về các mối quan hệ trong gia đình, **phụ đề chạy theo lời đọc**, nhạc nền nhẹ. **Không cần tạo clip
+     trên Flow.** Bấm 3️⃣ → **chọn thời lượng** (30 giây / 45 giây / 1 phút / 90 giây / 2 phút; gõ nhanh
+     `/kichban 3 90`) → bài đọc được viết vừa đúng thời lượng đó. Sau khi duyệt kịch bản, bot hỏi duyệt lần lượt:
      1. **🖼 Ảnh nền** — hệ thống tự tạo (Gemini `gemini-2.5-flash-image` nếu có `GEMINI_API_KEY`, không thì ảnh miễn
         phí Pixabay). Không ưng: **🔄 Ảnh khác**, **✍️ Tự tạo (lấy prompt)**, **Trả lời** tin ảnh bằng **ảnh của bạn**,
         hoặc **Trả lời** bằng chữ **mô tả ảnh** muốn có. **Tạo ảnh tự động bị lỗi** → bot gửi tin **✋ Tạo ảnh nền
         bằng tay** kèm lỗi và prompt: dán prompt vào Google Flow (chế độ ảnh, dọc 9:16) / Gemini, rồi **Trả lời đúng
         tin đó** bằng ảnh vừa tạo (hoặc bấm **🖼 Lấy ảnh Pixabay** / **🔄 Thử tạo tự động lại**).
      2. **🔤 Chữ & phụ đề** — ảnh minh hoạ dựng trên chính ảnh nền: **🔤 Font đầu / phụ đề / kết**, **🎨 Kiểu phụ đề
-        khác** (màu, cỡ, nền mờ, vị trí), hoặc **Trả lời** bằng mô tả, vd *phụ đề vàng, chữ to, có nền mờ, font viết
-        tay cho câu kết*.
-     3. **🎙 Giọng đọc** — nghe thử đúng âm thanh video (giọng + nhạc): **🎙 Giọng khác** (nam trầm ấm, nam sâu lắng,
-        nữ dịu dàng, nữ trầm ấm), **🎵 Đổi nhạc**, hoặc **Trả lời** bằng mô tả, vd *trầm hơn, chậm hơn*, *giọng nữ ấm
-        áp*, `pitch -15 rate -20`.
-     4. **✅ Duyệt giọng đọc** → bot dựng video (ảnh zoom rất chậm + giọng + phụ đề + chữ ảnh bìa + câu kết) và gửi
-        duyệt như thường. **🔁 Làm lại ảnh/chữ/giọng** để quay lại bước ảnh nền.
+        khác**, hoặc mô tả **riêng từng phần**: **✍️ Tả font đầu / ✍️ Tả phụ đề / ✍️ Tả font kết** → **Trả lời** tin bot
+        gửi bằng mô tả (vd *câu kết: font có chân trang nhã như lời đề tặng*; *phụ đề: chữ tròn vàng nhạt, to, có nền
+        mờ, đặt cao hơn*) — chỉ phần đó đổi. Trả lời thẳng ảnh minh hoạ = mô tả cho cả 3 phần.
+     3. **🎙 Giọng đọc** (nghe riêng giọng): **🎙 Giọng khác** (nam trầm ấm, nam sâu lắng, nữ dịu dàng, nữ trầm ấm, và khi
+        có `GEMINI_API_KEY`: *AI – Ông cụ kể chuyện*, *AI – Người mẹ dịu dàng*), hoặc **✍️ Mô tả giọng** → **Trả lời**
+        bằng mô tả giọng muốn có, vd *giọng ông cụ miền Bắc, trầm khàn, chậm rãi như kể chuyện cho cháu*, *giọng
+        người mẹ trẻ, dịu dàng, hơi nghẹn ngào*. Có `GEMINI_API_KEY`: hệ thống **tạo giọng AI mới** (Gemini TTS, 30
+        giọng gốc + chỉ dẫn cách đọc) và gửi nghe thử (≈ $0.02/phút lời đọc, lần đầu hỏi duyệt ngân sách). Chưa có
+        key: chỉ chỉnh được nam/nữ, độ trầm, tốc độ.
+     4. **🎵 Nhạc nền** (nghe giọng + nhạc đúng như video): **🎵 Bài khác**, **🔇 Không nhạc**, hoặc **✍️ Mô tả nhạc** →
+        **Trả lời** bằng mô tả, vd *piano chậm sâu lắng, nhỏ hơn* — bot chọn bài hợp nhất **trong thư viện nhạc của
+        bạn** (theo tên file) và chỉnh mức to nhỏ. Bot không tự sáng tác nhạc: muốn bài mới, gửi file mp3 không bản
+        quyền vào bot (đặt tên gợi tả, vd `piano buon.mp3`).
+     5. **✅ Duyệt nhạc & dựng video** → bot dựng video (ảnh zoom rất chậm + giọng + phụ đề + chữ ảnh bìa + câu kết) và
+        gửi duyệt như thường. **🔁 Làm lại ảnh/chữ/giọng** để quay lại bước ảnh nền.
      Font, kiểu phụ đề và giọng đã chọn được nhớ cho các video chủ đề 3 sau.
    Gõ nhanh: `/kichban 1`, `/kichban 2`, `/kichban 3`. Không muốn bị hỏi: đặt `topics: ask: false` (luôn chủ đề 1).
    Sau đó bot gửi **📝 Kịch bản**: thoại từng cảnh, **chữ trên ảnh bìa**
@@ -313,7 +321,8 @@ Mỗi lần bạn bấm **Duyệt kịch bản**, hệ thống cập nhật mộ
 7. **Bước 3/4 – duyệt chữ:** bot gửi **ảnh minh hoạ** 3 phần chữ dựng y như video thật: chữ ảnh bìa (đầu video),
    phụ đề, câu kết (cuối video). Bấm **🔤 Font đầu / Font phụ đề / Font kết** để thử font khác (9 font đủ dấu tiếng
    Việt), **🎨 Kiểu phụ đề khác** (màu, cỡ, nền mờ, vị trí), hoặc **Trả lời** ảnh bằng mô tả, vd *phụ đề vàng, chữ to
-   hơn, có nền mờ; font viết tay cho câu kết*. Ưng thì **✅ Duyệt chữ**. Lựa chọn được nhớ cho các video sau; xem/đổi
+   hơn, có nền mờ; font viết tay cho câu kết*, hoặc mô tả riêng từng phần bằng **✍️ Tả font đầu / phụ đề / kết**.
+   Ưng thì **✅ Duyệt chữ**. Lựa chọn được nhớ cho các video sau; xem/đổi
    bất kỳ lúc nào bằng `/font`.
 8. **Bước 4/4 – chọn cách tạo clip:** lúc này bot mới gửi prompt, tuỳ cách bạn chọn:
    - **🤖 Tự động bằng Gemini** (trả phí, hỏi duyệt ngân sách).
