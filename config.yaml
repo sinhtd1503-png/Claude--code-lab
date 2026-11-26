@@ -238,7 +238,10 @@ topics:
     visual_style_en: >
       Cinematic anime feature-film style illustration, painterly richly detailed background, soft warm light,
       gentle film grain, calm contemplative mood, warm muted color palette
-    target_sec: 60            # độ dài lời đọc mong muốn (giây)
+    target_sec: 60            # độ dài mặc định (giây); trước khi viết bot hỏi chọn một trong `durations`
+    durations: [30, 45, 60, 90, 120]
+    tts_model: "gemini-2.5-flash-preview-tts"   # giọng đọc theo mô tả (Gemini TTS, cần GEMINI_API_KEY)
+    tts_usd_per_min: 0.02     # ước tính chi phí Gemini TTS cho 1 phút lời đọc
     image:
       model: "gemini-2.5-flash-image"    # tạo ảnh nền bằng Gemini (cần GEMINI_API_KEY); không có key → ảnh Pixabay
       usd_per_image: 0.04                # ("imagen-*" chỉ chạy trên Vertex AI, không dùng với khoá AI Studio)
@@ -248,6 +251,11 @@ topics:
       - {label: "Nam sâu lắng, chậm rãi", voice: "vi-VN-NamMinhNeural", pitch: "-20Hz", rate: "-18%"}
       - {label: "Nữ dịu dàng", voice: "vi-VN-HoaiMyNeural", pitch: "-5Hz", rate: "-10%"}
       - {label: "Nữ trầm ấm", voice: "vi-VN-HoaiMyNeural", pitch: "-15Hz", rate: "-14%"}
+      # Giọng AI Gemini (chỉ hiện khi có GEMINI_API_KEY): giọng gốc + chỉ dẫn cách đọc
+      - {label: "AI – Ông cụ kể chuyện", engine: gemini, name: "Algenib",
+         style: "Read in Vietnamese with a Northern accent, like a wise elderly grandfather telling his grandchildren a life lesson, deep warm slightly husky voice, slow, gentle pauses"}
+      - {label: "AI – Người mẹ dịu dàng", engine: gemini, name: "Vindemiatrix",
+         style: "Read in Vietnamese with a Northern accent, like a gentle loving mother speaking softly at night, warm, calm, slow, tender"}
 
 content:
   target_duration_sec: 24     # độ dài video mong muốn (kênh mẫu: 15–30 giây)
@@ -394,6 +402,10 @@ budget:
       suggest_monthly_usd: 5
       usd_per_clip: 0.19      # 1 video 3 cảnh ≈ $0.6 → $5 ≈ 8 video, $10 ≈ 17 video
       options_usd: [1, 5, 10, 25]
+    gemini_tts:               # tuỳ chọn: giọng đọc theo mô tả (Gemini TTS) cho chủ đề 3, ~$0.02 / phút lời đọc
+      free_monthly_usd: 0
+      suggest_monthly_usd: 1
+      options_usd: [1, 2, 5]
     gemini_image:             # tuỳ chọn: tạo ảnh nền cho chủ đề 3 (Lời răn dạy) bằng Gemini; không có → ảnh Pixabay
       free_monthly_usd: 0
       suggest_monthly_usd: 1

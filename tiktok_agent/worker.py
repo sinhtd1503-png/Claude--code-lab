@@ -344,16 +344,34 @@ def topic_choice_msg(daily: bool = False) -> dict:
     return msg("\n".join(lines), kb(rows))
 
 
+def duration_msg() -> dict:
+    ds = [int(x) for x in wcfg().get("durations") or [30, 45, 60, 90, 120]]
+    row = [(f"{d // 60} phút" if d % 60 == 0 and d >= 60 else f"{d} giây", f"ld:{d}") for d in ds]
+    return msg("📜 <b>Lời răn dạy – chọn thời lượng video</b>\nBài đọc (số câu, số chữ) sẽ viết vừa đúng thời lượng này. "
+               "Gõ nhanh: <code>/kichban 3 90</code>.", kb(row[:3], row[3:]) if len(row) > 3 else kb(row))
+
+
+def choose_duration(sec: int, mid: int | None) -> dict:
+    if not 15 <= sec <= 300:
+        return reply(clear_buttons(mid), msg("Thời lượng từ 15 đến 300 giây."))
+    return reply(clear_buttons(mid), msg(f"⏳ Đang viết lời răn dạy ~{sec} giây (khoảng 1 phút)…"),
+                 next_step={"action": "script", "topic": "loiday", "sec": sec})
+
+
 def choose_topic(n: int, mid: int | None) -> dict:
     topic = TOPICS.get(n)
     if not topic:
         return reply(clear_buttons(mid))
+    if topic == "loiday":
+        return reply(clear_buttons(mid), duration_msg())
     return reply(clear_buttons(mid), msg(f"⏳ Đang viết kịch bản {TOPIC_LABEL[topic]} (khoảng 1 phút)…"),
                  next_step={"action": "script", "topic": topic})
 
 
 def kichban_cmd(text: str) -> dict:
-    m = re.search(r"\b([123])\b", text.partition(" ")[2])
+    m = re.search(r"\b([123])\b(?:\s+(\d{2,3}))?", text.partition(" ")[2])
+    if m and m.group(1) == "3" and m.group(2):
+        return choose_duration(int(m.group(2)), None)
     if m:
         return choose_topic(int(m.group(1)), None)
     if ask_topic():
@@ -577,7 +595,8 @@ def wisdom_script_messages(cid: int, item: dict) -> list[dict]:
              f"<b>{esc(sc['title'])}</b>", "", "🎙 <b>Lời đọc:</b>"]
     lines += [f"{i}. {esc(s['narration'])}" for i, s in enumerate(sc["scenes"], 1)]
     words = sum(len(s["narration"].split()) for s in sc["scenes"])
-    lines += ["", f"⏱ ≈ {words} từ ≈ {words / 2.3:.0f} giây đọc chậm",
+    lines += ["", f"⏱ Thời lượng chọn: <b>{idea.get('target_sec') or wcfg().get('target_sec', 60)} giây</b> · bài đọc "
+                  f"≈ {words} từ ≈ {words / 2.3:.0f} giây đọc chậm",
               f"🖼 <b>Ý tưởng ảnh nền:</b> <i>{esc(sc.get('image_prompt_en', ''))}</i>"]
     if sc.get("music_mood"):
         lines.append(f"🎵 <b>Không khí nhạc gợi ý:</b> {esc(sc['music_mood'])}")
@@ -585,8 +604,8 @@ def wisdom_script_messages(cid: int, item: dict) -> list[dict]:
               f"🖼 <b>Chữ trên ảnh bìa:</b> {esc(thumb_text(sc))}",
               f"🔚 <b>Câu kết (hiện ở cuối):</b> {esc(closing_line(sc))}", "",
               f"📣 <b>Caption:</b> {esc(item['caption'])}", "",
-              "👉 Duyệt kịch bản → duyệt <b>ảnh nền</b> → duyệt <b>chữ & phụ đề</b> → duyệt <b>giọng đọc</b> → bot dựng "
-              "video (không cần tạo clip). Muốn sửa lời: <b>Trả lời (Reply)</b> tin này và gõ góp ý."]
+              "👉 Duyệt kịch bản → duyệt <b>ảnh nền</b> → duyệt <b>chữ & phụ đề</b> → duyệt <b>giọng đọc</b> → duyệt "
+              "<b>nhạc nền</b> → bot dựng video (không cần tạo clip). Muốn sửa lời: <b>Trả lời (Reply)</b> tin này và gõ góp ý."]
     return long_msg("\n".join(lines), kb([("✅ Duyệt kịch bản", f"sa:{cid}")],
                                          [("🔄 Viết bản khác", f"sr:{cid}"), ("❌ Bỏ", f"sx:{cid}")]))
 
@@ -738,7 +757,7 @@ def music_text(cid: int, text: str) -> dict:
     """The owner describes the music they want: a track (by name or mood), louder / softer, or none."""
     with LOCK:
         item = DB_.get_content(cid)
-    if not item or item["status"] not in ("music_review", "voice_review", "script_review"):
+    if not item or item["status"] not in ("music_review", "script_review"):
         return reply(msg(f"#{cid} không còn ở bước duyệt nhạc."))
     sc = item["script"]
     a = sc.get("audio") or {}
@@ -755,8 +774,8 @@ def music_text(cid: int, text: str) -> dict:
         DB_.update_content(cid, script=sc)
     note = f"✍️ <i>{esc(pick.note_vi)}</i>"
     if is_wisdom(sc):
-        prepare_wisdom_audio(cid, music=music)
-        return reply(voice_review_msg(cid, note))
+        prepare_wisdom_audio(cid, music=music, mix=True)
+        return reply(wisdom_music_msg(cid, note))
     if is_dialogue(sc):
         prepare_music(cid, music)
     else:
@@ -979,7 +998,7 @@ def frequency_cmd(text: str) -> dict:
                                           [("4 ngày/lần", "tf:4"), ("Mỗi tuần", "tf:7")])))
 
 
-def next_script(scheduled: bool = False, topic: str | None = None) -> dict:
+def next_script(scheduled: bool = False, topic: str | None = None, sec: int | None = None) -> dict:
     topic = topic if topic in TOPIC_LABEL else None
     ask = ask_topic()
     with LOCK:
@@ -1001,7 +1020,7 @@ def next_script(scheduled: bool = False, topic: str | None = None) -> dict:
     if topic == "giadinh":
         return family_script()
     if topic == "loiday":
-        return wisdom_script()
+        return wisdom_script(sec)
     with LOCK:
         if not plan:
             lp = latest_plan()
@@ -1073,7 +1092,8 @@ def wcfg() -> dict:
 
 
 def _write_wisdom(idea: dict, feedback=None, previous=None) -> tuple[dict, str]:
-    w = series.write_wisdom(topic_niche("loiday"), idea, int(wcfg().get("target_sec", 60)), owner_notes(),
+    w = series.write_wisdom(topic_niche("loiday"), idea, int(idea.get("target_sec") or wcfg().get("target_sec", 60)),
+                            owner_notes(),
                             feedback=feedback, previous=previous).model_dump()
     lines = [ln.strip() for ln in w.pop("lines") if ln.strip()]
     script = {"kind": "wisdom", **w, "scenes": [{"narration": ln} for ln in lines]}
@@ -1083,12 +1103,13 @@ def _write_wisdom(idea: dict, feedback=None, previous=None) -> tuple[dict, str]:
     return script, caption
 
 
-def wisdom_script() -> dict:
+def wisdom_script(sec: int | None = None) -> dict:
     pillars = wcfg().get("pillars") or ["Gia đình"]
+    sec = int(sec or wcfg().get("target_sec", 60))
     with LOCK:
         svc = (S.raw.get("budget") or {}).get("services", {})
         BUDGET.ensure("claude", float(svc.get("claude", {}).get("est_script_usd", 0.15)),
-                      "Viết lời răn dạy.", resume={"action": "script", "topic": "loiday"})
+                      "Viết lời răn dạy.", resume={"action": "script", "topic": "loiday", "sec": sec})
         if "wisdom" in BUSY:
             return reply(msg("⏳ Đang viết kịch bản…"))
         BUSY.add("wisdom")
@@ -1096,7 +1117,7 @@ def wisdom_script() -> dict:
         DB_.kv_set("loiday_pillar", {"i": k + 1})
         avoid = topic_titles("loiday")
     try:
-        idea = {"topic": "loiday", "theme": pillars[k % len(pillars)], "avoid": avoid}
+        idea = {"topic": "loiday", "theme": pillars[k % len(pillars)], "avoid": avoid, "target_sec": sec}
         script, caption = _write_wisdom(idea)
         idea["title"] = script["title"]
         with LOCK:
@@ -1197,7 +1218,7 @@ def image_review_msg(cid: int, note: str = "") -> dict:
     img = DATA / ws["image"] if ws.get("image") else None
     if not (img and img.is_file()):
         return manual_image_msg(cid, note)
-    cap = (f"🖼 <b>#{cid} · Bước 2/4 – duyệt ảnh nền</b> [ANH:{cid}]\nNguồn: {esc(ws.get('image_source', ''))}"
+    cap = (f"🖼 <b>#{cid} · Bước 2/5 – duyệt ảnh nền</b> [ANH:{cid}]\nNguồn: {esc(ws.get('image_source', ''))}"
            + (f"\n{note}" if note else "")
            + "\n\nKhông ưng thì:\n• <b>🔄 Ảnh khác</b>;\n• <b>✍️ Tự tạo</b>: lấy prompt để tạo trên Flow/Gemini;\n"
              "• <b>Trả lời</b> tin này bằng <b>ảnh của bạn</b>;\n• hoặc <b>Trả lời</b> bằng chữ <b>mô tả ảnh</b> muốn có, vd "
@@ -1257,7 +1278,7 @@ def wisdom_font_msg(cid: int, note: str = "") -> dict:
     first = sc["scenes"][0]["narration"] if sc.get("scenes") else fonts.SAMPLE["subtitle"]
     words = first.split()
     texts = {"cover": thumb_text(sc), "subtitle": " ".join(words[:7]), "ending": closing_line(sc)}
-    cap = (f"🔤 <b>#{cid} · Bước 3/4 – duyệt chữ & phụ đề</b> [CHU:{cid}]\n"
+    cap = (f"🔤 <b>#{cid} · Bước 3/5 – duyệt chữ & phụ đề</b> [CHU:{cid}]\n"
            + "\n".join(f"• {fonts.ROLE_LABEL[r]}: <b>{esc(fonts.CATALOG[st['fonts'][r]]['label'])}</b>" for r in fonts.ROLES)
            + f"\n• Kiểu phụ đề: <b>{esc(fonts.sub_label(st['sub']))}</b>"
            + (f"\n{note}" if note else "")
@@ -1265,7 +1286,9 @@ def wisdom_font_msg(cid: int, note: str = "") -> dict:
              "có nền mờ, font viết tay cho câu kết</i>.")
     rows = [[("✅ Duyệt chữ & phụ đề", f"fa:{cid}")],
             [("🔤 Font đầu", f"wf:{cid * 10}"), ("🔤 Font phụ đề", f"wf:{cid * 10 + 1}"), ("🔤 Font kết", f"wf:{cid * 10 + 2}")],
-            [("🎨 Kiểu phụ đề khác", f"sb:{cid}")]]
+            [("🎨 Kiểu phụ đề khác", f"sb:{cid}")],
+            [("✍️ Tả font đầu", f"fd:{cid * 10}"), ("✍️ Tả phụ đề", f"fd:{cid * 10 + 1}"),
+             ("✍️ Tả font kết", f"fd:{cid * 10 + 2}")]]
     try:
         d = DATA / "fonts_preview"
         d.mkdir(parents=True, exist_ok=True)
@@ -1304,35 +1327,52 @@ def cycle_wisdom_sub(cid: int, mid: int | None) -> dict:
     return reply(clear_buttons(mid), wisdom_font_msg(cid))
 
 
-def wisdom_style_text(cid: int, text: str) -> dict:
+def wisdom_style_text(cid: int, text: str, role: str | None = None) -> dict:
+    """The owner's words → fonts + subtitle look (Claude picks from the font catalog). `role` = only the cover text,
+    the subtitles or the closing line. Topic 3 keeps its own style; topics 1–2 share the channel's style."""
     with LOCK:
         item = DB_.get_content(cid)
-    if item and item["status"] == "font_review" and not is_wisdom(item["script"]):
-        return dialogue_style_text(cid, text)
-    if not _in_font_review(cid):
+    if not item or item["status"] != "font_review":
         return reply(msg(f"#{cid} không còn ở bước duyệt chữ."))
+    wis = is_wisdom(item["script"])
     est = float(((S.raw.get("budget") or {}).get("services", {}).get("claude", {})).get("est_fix_usd", 0.03))
     with LOCK:
-        BUDGET.ensure("claude", est, "Chọn font & kiểu phụ đề theo mô tả.", resume={"action": "wstyle", "id": cid,
-                                                                                   "text": text})
-    cur = wisdom_style()
-    pick = wisdom.style_from_text(text, cur)
-    set_wisdom_style(fonts_={"cover": pick.cover, "subtitle": pick.subtitle, "ending": pick.ending},
-                     sub={"color": pick.color, "size": round(pick.size, 2), "box": pick.box, "position": pick.position})
-    return reply(wisdom_font_msg(cid, note=f"✍️ <i>{esc(pick.note_vi)}</i>"))
+        BUDGET.ensure("claude", est, "Chọn font & kiểu phụ đề theo mô tả.",
+                      resume={"action": "wstyle", "id": cid, "text": text, "role": role})
+    cur = wisdom_style() if wis else {"fonts": current_fonts(), "sub": {**fonts.SUB_PRESETS[0], **current_sub()}}
+    desc = text if role not in fonts.ROLES else (f"CHỈ đổi phần {fonts.ROLE_LABEL[role]} (trường '{role}'"
+                                                  + (" và kiểu phụ đề" if role == "subtitle" else "")
+                                                  + "); các phần khác giữ nguyên như hiện tại. Mô tả: " + text)
+    pick = wisdom.style_from_text(desc, cur)
+    roles = fonts.ROLES if role not in fonts.ROLES else (role,)
+    new_fonts = {r: getattr(pick, r) for r in roles}
+    sub = ({"color": pick.color, "size": round(pick.size, 2), "box": pick.box, "position": pick.position}
+           if role in (None, "subtitle") else None)
+    if wis:
+        set_wisdom_style(fonts_=new_fonts, sub=sub)
+    else:
+        for r, k in new_fonts.items():
+            set_font(r, k)
+        if sub:
+            set_sub(sub)
+    note = f"✍️ <i>{esc(pick.note_vi)}</i>"
+    return reply(wisdom_font_msg(cid, note=note) if wis else font_review_msg(cid, note=note))
 
 
-def dialogue_style_text(cid: int, text: str) -> dict:
-    """Topics 1–2: the owner's words → fonts + subtitle look (Claude picks from the catalog)."""
-    est = float(((S.raw.get("budget") or {}).get("services", {}).get("claude", {})).get("est_fix_usd", 0.03))
-    with LOCK:
-        BUDGET.ensure("claude", est, "Chọn font & kiểu phụ đề theo mô tả.", resume={"action": "wstyle", "id": cid,
-                                                                                   "text": text})
-    pick = wisdom.style_from_text(text, {"fonts": current_fonts(), "sub": current_sub()})
-    for role in fonts.ROLES:
-        set_font(role, getattr(pick, role))
-    set_sub({"color": pick.color, "size": round(pick.size, 2), "box": pick.box, "position": pick.position})
-    return reply(font_review_msg(cid, note=f"✍️ <i>{esc(pick.note_vi)}</i>"))
+DESCRIBE_FONT_HINT = {
+    "cover": "chữ to ở giây đầu (ảnh bìa), vd <i>chữ viết tay mềm mại, màu trắng, cảm giác hoài niệm</i>",
+    "subtitle": "phụ đề chạy theo lời, vd <i>chữ tròn dễ đọc, màu vàng nhạt, to hơn, có nền mờ, đặt cao hơn</i>",
+    "ending": "câu kết ở cuối video, vd <i>font có chân thanh lịch, trang trọng, như lời đề tặng</i>"}
+
+
+def describe_font_prompt(n: int) -> dict:
+    cid, r = divmod(n, 10)
+    if r >= len(fonts.ROLES):
+        return reply()
+    role = fonts.ROLES[r]
+    return reply(msg(f"✍️ <b>#{cid} · Mô tả {esc(fonts.ROLE_LABEL[role])}</b> [CHU:{cid}:{r}]\n<b>Trả lời (Reply) tin "
+                     f"này</b> bằng mô tả kiểu chữ bạn muốn cho {DESCRIBE_FONT_HINT[role]}.\nBot chọn font hợp nhất "
+                     "(9 font đủ dấu tiếng Việt) và gửi lại ảnh minh hoạ; các phần khác giữ nguyên."))
 
 
 def cycle_sub(cid: int, mid: int | None) -> dict:
@@ -1349,49 +1389,91 @@ def cycle_sub(cid: int, mid: int | None) -> dict:
     return reply(clear_buttons(mid), font_review_msg(cid))
 
 
+def _wvoice(p: dict) -> dict:
+    """A voice spec in canonical form: edge-tts {voice, pitch, rate} or Gemini {engine, name, style}."""
+    if (p or {}).get("engine") == "gemini":
+        name = p.get("name") if p.get("name") in wisdom.GEMINI_VOICES else "Charon"
+        return {"engine": "gemini", "name": name, "style": " ".join(str(p.get("style") or "").split())}
+    p = p or {}
+    return {"voice": norm_voice(p.get("voice")), "pitch": norm_pitch(p.get("pitch")), "rate": norm_rate(p.get("rate"))}
+
+
+def gemini_ok() -> bool:
+    return bool(os.getenv("GEMINI_API_KEY"))
+
+
 def wisdom_voice_default() -> dict:
     with LOCK:
         kv = DB_.kv_get(WVOICE_KEY) or {}
     base = wcfg().get("voice") or {"voice": "vi-VN-NamMinhNeural", "pitch": "-10Hz", "rate": "-12%"}
-    v = {**base, **{k: kv[k] for k in ("voice", "pitch", "rate") if kv.get(k)}}
-    return {"voice": norm_voice(v["voice"]), "pitch": norm_pitch(v["pitch"]), "rate": norm_rate(v["rate"])}
+    if kv.get("engine") == "gemini" and gemini_ok():
+        return _wvoice(kv)
+    return _wvoice({**base, **{k: kv[k] for k in ("voice", "pitch", "rate") if kv.get(k)}})
+
+
+def wvoice_presets() -> list[tuple[str, dict]]:
+    out = []
+    for p in wcfg().get("voices") or []:
+        if p.get("engine") == "gemini" and not gemini_ok():
+            continue
+        out.append((p.get("label") or "", _wvoice(p)))
+    return out or [("", wisdom_voice_default())]
 
 
 def voice_label(v: dict) -> str:
-    for p in wcfg().get("voices") or []:
-        if (norm_voice(p.get("voice")), norm_pitch(p.get("pitch")), norm_rate(p.get("rate"))) == \
-                (v["voice"], v["pitch"], v["rate"]):
-            return p.get("label") or ""
+    v = _wvoice(v)
+    hit = next((lb for lb, pv in wvoice_presets() if pv == v and lb), None)
+    if hit:
+        return hit
+    if v.get("engine") == "gemini":
+        return f"AI Gemini – giọng {v['name']} ({wisdom.GEMINI_VOICES.get(v['name'], '')})"
     return f"{VOICE_LABELS.get(v['voice'], v['voice'])}, cao độ {v['pitch']}, tốc độ {v['rate']}"
 
 
-def prepare_wisdom_audio(cid: int, voice: dict | None = None, music: str | None = None) -> dict:
+def _wisdom_meta(cid: int, sc: dict, voice: dict) -> tuple[dict, str]:
+    """The reading voice of a topic-3 video (cached by text + voice). Gemini voices are budget-gated."""
+    d = DATA / "audio" / str(cid) / "wisdom"
+    d.mkdir(parents=True, exist_ok=True)
+    a = sc.get("audio") or {}
+    h = _narr_hash(json.dumps(voice, sort_keys=True), "", wisdom.narrations(sc))
+    mf = d / "narration.json"
+    if a.get("hash") == h and mf.is_file() and (d / "narration.mp3").is_file():
+        return {**json.loads(mf.read_text(encoding="utf-8")), "path": str(d / "narration.mp3")}, h
+    if voice.get("engine") == "gemini":
+        words = sum(len(x.split()) for x in wisdom.narrations(sc))
+        usd = round(float(wcfg().get("tts_usd_per_min", 0.02)) * max(0.5, words / 2.3 / 60), 4)
+        with LOCK:
+            BUDGET.ensure("gemini_tts", usd, f"Giọng đọc AI theo mô tả cho #{cid} (≈ ${usd:.3f}).",
+                          resume={"action": "wvoice", "id": cid})
+        meta = wisdom.voice_track(sc, voice, d, wcfg().get("tts_model") or "gemini-2.5-flash-preview-tts")
+        with LOCK:
+            BUDGET.record("gemini_tts", usd, f"#{cid} giọng đọc")
+        return meta, h
+    return wisdom.voice_track(sc, voice, d), h
+
+
+def prepare_wisdom_audio(cid: int, voice: dict | None = None, music: str | None = None, mix: bool = False) -> dict:
+    """Voice step: preview = the voice alone. Music step (mix=True): voice + music exactly as in the video."""
     with LOCK:
         item = DB_.get_content(cid)
     sc = item["script"]
     ws = sc.get("wisdom") or {}
     a = sc.get("audio") or {}
-    voice = voice or ws.get("voice") or wisdom_voice_default()
+    voice = _wvoice(voice or ws.get("voice") or wisdom_voice_default())
     if music is None:
         if "music" in a:
             music = a["music"]
         else:
             m = pick_music(cid)
             music = (rel(Path(m)) if Path(m).resolve().is_relative_to(DATA) else str(Path(m).resolve())) if m else ""
+    meta, h = _wisdom_meta(cid, sc, voice)
     d = DATA / "audio" / str(cid) / "wisdom"
-    d.mkdir(parents=True, exist_ok=True)
-    h = _narr_hash(json.dumps(voice, sort_keys=True), "", wisdom.narrations(sc))
-    mf = d / "narration.json"
-    if a.get("hash") == h and mf.is_file() and (d / "narration.mp3").is_file():
-        meta = {**json.loads(mf.read_text(encoding="utf-8")), "path": str(d / "narration.mp3")}
-    else:
-        meta = wisdom.voice_track(sc, voice, d)
     mpath = (str(DATA / music) if music and not Path(music).is_absolute() else music) or None
-    prev = wisdom.preview(meta, mpath, cfg_for(DB_.get_content(cid)), d / f"preview_{now_ts()}.mp3")
+    prev = wisdom.preview(meta, mpath if mix else None, cfg_for(DB_.get_content(cid)), d / f"preview_{now_ts()}.mp3")
     for old in d.glob("preview_*.mp3"):
         if old != prev:
             old.unlink(missing_ok=True)
-    sc["audio"] = {"mode": "wisdom", "music": music, "hash": h, "preview": rel(prev),
+    sc["audio"] = {"mode": "wisdom", "music": music, "hash": h, "preview": rel(prev), "mixed": mix,
                    "total": round(wisdom.total_sec(meta), 2), "music_db": a.get("music_db", 0)}
     sc.setdefault("wisdom", {})["voice"] = voice
     with LOCK:
@@ -1404,55 +1486,75 @@ def voice_review_msg(cid: int, note: str = "") -> dict:
     sc = item["script"]
     a = sc.get("audio") or {}
     v = (sc.get("wisdom") or {}).get("voice") or wisdom_voice_default()
-    music = esc(Path(a["music"]).stem) if a.get("music") else "chưa có nhạc (gửi mp3 vào bot để thêm)"
-    cap = (f"🎙 <b>#{cid} · Bước 4/4 – duyệt giọng đọc</b> [GIONGDOC:{cid}] ({a.get('total', 0):.0f}s)\n"
-           f"🗣 Giọng: <b>{esc(voice_label(v))}</b>\n🎵 Nhạc: {music}\n" + (f"{note}\n" if note else "")
-           + "\nĐây chính là âm thanh của video. Muốn chỉnh: bấm <b>🎙 Giọng khác</b>, hoặc <b>Trả lời</b> tin này bằng "
-             "mô tả, vd <i>trầm hơn, chậm hơn</i>, <i>giọng nữ ấm áp</i>, <code>pitch -15 rate -20</code>; về nhạc: "
-             "<i>nhạc nhỏ hơn</i>, <i>nhạc piano sâu lắng hơn</i>, <i>bỏ nhạc</i>.")
-    rows = [[("✅ Duyệt giọng đọc & dựng video", f"na:{cid}")],
-            [("🎙 Giọng khác", f"nv:{cid}"), ("🎵 Đổi nhạc", f"nm:{cid}")]]
+    cap = (f"🎙 <b>#{cid} · Bước 4/5 – duyệt giọng đọc</b> [GIONGDOC:{cid}] ({a.get('total', 0):.0f}s, chỉ giọng – nhạc "
+           f"duyệt ở bước sau)\n🗣 Giọng: <b>{esc(voice_label(v))}</b>\n" + (f"{note}\n" if note else "")
+           + "\nKhông ưng: <b>🎙 Giọng khác</b>, hoặc <b>✍️ Mô tả giọng</b> / <b>Trả lời</b> tin này bằng mô tả giọng "
+             "muốn có, vd <i>giọng ông cụ khàn, chậm rãi, như kể chuyện cho cháu</i>, <i>giọng nữ trẻ, trong, nhẹ "
+             "nhàng</i>"
+           + (" — hệ thống tạo giọng AI mới theo mô tả và gửi nghe thử." if gemini_ok() else
+              " (chưa có GEMINI_API_KEY: chỉ chỉnh được giọng nam/nữ, độ trầm và tốc độ)."))
+    rows = [[("✅ Duyệt giọng đọc", f"na:{cid}")],
+            [("🎙 Giọng khác", f"nv:{cid}"), ("✍️ Mô tả giọng", f"vd:{cid}")]]
     if a.get("preview") and (DATA / a["preview"]).is_file():
         return media("audio", DATA / a["preview"], cap[:1000], kb(*rows))
     return msg(cap + "\n⚠️ Chưa có bản nghe thử.", kb(*rows))
 
 
+def describe_voice_prompt(cid: int) -> dict:
+    return msg(f"✍️ <b>#{cid} · Mô tả giọng đọc</b> [GIONGDOC:{cid}]\n<b>Trả lời (Reply) tin này</b> bằng mô tả giọng bạn "
+               "muốn: tuổi, nam/nữ, chất giọng (ấm, trầm, khàn, trong…), cảm xúc, tốc độ, giọng miền. Ví dụ:\n"
+               "• <i>giọng ông cụ miền Bắc, trầm khàn, chậm rãi như kể chuyện cho cháu nghe</i>\n"
+               "• <i>giọng người mẹ trẻ, dịu dàng, hơi nghẹn ngào</i>\n"
+               "• <i>giọng nam trung niên, ấm, rõ, như phát thanh viên đêm khuya</i>\n"
+               "Bot tạo giọng theo mô tả và gửi nghe thử.")
+
+
 def wisdom_voice_step(cid: int, preset=None, music=None, text=None) -> dict:
-    """Build / change the reading voice preview: a preset ("next"), the next music track, or the owner's words."""
+    """Voice step: a preset ("next") or the owner's description (a new AI voice when Gemini is available)."""
     with LOCK:
         item = DB_.get_content(cid)
     if not item or not is_wisdom(item["script"]) or item["status"] != "voice_review":
         return reply(msg(f"#{cid} không ở bước duyệt giọng đọc."))
     sc = item["script"]
-    cur = (sc.get("wisdom") or {}).get("voice") or wisdom_voice_default()
-    voice, mus, note = None, None, ""
+    cur = _wvoice((sc.get("wisdom") or {}).get("voice") or wisdom_voice_default())
+    voice, note = None, ""
     if preset == "next":
-        ps = [{"voice": norm_voice(p.get("voice")), "pitch": norm_pitch(p.get("pitch")), "rate": norm_rate(p.get("rate"))}
-              for p in wcfg().get("voices") or []] or [wisdom_voice_default()]
+        ps = [v for _, v in wvoice_presets()]
         voice = ps[(ps.index(cur) + 1) % len(ps)] if cur in ps else ps[0]
-    if music == "next":
-        opts = [rel(t) for t in music_tracks()]
-        if not opts:
-            return reply(msg("🎵 Thư viện nhạc đang trống. Gửi file mp3/m4a vào đây rồi bấm 🎵 Đổi nhạc."))
-        cm = (sc.get("audio") or {}).get("music", "")
-        mus = opts[(opts.index(cm) + 1) % len(opts)] if cm in opts else opts[0]
     if text:
-        got = parse_voice(text, cur)
+        got = parse_voice(text, cur) if cur.get("engine") != "gemini" and not gemini_ok() else None
+        est = float(((S.raw.get("budget") or {}).get("services", {}).get("claude", {})).get("est_fix_usd", 0.03))
         if got:
             voice, notes = got
             note = "✍️ <i>" + esc("; ".join(notes) or "giữ như cũ") + "</i>"
+        elif gemini_ok():
+            with LOCK:
+                BUDGET.ensure("claude", est, "Thiết kế giọng đọc theo mô tả.",
+                              resume={"action": "wvoice", "id": cid, "text": text})
+            pick = wisdom.design_voice(text, cur)
+            voice = {"engine": "gemini", "name": pick.name, "style": pick.style_en}
+            note = f"✍️ <i>{esc(pick.note_vi)}</i>"
         else:
-            est = float(((S.raw.get("budget") or {}).get("services", {}).get("claude", {})).get("est_fix_usd", 0.03))
             with LOCK:
                 BUDGET.ensure("claude", est, "Chỉnh giọng đọc theo mô tả.",
                               resume={"action": "wvoice", "id": cid, "text": text})
             pick = wisdom.voice_from_text(text, cur)
             voice = {"voice": pick.voice, "pitch": norm_pitch(pick.pitch), "rate": norm_rate(pick.rate)}
             note = f"✍️ <i>{esc(pick.note_vi)}</i>"
+    try:
+        prepare_wisdom_audio(cid, voice=voice)
+    except BudgetNeeded:
+        raise
+    except Exception as e:  # e.g. the Gemini TTS model is unavailable: keep the previous voice, say why
+        log.warning("Giọng đọc #%s lỗi: %s", cid, e)
+        if not voice:
+            raise
+        note = f"⚠️ Chưa tạo được giọng mới ({esc(str(e)[:200])}) — giữ giọng cũ."
+        voice = None
+        prepare_wisdom_audio(cid, voice=cur)
     if voice:
         with LOCK:
-            DB_.kv_set(WVOICE_KEY, voice)  # remembered for the next topic-3 videos
-    prepare_wisdom_audio(cid, voice=voice, music=mus)
+            DB_.kv_set(WVOICE_KEY, _wvoice(voice))  # remembered for the next topic-3 videos
     return reply(voice_review_msg(cid, note))
 
 
@@ -1461,8 +1563,67 @@ def approve_wisdom_voice(cid: int, mid: int | None) -> dict:
         item = DB_.get_content(cid)
         if not item or item["status"] != "voice_review":
             return reply(clear_buttons(mid), msg(f"#{cid} không ở bước duyệt giọng đọc."))
+        DB_.update_content(cid, status="music_review")
+    return reply(clear_buttons(mid), msg(f"✅ Đã duyệt giọng đọc #{cid}.\n🎵 <b>Bước 5/5 – nhạc nền:</b> đang ghép thử "
+                                         "giọng + nhạc…"), next_step={"action": "wmusicstep", "id": cid})
+
+
+# ---------------------------------------------------------------- topic 3: background music step
+
+def wisdom_music_msg(cid: int, note: str = "") -> dict:
+    item = DB_.get_content(cid)
+    a = item["script"].get("audio") or {}
+    lvl = float(a.get("music_db") or 0)
+    music = esc(Path(a["music"]).stem) if a.get("music") else "không nhạc"
+    n = len(music_tracks())
+    cap = (f"🎵 <b>#{cid} · Bước 5/5 – duyệt nhạc nền</b> [NHAC:{cid}] ({a.get('total', 0):.0f}s, giọng + nhạc đúng như "
+           f"video)\n🎵 Bài: <b>{music}</b>" + (f" · mức {lvl:+.0f} dB" if lvl else "") + f" · thư viện {n} bài\n"
+           + (f"{note}\n" if note else "")
+           + "\nKhông ưng: <b>🎵 Bài khác</b>, <b>🔇 Không nhạc</b>, hoặc <b>✍️ Mô tả nhạc</b> / <b>Trả lời</b> tin này, vd "
+             "<i>piano chậm, sâu lắng, nhỏ hơn một chút</i>. Muốn bài mới: gửi file mp3 (không bản quyền) vào bot.")
+    rows = [[("✅ Duyệt nhạc & dựng video", f"wm:{cid}")],
+            [("🎵 Bài khác", f"nm:{cid}"), ("🔇 Không nhạc", f"mn:{cid}"), ("✍️ Mô tả nhạc", f"md:{cid}")]]
+    if a.get("preview") and (DATA / a["preview"]).is_file():
+        return media("audio", DATA / a["preview"], cap[:1000], kb(*rows))
+    return msg(cap + "\n⚠️ Chưa có bản nghe thử.", kb(*rows))
+
+
+def describe_music_prompt(cid: int) -> dict:
+    return msg(f"✍️ <b>#{cid} · Mô tả nhạc nền</b> [NHAC:{cid}]\n<b>Trả lời (Reply) tin này</b> bằng mô tả nhạc bạn muốn: "
+               "nhạc cụ, không khí, nhanh/chậm, to/nhỏ so với giọng. Ví dụ: <i>piano buồn, rất nhỏ</i>, <i>guitar "
+               "mộc ấm áp</i>, <i>bỏ nhạc</i>.\nBot chọn bài hợp nhất trong thư viện nhạc của bạn (theo tên file) và "
+               "chỉnh mức to nhỏ. Thư viện chưa có bài hợp: gửi file mp3 vào bot (đặt tên gợi tả, vd "
+               "<code>piano buon.mp3</code>).")
+
+
+def wisdom_music_step(cid: int, music: str | None = None) -> dict:
+    with LOCK:
+        item = DB_.get_content(cid)
+    if not item or not is_wisdom(item["script"]) or item["status"] != "music_review":
+        return reply(msg(f"#{cid} không ở bước duyệt nhạc nền."))
+    a = item["script"].get("audio") or {}
+    pick = None
+    if music == "next":
+        opts = [rel(t) for t in music_tracks()]
+        if not opts:
+            return reply(msg("🎵 Thư viện nhạc đang trống. Gửi file mp3/m4a vào đây rồi bấm 🎵 Bài khác."))
+        cm = a.get("music", "")
+        pick = opts[(opts.index(cm) + 1) % len(opts)] if cm in opts else opts[0]
+    elif music == "none":
+        pick = ""
+    elif music:
+        pick = music
+    prepare_wisdom_audio(cid, music=pick, mix=True)
+    return reply(wisdom_music_msg(cid))
+
+
+def approve_wisdom_music(cid: int, mid: int | None) -> dict:
+    with LOCK:
+        item = DB_.get_content(cid)
+        if not item or not is_wisdom(item["script"]) or item["status"] != "music_review":
+            return reply(clear_buttons(mid), msg(f"#{cid} không ở bước duyệt nhạc nền."))
         DB_.update_content(cid, status="rendering")
-    return reply(clear_buttons(mid), msg(f"✅ Đã duyệt giọng đọc #{cid}. ⏳ Đang dựng video (1–3 phút)…"),
+    return reply(clear_buttons(mid), msg(f"✅ Đã duyệt nhạc nền #{cid}. ⏳ Đang dựng video (1–3 phút)…"),
                  next_step={"action": "render", "id": cid})
 
 
@@ -1477,15 +1638,8 @@ def render_wisdom(cid: int) -> dict:
         img = DATA / ws.get("image", "")
         if not ws.get("image") or not img.is_file():
             raise RuntimeError("chưa có ảnh nền đã duyệt")
-        d = DATA / "audio" / str(cid) / "wisdom"
-        mf = d / "narration.json"
         a = sc.get("audio") or {}
-        voice = ws.get("voice") or wisdom_voice_default()
-        h = _narr_hash(json.dumps(voice, sort_keys=True), "", wisdom.narrations(sc))
-        if a.get("hash") == h and mf.is_file() and (d / "narration.mp3").is_file():
-            meta = {**json.loads(mf.read_text(encoding="utf-8")), "path": str(d / "narration.mp3")}
-        else:
-            meta = wisdom.voice_track(sc, voice, d)
+        meta, _ = _wisdom_meta(cid, sc, _wvoice(ws.get("voice") or wisdom_voice_default()))
         music = a.get("music") if "music" in a else rel(Path(pick_music(cid))) if pick_music(cid) else ""
         mpath = (str(DATA / music) if music and not Path(music).is_absolute() else music) or ""
         st = ws.get("style") or wisdom_style()
@@ -1802,7 +1956,7 @@ def approve_script(cid: int, message_id: int | None) -> dict:
     if is_wisdom(item["script"]):
         saved = sync_drive()
         return reply(clear_buttons(message_id),
-                     msg(f"✅ Đã duyệt kịch bản #{cid}.{saved}\n🖼 <b>Bước 2/4 – ảnh nền:</b> đang tạo ảnh (≈ 20 giây)…"),
+                     msg(f"✅ Đã duyệt kịch bản #{cid}.{saved}\n🖼 <b>Bước 2/5 – ảnh nền:</b> đang tạo ảnh (≈ 20 giây)…"),
                      next_step={"action": "wimage", "id": cid})
     with LOCK:
         item = DB_.get_content(cid)
@@ -1929,7 +2083,9 @@ def font_review_msg(cid: int, note: str = "") -> dict:
     rows = [[("✅ Duyệt chữ", f"fa:{cid}")],
             [("🔤 Font đầu", f"ff:{cid * 10}"), ("🔤 Font phụ đề", f"ff:{cid * 10 + 1}"),
              ("🔤 Font kết", f"ff:{cid * 10 + 2}")],
-            [("🎨 Kiểu phụ đề khác", f"sb:{cid}")]]
+            [("🎨 Kiểu phụ đề khác", f"sb:{cid}")],
+            [("✍️ Tả font đầu", f"fd:{cid * 10}"), ("✍️ Tả phụ đề", f"fd:{cid * 10 + 1}"),
+             ("✍️ Tả font kết", f"fd:{cid * 10 + 2}")]]
     try:
         return media("photo", font_preview_file(cid), (font_caption(cid) + f" [CHU:{cid}]" + (f"\n{note}" if note else "")
                      + "\n\nBấm 🔤 / 🎨 để thử kiểu khác, hoặc <b>Trả lời</b> tin này bằng chữ mô tả, vd <i>phụ đề vàng, "
@@ -1964,8 +2120,8 @@ def approve_fonts(cid: int, mid: int | None) -> dict:
             sc = item["script"]
             sc.setdefault("wisdom", {})["style"] = wisdom_style()
             DB_.update_content(cid, status="voice_review", script=sc)
-            return reply(clear_buttons(mid), msg(f"✅ Đã duyệt chữ & phụ đề cho #{cid}.\n🎙 <b>Bước 4/4 – giọng đọc:</b> "
-                                                 "đang đọc thử kèm nhạc nền (≈ 30 giây)…"),
+            return reply(clear_buttons(mid), msg(f"✅ Đã duyệt chữ & phụ đề cho #{cid}.\n🎙 <b>Bước 4/5 – giọng đọc:</b> "
+                                                 "đang đọc thử (≈ 30 giây)…"),
                          next_step={"action": "wvoice", "id": cid})
         DB_.update_content(cid, status="awaiting_clips")
     return reply(clear_buttons(mid), msg(f"✅ Đã duyệt chữ cho #{cid}."), clip_mode_msg(cid))
@@ -2004,6 +2160,8 @@ def use_newest_music(cid: int, mid: int | None) -> dict:
         item = DB_.get_content(cid)
     if not tracks or not item or item["status"] != "music_review":
         return reply(clear_buttons(mid))
+    if is_wisdom(item["script"]):
+        return reply(clear_buttons(mid), wisdom_music_step(cid, rel(tracks[-1]))["messages"])
     prepare_music(cid, rel(tracks[-1]))
     return reply(clear_buttons(mid), audio_message(cid))
 
@@ -3399,6 +3557,7 @@ def tg_button(body: dict = BODY, x_worker_token: str = TOKEN) -> dict:
         "cm": lambda: choose_manual(n, mid, "independent"),
         "ce": lambda: choose_manual(n, mid, "extend"),
         "tp": lambda: choose_topic(n, mid),
+        "ld": lambda: choose_duration(n, mid),
         "ia": lambda: approve_wisdom_image(n, mid),
         "ir": lambda: reply(clear_buttons(mid), msg("⏳ Đang tạo ảnh khác…"), next_step={"action": "wimage", "id": n}),
         "ip": lambda: reply(clear_buttons(mid), msg("⏳ Đang lấy ảnh Pixabay…"),
@@ -3411,7 +3570,13 @@ def tg_button(body: dict = BODY, x_worker_token: str = TOKEN) -> dict:
         "nv": lambda: reply(clear_buttons(mid), msg("⏳ Đang đọc thử giọng khác…"),
                             next_step={"action": "wvoice", "id": n, "preset": "next"}),
         "nm": lambda: reply(clear_buttons(mid), msg("⏳ Đang đổi nhạc…"),
-                            next_step={"action": "wvoice", "id": n, "music": "next"}),
+                            next_step={"action": "wmusicstep", "id": n, "music": "next"}),
+        "mn": lambda: reply(clear_buttons(mid), msg("⏳ Đang bỏ nhạc…"),
+                            next_step={"action": "wmusicstep", "id": n, "music": "none"}),
+        "md": lambda: reply(describe_music_prompt(n)),
+        "vd": lambda: reply(describe_voice_prompt(n)),
+        "fd": lambda: describe_font_prompt(n),
+        "wm": lambda: approve_wisdom_music(n, mid),
         "va": lambda: publish(n, mid),
         "rp": lambda: publish(n, mid, again=True),
         "ps": lambda: publish_status(n),
@@ -3510,11 +3675,11 @@ def tg_text(body: dict = BODY, x_worker_token: str = TOKEN) -> dict:
     if m := re.search(r"\[ANH:(\d+)\]", ref):
         return reply(msg("⏳ Đang tạo ảnh nền theo mô tả của bạn…"),
                      next_step={"action": "wimage", "id": int(m.group(1)), "extra": text})
-    if m := re.search(r"\[CHU:(\d+)\]", ref):
+    if m := re.search(r"\[CHU:(\d+)(?::(\d))?\]", ref):
+        role = fonts.ROLES[int(m.group(2))] if m.group(2) and int(m.group(2)) < len(fonts.ROLES) else None
         return reply(msg("⏳ Đang chọn font & kiểu phụ đề theo mô tả…"),
-                     next_step={"action": "wstyle", "id": int(m.group(1)), "text": text})
-    if (m := re.search(r"\[NHAC:(\d+)\]", ref)) or ((m := re.search(r"\[GIONGDOC:(\d+)\]", ref))
-                                                    and re.search(r"\bnhạc\b|\bnhac\b|music", text, re.I)):
+                     next_step={"action": "wstyle", "id": int(m.group(1)), "text": text, "role": role})
+    if m := re.search(r"\[NHAC:(\d+)\]", ref):
         return reply(msg("⏳ Đang chọn nhạc theo mô tả…"),
                      next_step={"action": "wmusic", "id": int(m.group(1)), "text": text})
     if m := re.search(r"\[GIONGDOC:(\d+)\]", ref):
@@ -3609,17 +3774,19 @@ def cont(body: dict = BODY, x_worker_token: str = TOKEN) -> dict:
         p = get_plan(int(n))
         return _safe(create_plan, body.get("feedback") or "Làm một kế hoạch khác hẳn.", p["data"] if p else None)
     if action == "script":
-        return _safe(next_script, False, body.get("topic"))
+        return _safe(next_script, False, body.get("topic"), int(body["sec"]) if body.get("sec") else None)
     if action == "wimage":
         return _safe(wisdom_image, int(n), str(body.get("extra") or "")[:1500], str(body.get("source") or "auto"))
     if action == "wvoice":
         return _safe(wisdom_voice_step, int(n), body.get("preset"), body.get("music"), body.get("text"))
+    if action == "wmusicstep":
+        return _safe(wisdom_music_step, int(n), body.get("music"))
     if action == "revprompt":
         return _safe(revise_scene_prompt, int(n), str(body.get("text") or "")[:1500], bool(body.get("ext")))
     if action == "wmusic":
         return _safe(music_text, int(n), str(body.get("text") or "")[:1000])
     if action == "wstyle":
-        return _safe(wisdom_style_text, int(n), str(body.get("text") or "")[:1000])
+        return _safe(wisdom_style_text, int(n), str(body.get("text") or "")[:1000], body.get("role"))
     if action == "rewrite":
         return _safe(rewrite_script, int(n), body.get("feedback"))
     if action == "fixprompt":

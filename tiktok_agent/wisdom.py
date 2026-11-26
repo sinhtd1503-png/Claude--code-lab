@@ -160,12 +160,123 @@ def narrations(script: dict) -> list[str]:
     return [s["narration"] for s in script.get("scenes") or [] if s.get("narration", "").strip()]
 
 
-def voice_track(script: dict, voice: dict, workdir: Path) -> dict:
-    """The reading voice (edge-tts, word timings) → meta with "path"."""
+def voice_track(script: dict, voice: dict, workdir: Path, model: str = "gemini-2.5-flash-preview-tts") -> dict:
+    """The reading voice → meta with "path". engine "gemini": a described voice (Gemini TTS, one call per line so
+    every subtitle is timed to its own sentence); otherwise edge-tts with word timings."""
+    if voice.get("engine") == "gemini":
+        return gemini_voice_track(narrations(script), voice, workdir, model)
     meta = audio.narration_track(narrations(script), voice.get("voice", "vi-VN-NamMinhNeural"),
                                  voice.get("rate", "-12%"), workdir, voice.get("pitch", "+0Hz"))
     meta["path"] = str(workdir / meta["file"])
     return meta
+
+
+# ---------------------------------------------------------------- described voices (Gemini TTS)
+
+# Gemini TTS prebuilt voices and their character (from Google's voice list); all speak Vietnamese
+GEMINI_VOICES = {
+    "Charon": "nam, trầm, rõ ràng, như người kể chuyện", "Algenib": "nam, trầm khàn, từng trải",
+    "Gacrux": "nam/nữ trung niên, chín chắn, điềm đạm", "Iapetus": "nam, rõ ràng, ấm", "Orus": "nam, chắc, vững vàng",
+    "Alnilam": "nam, chắc chắn, nghiêm", "Rasalgethi": "nam, truyền cảm, như phát thanh viên",
+    "Umbriel": "nam, thoải mái, nhẹ nhàng", "Schedar": "nam, đều đặn, bình tĩnh", "Achird": "nam, thân thiện",
+    "Fenrir": "nam, sôi nổi", "Puck": "nam trẻ, vui tươi", "Enceladus": "nam, thì thầm, nhiều hơi thở",
+    "Sadaltager": "nam, hiểu biết", "Zubenelgenubi": "nam, tự nhiên như trò chuyện",
+    "Sulafat": "nữ, ấm áp", "Vindemiatrix": "nữ, dịu dàng", "Achernar": "nữ, mềm mại", "Kore": "nữ, chắc chắn",
+    "Despina": "nữ, êm mượt", "Aoede": "nữ, nhẹ nhàng thoáng đãng", "Callirrhoe": "nữ, thoải mái",
+    "Erinome": "nữ, trong trẻo", "Leda": "nữ trẻ", "Autonoe": "nữ, tươi sáng", "Zephyr": "nữ, sáng",
+    "Laomedeia": "nữ, vui tươi", "Pulcherrima": "nữ, mạnh mẽ", "Sadachbia": "nữ, sinh động", "Algieba": "nam, êm mượt",
+}
+GeminiVoiceName = Literal[tuple(GEMINI_VOICES)]  # type: ignore[valid-type]
+
+
+class GeminiVoicePick(BaseModel):
+    name: GeminiVoiceName = Field(description="Giọng gốc hợp nhất với mô tả")
+    style_en: str = Field(description="TIẾNG ANH, 1–2 câu: chỉ dẫn cách đọc cho TTS (tuổi, chất giọng, cảm xúc, nhịp, "
+                                      "khoảng nghỉ, giọng miền Bắc Việt Nam), vd 'Read in Vietnamese with a Northern "
+                                      "accent, like a wise elderly man, deep warm voice, slow, gentle pauses'")
+    note_vi: str = Field(description="Đã chọn giọng thế nào, 1 câu tiếng Việt")
+
+
+def design_voice(desc: str, current: dict) -> GeminiVoicePick:
+    system = ("Bạn thiết kế giọng đọc cho video TikTok tiếng Việt bằng Gemini TTS: chọn MỘT giọng gốc trong danh mục và "
+              "viết chỉ dẫn cách đọc bằng tiếng Anh theo đúng mô tả của chủ kênh. Luôn yêu cầu đọc tiếng Việt giọng "
+              "miền Bắc trừ khi chủ kênh muốn khác.")
+    user = (f"Danh mục giọng: {json.dumps(GEMINI_VOICES, ensure_ascii=False)}\nGiọng hiện tại: "
+            f"{json.dumps(current, ensure_ascii=False)}\nMô tả của chủ kênh:\n<desc>\n{desc}\n</desc>")
+    return _parse(system, user, GeminiVoicePick, effort="low", max_tokens=800)
+
+
+def gemini_tts(text: str, voice: dict, out: Path, model: str) -> float:
+    """One line with a Gemini prebuilt voice + a spoken-style instruction → WAV; returns its duration."""
+    from google import genai  # reads GEMINI_API_KEY from the environment
+    from google.genai import types
+    client = genai.Client()
+    style = (voice.get("style") or "Read in Vietnamese, Northern accent, warm and calm").strip().rstrip(".:")
+    cfg = types.GenerateContentConfig(
+        response_modalities=["AUDIO"],
+        speech_config=types.SpeechConfig(voice_config=types.VoiceConfig(
+            prebuilt_voice_config=types.PrebuiltVoiceConfig(voice_name=voice.get("name") or "Charon"))))
+    res = client.models.generate_content(model=model, contents=f"{style}: {text}", config=cfg)
+    data = None
+    for cand in getattr(res, "candidates", None) or []:
+        for part in getattr(getattr(cand, "content", None), "parts", None) or []:
+            data = data or getattr(getattr(part, "inline_data", None), "data", None)
+    if not data:
+        raise RuntimeError("Gemini TTS không trả về âm thanh")
+    raw = out.with_suffix(".pcm")
+    raw.write_bytes(data)  # 24 kHz, 16-bit, mono PCM
+    _run(["ffmpeg", "-y", "-v", "error", "-f", "s16le", "-ar", "24000", "-ac", "1", "-i", str(raw),
+          "-af", "silenceremove=start_periods=1:start_threshold=-50dB,areverse,"
+                 "silenceremove=start_periods=1:start_threshold=-50dB,areverse", str(out)])
+    raw.unlink(missing_ok=True)
+    return _duration(out)
+
+
+def _line_cues(text: str, start: float, end: float, max_words: int = audio.MAX_WORDS) -> list[dict]:
+    """Subtitle lines for one spoken sentence: split at commas, then evenly, timed by word count."""
+    words = text.split()
+    if not words:
+        return []
+    groups, cur = [], []
+    for w in words:
+        cur.append(w)
+        if len(cur) >= max_words or (w[-1:] in ",;:" and len(cur) >= 3):
+            groups.append(cur)
+            cur = []
+    if cur:
+        if groups and len(cur) <= 2 and len(groups[-1]) + len(cur) <= max_words + 2:
+            groups[-1] += cur
+        else:
+            groups.append(cur)
+    out, t, per = [], start, (end - start) / len(words)
+    for g in groups:
+        out.append({"start": round(t, 3), "end": round(t + per * len(g), 3), "text": " ".join(g)})
+        t += per * len(g)
+    return out
+
+
+def gemini_voice_track(lines: list[str], voice: dict, workdir: Path, model: str, gap: float = 0.45) -> dict:
+    workdir.mkdir(parents=True, exist_ok=True)
+    parts, cues, scenes, t = [], [], [], 0.0
+    for k, line in enumerate(lines):
+        f = workdir / f"g_{k}.wav"
+        d = gemini_tts(line, voice, f, model)
+        parts.append(f)
+        scenes.append({"start": round(t, 3), "end": round(t + d, 3)})
+        cues += _line_cues(line, t, t + d)
+        t += d + gap
+    ins = [x for f in parts for x in ("-i", str(f))]
+    pads = "".join(f"[{k}:a]aresample=24000,apad=pad_dur={gap}[p{k}];" for k in range(len(parts)))
+    out = workdir / "narration.mp3"
+    _run(["ffmpeg", "-y", "-v", "error", *ins, "-filter_complex",
+          pads + "".join(f"[p{k}]" for k in range(len(parts))) + f"concat=n={len(parts)}:v=0:a=1[a]", "-map", "[a]",
+          "-c:a", "libmp3lame", "-b:a", "192k", str(out)])
+    for f in parts:
+        f.unlink(missing_ok=True)
+    meta = {"file": out.name, "duration": _duration(out), "engine": "gemini", "name": voice.get("name"),
+            "style": voice.get("style"), "scenes": scenes, "cues": cues}
+    (workdir / "narration.json").write_text(json.dumps(meta, ensure_ascii=False), encoding="utf-8")
+    return {**meta, "path": str(out)}
 
 
 def total_sec(meta: dict) -> float:
