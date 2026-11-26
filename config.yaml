@@ -118,7 +118,7 @@ scraper:
   lookback_days: 30           # chỉ phân tích video trong N ngày gần đây
   top_n_for_analysis: 25      # số video hiệu quả nhất gửi cho Claude phân tích
 
-# Chủ đề kịch bản: khi gõ /kichban (hoặc 07:00 mỗi ngày) bot hỏi chọn 1 hoặc 2.
+# Chủ đề kịch bản: khi gõ /kichban (hoặc 07:00 mỗi ngày) bot hỏi chọn 1, 2 hoặc 3.
 #   1 = "kyuc": ký ức tuổi thơ 8x 9x — dùng mục niche ở trên + kế hoạch 30 ngày (như cũ)
 #   2 = "giadinh": những điều cần nhắc nhở trong gia đình — cuộc sống ngày nay, cùng gia đình nhân vật (cùng tên, cùng
 #       giọng) ở phiên bản HIỆN ĐẠI (`cast` bên dưới); không dùng kế hoạch 30 ngày, mỗi lần tự chọn một vấn đề mới.
@@ -204,6 +204,50 @@ topics:
           Vietnamese little girl, small, round face with rosy cheeks, big curious eyes, short black bob hair with
           straight bangs and a small yellow hair clip, yellow T-shirt with a small star, light denim skirt, white sneakers
         speech_vi: "Xưng 'con'/'cháu', gọi anh là 'anh Tí'; hồn nhiên, hay hỏi 'sao thế ạ?', 'ông ơi cái này là gì?'"
+
+  # 3 = "loiday": NHỮNG LỜI RĂN DẠY — không thoại nhân vật: MỘT ảnh nền + giọng đọc trầm ấm + phụ đề chạy theo lời
+  #     đọc, video dài hơn (~target_sec). Duyệt lần lượt: kịch bản → ảnh nền → font & kiểu phụ đề → giọng đọc → video.
+  loiday:
+    name: "Những lời răn dạy"
+    description: >
+      Những lời nhắc nhở, triết lý sống sâu sắc mà ai cũng từng nghe nhưng hay lãng quên — về đạo làm con, làm cha
+      mẹ, vợ chồng, anh chị em, ông bà và cháu — giúp người xem lắng lại, sống tử tế hơn và xây dựng gia đình ngày
+      một tốt đẹp hơn.
+    audience: "Người Việt 25–60 tuổi, các bậc cha mẹ, con cái trưởng thành, người xa nhà"
+    tone: "Trầm ấm, sâu lắng, chân thành như lời một người từng trải; câu ngắn, giàu hình ảnh; không giáo điều, không phán xét"
+    pillars:
+      - "Đạo hiếu với cha mẹ"
+      - "Cha mẹ và cách dạy con"
+      - "Vợ chồng – nhường nhịn và thấu hiểu"
+      - "Anh chị em – máu mủ ruột rà"
+      - "Ông bà – gốc rễ của gia đình"
+      - "Lời nói và sự im lặng trong nhà"
+      - "Thời gian – thứ không mua lại được"
+      - "Biết ơn và tha thứ"
+    core_values: >
+      Mỗi video là MỘT lời răn dạy về một góc cạnh của mối quan hệ trong gia đình, nói bằng giọng của một người từng
+      trải: mở bằng một câu chạm thẳng vào lòng người, rồi một hình ảnh đời thường dễ nhận ra, một sự thật ta hay
+      quên, và kết bằng một lời nhắc nhẹ nhàng để người xem làm ngay hôm nay (gọi cho mẹ, ôm con, nói lời cảm ơn).
+      Mang năng lượng tích cực; không trích dẫn sai danh nhân, không bịa câu nói của người nổi tiếng.
+    caption_hint: >
+      Caption ngắn, sâu lắng, mời người xem lưu lại hoặc gửi cho người thân (vd 'Lưu lại để nhắc mình mỗi ngày',
+      'Gửi cho người bạn thương nhất').
+    format_vi: >
+      Video KHÔNG có thoại nhân vật: MỘT hình ảnh nền tĩnh (chuyển động máy rất chậm), một GIỌNG ĐỌC trầm ấm đọc lời
+      răn dạy từ đầu đến cuối, phụ đề chạy theo từng câu đọc, nhạc nền nhẹ nhàng phía dưới.
+    visual_style_en: >
+      Cinematic anime feature-film style illustration, painterly richly detailed background, soft warm light,
+      gentle film grain, calm contemplative mood, warm muted color palette
+    target_sec: 60            # độ dài lời đọc mong muốn (giây)
+    image:
+      model: "gemini-2.5-flash-image"    # tạo ảnh nền bằng Gemini (cần GEMINI_API_KEY); không có key → ảnh Pixabay
+      usd_per_image: 0.04                # ("imagen-*" chỉ chạy trên Vertex AI, không dùng với khoá AI Studio)
+    voice: {voice: "vi-VN-NamMinhNeural", pitch: "-10Hz", rate: "-12%"}   # giọng đọc mặc định (trầm ấm)
+    voices:                   # nút "🎙 Giọng khác" xoay vòng các giọng này
+      - {label: "Nam trầm ấm", voice: "vi-VN-NamMinhNeural", pitch: "-10Hz", rate: "-12%"}
+      - {label: "Nam sâu lắng, chậm rãi", voice: "vi-VN-NamMinhNeural", pitch: "-20Hz", rate: "-18%"}
+      - {label: "Nữ dịu dàng", voice: "vi-VN-HoaiMyNeural", pitch: "-5Hz", rate: "-10%"}
+      - {label: "Nữ trầm ấm", voice: "vi-VN-HoaiMyNeural", pitch: "-15Hz", rate: "-14%"}
 
 content:
   target_duration_sec: 24     # độ dài video mong muốn (kênh mẫu: 15–30 giây)
@@ -319,6 +363,7 @@ tiktok:
   # direct = đăng thẳng (cần app TikTok qua audit, nếu chưa thì chỉ đăng được SELF_ONLY)
   post_mode: "inbox"
   privacy_level: "PUBLIC_TO_EVERYONE"
+  status_wait_sec: 30         # sau khi gửi, chờ tối đa N giây để đọc trạng thái thật từ TikTok (vào hộp thư / lỗi gì)
   # Các kênh TikTok của bạn (tên tự đặt, không dấu, không khoảng trắng). Mỗi kênh kết nối 1 lần bằng lệnh /tiktok.
   # Video được duyệt sẽ được gửi lên TẤT CẢ các kênh đã kết nối.
   accounts:
@@ -349,5 +394,9 @@ budget:
       suggest_monthly_usd: 5
       usd_per_clip: 0.19      # 1 video 3 cảnh ≈ $0.6 → $5 ≈ 8 video, $10 ≈ 17 video
       options_usd: [1, 5, 10, 25]
+    gemini_image:             # tuỳ chọn: tạo ảnh nền cho chủ đề 3 (Lời răn dạy) bằng Gemini; không có → ảnh Pixabay
+      free_monthly_usd: 0
+      suggest_monthly_usd: 1
+      options_usd: [1, 2, 5]
 
 data_dir: "data"
