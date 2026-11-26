@@ -1,6 +1,6 @@
 # Tiến độ dự án — TikTok Content Agent
 
-_Cập nhật: 23/11/2026_
+_Cập nhật: 26/11/2026_
 
 ## 🔄 Lệnh cập nhật VPS (sao chép và dán vào Termius)
 
@@ -126,7 +126,45 @@ Xây agent tự động cho kênh TikTok ngách **tuổi thơ, kỷ niệm gia �
 - **`/kehoach` hỏi chọn nhân vật bằng ảnh trước:** chưa có ảnh nhân vật → bot hướng dẫn gửi ảnh (chú thích tên – vai) hoặc bấm "✨ Để AI tự tạo nhân vật"; đã có ảnh → lập kế hoạch với đúng các nhân vật đó
 - Đã kiểm thử trong Docker (căn thời gian, phụ đề, bản nghe thử, đổi nhạc/giọng, dùng lại giọng đã duyệt khi ghép) và thử edge-tts thật với giọng tiếng Việt
 
-### 📌 Tóm tắt thay đổi hôm nay (23/11/2026) — Chọn chủ đề kịch bản: 1 Ký ức tuổi thơ / 2 Gia đình
+### 📌 Tóm tắt thay đổi hôm nay (26/11/2026) — Lời răn dạy: chọn thời lượng, giọng AI theo mô tả, duyệt nhạc; mô tả font từng phần
+- **Yêu cầu của chủ kênh:**
+  - Chủ đề 3: chọn thời lượng trước khi viết.
+  - Mô tả giọng đọc bằng lời và nghe thử, không chỉ chỉnh tốc độ và độ trầm của giọng cũ.
+  - Duyệt font: mô tả riêng cho chữ đầu, phụ đề, câu kết.
+  - Thêm bước duyệt nhạc nền, hoặc mô tả nhạc nền.
+- **Đã làm (PR #43):**
+  - **Chọn thời lượng:** 30 giây / 45 giây / 1 phút / 90 giây / 2 phút (`/kichban 3 90`). Số chữ và số câu tính theo thời lượng; viết lại giữ nguyên thời lượng.
+  - **Giọng đọc (bước 4/5, nghe riêng giọng):**
+    - **✍️ Mô tả giọng** → Claude chọn 1 trong 30 giọng **Gemini TTS** kèm chỉ dẫn cách đọc. Hệ thống đọc từng câu để phụ đề khớp từng câu, rồi gửi nghe thử.
+    - Có 2 giọng AI mẫu (Ông cụ kể chuyện, Người mẹ dịu dàng). Ngân sách `gemini_tts` khoảng $0,02/phút.
+    - Gemini TTS lỗi thì giữ giọng cũ và báo lý do. Chưa có key thì vẫn chỉ chỉnh nam/nữ, độ trầm, tốc độ.
+  - **Bước 5/5 – nhạc nền (mới):** nghe giọng + nhạc như video thật; nút 🎵 Bài khác, 🔇 Không nhạc, ✍️ Mô tả nhạc (chọn bài trong thư viện theo tên/không khí, chỉnh to nhỏ).
+  - **Font (cả 3 chủ đề):** nút ✍️ Tả font đầu / phụ đề / kết; trả lời mô tả thì chỉ phần đó đổi.
+- **Kiểm thử:** thêm `test_loiday2` (29 kiểm tra), cập nhật `test_wisdom`. PR #43 tự merge khi cả 15 bộ test đạt.
+
+### 📌 Tóm tắt thay đổi 25/11/2026 — Chủ đề 3 · Những lời răn dạy; sửa tạo ảnh; đăng lại TikTok; gõ mô tả cho cả 3 chủ đề
+- **Chủ đề 3 · Những lời răn dạy (PR #41):**
+  - Không thoại nhân vật: một ảnh nền, một giọng đọc trầm ấm đọc triết lý sống về gia đình, phụ đề theo lời đọc, nhạc nhẹ. Không cần tạo clip trên Flow.
+  - Duyệt lần lượt: kịch bản → ảnh nền → chữ & phụ đề → giọng đọc → video.
+  - **Ảnh nền:** Gemini, hoặc Pixabay; có thể gửi ảnh của mình hoặc mô tả ảnh muốn có.
+  - **Chữ & phụ đề:** ảnh minh hoạ dựng trên chính ảnh nền; đổi được font, kiểu phụ đề (màu, cỡ, nền mờ, vị trí), hoặc mô tả.
+  - **Giọng đọc:** 4 giọng mẫu, hoặc mô tả.
+  - **Video:** ảnh zoom chậm, phụ đề hiện đúng câu đang đọc, chữ ảnh bìa, câu kết.
+  - Phát hiện và sửa khi kiểm tra: phụ đề có kiểu mới bị đẩy ra ngoài khung (libass tính theo khung 288 đơn vị); test giờ kiểm tra phụ đề thật sự hiện.
+- **Sửa lỗi và bổ sung (PR #42):**
+  - **Lỗi tạo ảnh** "only supported in Gemini Enterprise Agent Platform mode":
+    - Nguyên nhân: Imagen chỉ chạy trên Vertex AI. Chuyển sang `gemini-2.5-flash-image`.
+    - Khi lỗi, bot gửi **✋ Tạo ảnh nền bằng tay** kèm prompt; chủ kênh trả lời đúng tin đó bằng ảnh.
+  - **Đăng TikTok không thấy trong hộp thư:**
+    - Bot giờ đọc **trạng thái thật** từ TikTok (đã vào hộp thư / đã đăng / đang xử lý / lỗi + lý do + cách sửa).
+    - Luôn có nút **🔁 Đăng lại TikTok** và **🔎 Kiểm tra trạng thái**. Video đăng lỗi hiện trong `/trangthai`.
+  - **Gõ mô tả cho cả 3 chủ đề:**
+    - Nhạc nền: trả lời tin nhạc, ví dụ "piano buồn, to hơn", "bỏ nhạc".
+    - Phụ đề: chủ đề 1 và 2 có thêm 🎨 và mô tả.
+    - Hình ảnh chủ đề 1 và 2: trả lời tin prompt của một cảnh hoặc đoạn kéo dài bằng mô tả, Claude viết lại prompt đó.
+- **Kiểm thử:** thêm `test_wisdom` và `test_fixes`; 13/13 rồi 14/14 bộ test đạt trước khi merge.
+
+### 📌 Tóm tắt thay đổi 23/11/2026 — Chọn chủ đề kịch bản: 1 Ký ức tuổi thơ / 2 Gia đình
 - **Yêu cầu của chủ kênh:**
   - Khi đến bước viết kịch bản hằng ngày, hoặc khi gõ `/kichban`, được chọn chủ đề.
   - **Chủ đề 1:** ký ức tuổi thơ, làm như hiện tại.
@@ -146,10 +184,14 @@ Xây agent tự động cho kênh TikTok ngách **tuổi thơ, kỷ niệm gia �
     - **Không dùng ảnh mẫu thời xưa** cho chủ đề 2 (để Flow khỏi chép quần áo cũ). Ảnh mẫu hiện đại riêng: gửi ảnh chú thích `2 Bà` / `Bà hiện đại`.
     - `/nhanvat 2` hiện thẻ hiện đại kèm prompt tạo ảnh. Trả lời thẻ bằng `Vai/Ngoại hình/Cách nói` để sửa (lưu trong `nhan_vat.yaml`, mục `modern`).
     - **Một ngôi nhà ngày nay cố định** (`setting_en`), ghi nguyên văn trong mọi prompt clip. Prompt clip mô tả phim theo chủ đề, không còn câu cố định "1990s childhood memory".
-  - Lý do chủ kênh thấy `/kichban` vẫn viết chủ đề ký ức: PR #38 chưa merge nên VPS còn chạy bản cũ (n8n không lỗi). Cần merge rồi cập nhật VPS.
+  - Lý do chủ kênh thấy `/kichban` vẫn viết chủ đề ký ức: lúc đó PR #38 chưa merge nên VPS còn chạy bản cũ (n8n không lỗi).
+- **Trạng thái cuối ngày:** PR #38 (chọn chủ đề + nhân vật hiện đại) và PR #39 (tiến độ) **đã merge**; chủ kênh **đã cập nhật VPS**. Việc tiếp theo: thử `/kichban` → chọn 2️⃣, tạo ảnh mẫu hiện đại bằng `/nhanvat 2`, làm trọn 1 video chủ đề 2.
   - Viết lại kịch bản vẫn giữ đúng chủ đề; tin kịch bản ghi rõ **🕰 Chủ đề 1** hay **👨‍👩‍👧 Chủ đề 2**.
   - Mọi nội dung chủ đề 2 sửa được trong `config.yaml`, mục `topics:`.
-- **Kiểm thử:** thêm bộ test chủ đề và đã đạt hết. Sửa bộ test tần suất (lịch 07:00 giờ hỏi chủ đề trước). Chạy lại toàn bộ test trước khi merge.
+- **Kiểm thử:**
+  - Thêm bộ test chủ đề, gồm cả phần nhân vật hiện đại (ảnh chú thích `2 Bà`, sửa thẻ hiện đại, `/nhanvat 2`, chủ đề 2 không dùng ảnh thời xưa); đạt hết.
+  - Sửa bộ test tần suất (lịch 07:00 giờ hỏi chủ đề trước).
+  - PR #38 được merge theo yêu cầu khi lượt chạy lại toàn bộ test mới xong một phần; sau đó cả **12/12 bộ test đều đạt**.
 
 ### 📌 Tóm tắt thay đổi 20/11/2026 — Chọn "kéo dài" (1 video, không ghép) hoặc "clip độc lập"; ghép không làm lệch giọng
 - **Yêu cầu của chủ kênh:**
@@ -356,26 +398,31 @@ Xây agent tự động cho kênh TikTok ngách **tuổi thơ, kỷ niệm gia �
 
 1. **Phong cách kênh mẫu mới dựa trên mô tả**, chưa đối chiếu trực tiếp với video mẫu; cần chủ kênh xem kết quả và chỉnh bằng `/phongcach`.
 2. **Vẫn còn bước làm tay mỗi ngày:** tạo 3–4 clip trên Google Flow (~5 phút). Tự động hoàn toàn chỉ có qua Gemini API trả phí (key hiện chưa có quyền model video).
-3. **Đăng TikTok chưa chạy thật:** cần tạo app, thêm tài khoản vào Sandbox, kết nối bằng `/tiktok`. `direct` chỉ đăng riêng tư tới khi app qua audit.
+3. **Đăng TikTok chưa xác nhận chạy thật:** lần duyệt đăng 25/11 không thấy video trong hộp thư. Đã thêm đọc trạng thái thật + nút đăng lại; cần bấm **🔁 Đăng lại TikTok** để xem TikTok báo lý do gì (Sandbox, quá nhiều bản nháp, phiên hết hạn…). `direct` chỉ đăng riêng tư tới khi app qua audit.
 4. **Giọng nhân vật (clip độc lập):** khớp giọng chỉ chỉnh cao độ + âm lượng; nếu Flow tạo hai chất giọng khác hẳn nhau giữa các clip thì vẫn còn khác. Cách **🎞 Kéo dài** tránh được vấn đề này vì cả video do Flow tạo liền.
 5. **Chủ đề 2 chưa có ảnh mẫu hiện đại:** cần tạo 6 ảnh chân dung hiện đại (prompt trong `/nhanvat 2`) và gửi với chú thích `2 Tên`. Chưa có ảnh thì khuôn mặt giữa các clip chỉ dựa vào mô tả chữ, dễ lệch hơn.
 6. **Prompt rất dài** được chia thành nhiều phần; chủ kênh phải chép lần lượt và dán nối tiếp vào cùng một ô prompt trong Flow.
-7. **edge-tts lỗi theo đợt** ("No audio was received") — đã có thử lại + nút 🔁 Thử lại trên Telegram.
-8. **Hạn chế đã biết:**
+7. **Chủ đề 3 – giới hạn đã biết:**
+   - Chưa có `GEMINI_API_KEY` thì ảnh nền lấy từ Pixabay (ảnh chụp, không cùng phong cách anime).
+   - Giọng Gemini TTS đọc từng câu riêng nên ngữ điệu giữa các câu có thể hơi khác. Model `gemini-2.5-flash-preview-tts` là bản preview, Google có thể đổi tên.
+   - Nhạc theo mô tả chỉ chọn trong thư viện nhạc đã gửi, không tự sáng tác.
+   - Chưa thử với ảnh, giọng Gemini thật trên VPS.
+8. **edge-tts lỗi theo đợt** ("No audio was received") — đã có thử lại + nút 🔁 Thử lại trên Telegram.
+9. **Hạn chế đã biết:**
    - Độ nhất quán khuôn mặt vẫn phụ thuộc model video (đã có mô tả cố định, ảnh mẫu, khung cuối, prompt nối tiếp, Extend).
    - Đăng vào hộp nháp TikTok: chủ kênh tự chọn ảnh bìa ở giây đầu khi đăng trong app.
    - Còn lại: Telegram chỉ cho bot tải file ≤ 20 MB; chưa hỗ trợ upload TikTok > 64 MB; phụ đề căn thời gian theo ước lượng; số lượt Flow miễn phí do Google quyết định và có thể thay đổi.
 
 ## 📋 Các bước cần cấu hình tiếp
 
-1. **Cập nhật VPS** (lệnh đầu file) để có lựa chọn Kéo dài / Clip độc lập và chọn chủ đề kịch bản.
+1. **Cập nhật VPS** sau khi PR #43 merge (lệnh đầu file). Kiểm tra `.env` trên VPS có `GEMINI_API_KEY` để dùng ảnh nền và giọng AI theo mô tả.
 2. `/font` → chọn font cho chữ đầu video, phụ đề, câu kết (xem ảnh minh hoạ).
 3. `/giong` → kiểm tra đang chọn **Khớp giọng nhân vật**.
 4. `/nhac` → có ít nhất 1 bài nhạc nền không bản quyền.
 5. `/doithu` → cập nhật kênh đối thủ nếu cần → **🔄 Lập kế hoạch mới** → duyệt.
 6. **Ảnh mẫu hiện đại:** `/nhanvat 2` → tạo ảnh từng người → gửi ảnh chú thích `2 Ông`, `2 Bà`…
-7. **Làm trọn 1 video mỗi chủ đề:** `/kichban 1` (ký ức) và `/kichban 2` (gia đình) → duyệt kịch bản → duyệt nhạc → duyệt chữ → chọn tạo tay/tự động.
+7. **Làm trọn 1 video mỗi chủ đề:** `/kichban 1` (ký ức) và `/kichban 2` (gia đình) → duyệt kịch bản → duyệt nhạc → duyệt chữ → chọn tạo tay/tự động; `/kichban 3` → chọn thời lượng → duyệt kịch bản → ảnh nền → chữ → giọng (thử ✍️ Mô tả giọng) → nhạc → video.
    - Tạo tay: ưu tiên **🎞 Kéo dài** → Đoạn 1 dán prompt đầy đủ (thêm ảnh nhân vật ở Ingredients), đoạn sau bấm Extend và dán prompt kéo dài → tải toàn bộ video → trả lời tin **📥 Gửi video kéo dài**.
 8. **Đánh giá video:** ảnh bìa có chữ thông điệp; nhạc liền từ đầu đến cuối; câu kết ở đoạn cuối; giọng mỗi nhân vật giữ nguyên qua các clip; nhân vật giống nhau → gửi nhận xét cho Claude.
-9. **Kết nối TikTok** (`CAI_DAT_CONTABO.md` Bước 7) → `/tiktok` → thử **Duyệt & đăng**.
+9. **TikTok:** trên video đã duyệt bấm **🔁 Đăng lại TikTok** → đọc trạng thái bot báo → sửa theo gợi ý (kết nối lại `/tiktok`, thêm tài khoản vào Sandbox, đăng/xoá bớt bản nháp).
 10. Huỷ hoặc gia hạn Contabo trước ngày hết kỳ 1 tháng.
